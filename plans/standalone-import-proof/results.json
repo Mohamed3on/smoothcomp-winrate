@@ -1,0 +1,65 @@
+{
+  "tested_at_utc": "2026-09-06T06:02:21.040712+00:00",
+  "environment": "local workspace host; no cloud deployment tested",
+  "browser_state_imported": false,
+  "curl_config_disabled": true,
+  "page_access_passed": false,
+  "full_import_proven": false,
+  "probes": [
+    {
+      "kind": "matches",
+      "url": "https://jjlg.smoothcomp.com/en/event/19856/schedule/matchlist",
+      "curl_exit": 0,
+      "http_status": 403,
+      "response_bytes": 5551,
+      "page_title": "Just a moment...",
+      "cloudflare_challenge": true,
+      "expected_page_marker": false,
+      "page_access_passed": false
+    },
+    {
+      "kind": "results",
+      "url": "https://jjlg.smoothcomp.com/en/event/19856/results",
+      "curl_exit": 0,
+      "http_status": 403,
+      "response_bytes": 5518,
+      "page_title": "Just a moment...",
+      "cloudflare_challenge": true,
+      "expected_page_marker": false,
+      "page_access_passed": false
+    },
+    {
+      "kind": "participants",
+      "url": "https://jjlg.smoothcomp.com/en/event/19856/participants",
+      "curl_exit": 0,
+      "http_status": 403,
+      "response_bytes": 5533,
+      "page_title": "Just a moment...",
+      "cloudflare_challenge": true,
+      "expected_page_marker": false,
+      "page_access_passed": false
+    },
+    {
+      "kind": "matches",
+      "url": "https://smoothcomp.com/en/event/19856/schedule/matchlist",
+      "curl_exit": 0,
+      "http_status": 403,
+      "response_bytes": 5525,
+      "page_title": "Just a moment...",
+      "cloudflare_challenge": true,
+      "expected_page_marker": false,
+      "page_access_passed": false
+    },
+    {
+      "kind": "matches",
+      "url": "https://smoothcomp.com/en/event/27400/schedule/matchlist",
+      "curl_exit": 0,
+      "http_status": 403,
+      "response_bytes": 5525,
+      "page_title": "Just a moment...",
+      "cloudflare_challenge": true,
+      "expected_page_marker": false,
+      "page_access_passed": false
+    }
+  ]
+}

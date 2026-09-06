@@ -1,0 +1,269 @@
+.scwr-cell {
+  flex: 0 0 auto;
+  min-width: 96px;
+  padding: 0 8px;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.well.scwr-thin {
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.well.scwr-thin:hover {
+  opacity: 0.85;
+}
+
+.scwr-cell[data-name] {
+  cursor: pointer;
+}
+
+/* The academy everyone else is being measured against. */
+.scwr-cell.scwr-ref {
+  border-radius: 7px;
+  padding-block: 5px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 38%, transparent);
+}
+
+.scwr-label {
+  font-size: 0.78em;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+}
+
+.scwr-bar {
+  display: block;
+  height: 3px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.3);
+  overflow: hidden;
+}
+
+.scwr-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.scwr-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 8px 14px;
+  border: 1px solid rgba(128, 128, 128, 0.28);
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.scwr-title,
+.scwr-min {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.scwr-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 99px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  opacity: 0.7;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.scwr-btn:hover {
+  background: rgba(128, 128, 128, 0.2);
+  opacity: 1;
+}
+
+.scwr-btn:focus-visible {
+  outline: 2px solid #179de0;
+  outline-offset: 1px;
+}
+
+.scwr-btn.is-on {
+  background: #179de0;
+  color: #fff;
+  opacity: 1;
+}
+
+.scwr-btn i {
+  font-style: normal;
+  font-size: 11px;
+}
+
+.scwr-min {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0 auto;
+}
+
+.scwr-note {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.45;
+  white-space: nowrap;
+}
+
+.scwr-note:empty {
+  display: none;
+}
+
+.scwr-min select {
+  max-width: 210px;
+  appearance: none;
+  padding: 4px 22px 4px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 6px;
+  background: transparent
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6'/%3E%3C/svg%3E")
+    no-repeat right 7px center/9px;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.scwr-min select option {
+  color: initial;
+}
+
+/* Narrow rows already truncate the team name, so drop the label and claim
+   as little width as the percentage itself needs. */
+@media (max-width: 600px) {
+  .scwr-cell {
+    min-width: 0;
+  }
+  /* Beat the site's ~30px gutter between stat columns. */
+  .ranking-list.ranking-list-detail .stats > div.scwr-cell {
+    margin-left: 0;
+    padding: 0 0 0 10px;
+  }
+  .scwr-label {
+    display: none;
+  }
+  .scwr-min {
+    margin-left: 0;
+  }
+}
+
+/* Win-type row: recomputed from the event's match list. */
+.scwr-types {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.scwr-chip {
+  padding: 3px 10px;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 99px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-transform: capitalize;
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.scwr-chip:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.scwr-chip.is-on {
+  border-color: transparent;
+  background: rgba(23, 157, 224, 0.9);
+  color: #fff;
+  opacity: 1;
+}
+
+.scwr-chip:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.scwr-status {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.45;
+  white-space: nowrap;
+}
+
+/* Marks a win rate that came from match data rather than the site's counters. */
+.scwr-cell.scwr-adj .scwr-label::after {
+  content: '*';
+  opacity: 0.6;
+}
+
+/* Wins split across the selected types, e.g. "44 sub  12 pts". */
+.scwr-mix {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2px 7px;
+  margin-top: 5px;
+  font-size: 10px;
+  line-height: 1.3;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.scwr-mix b {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.scwr-mix .w {
+  color: hsl(85 55% 52%);
+}
+
+.scwr-mix .l {
+  color: hsl(2 55% 60%);
+}
+
+/* En dash between the win and loss counts. */
+.scwr-mix .l::before {
+  content: '\2013';
+  margin: 0 1px;
+  color: inherit;
+  opacity: 0.45;
+}
+
+.scwr-mix i {
+  margin-left: 2px;
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+@media (max-width: 600px) {
+  .scwr-mix {
+    display: none;
+  }
+}
