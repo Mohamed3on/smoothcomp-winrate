@@ -4,17 +4,21 @@ const { load, memoryStorage, plain } = require('./load.cjs');
 
 const site = (globals) => load(['site.js'], { location: { pathname: '/en/' }, ...globals })('SCWRSite');
 
-test('URLs follow the locale the reader is already browsing', () => {
+test('links follow the reader\u2019s locale; fetched data is pinned to English', () => {
   const en = site({ location: { pathname: '/en/event/19856/results' } });
   assert.equal(en.eventId(), '19856');
   assert.equal(en.url.profile(7), '/en/profile/7');
   assert.equal(en.url.bracket(19856, 42), '/en/event/19856/bracket/42');
-  assert.equal(en.url.event(19856, 'schedule', 'matchlist'), '/en/event/19856/schedule/matchlist');
-  assert.equal(en.url.event(19856), '/en/event/19856');
+  assert.equal(en.url.data(19856, 'schedule', 'matchlist'), '/en/event/19856/schedule/matchlist');
+  assert.equal(en.url.data(19856), '/en/event/19856');
   // The manifest matches every locale segment, so a Swedish reader stays in Swedish.
   const sv = site({ location: { pathname: '/sv/event/19856/results' } });
   assert.equal(sv.url.profile(7), '/sv/profile/7');
+  assert.equal(sv.url.bracket(19856, 42), '/sv/event/19856/bracket/42');
   assert.equal(sv.eventId(), '19856');
+  // What gets parsed does not: the win types, statuses and division names the
+  // parsers expect only exist in English.
+  assert.equal(sv.url.data(19856, 'schedule', 'matchlist'), '/en/event/19856/schedule/matchlist');
   // Anything that is not a two-letter segment falls back rather than guessing.
   assert.equal(site({ location: { pathname: '/event/1/results' } }).locale(), 'en');
 });

@@ -662,7 +662,7 @@
   }
 
   async function fetchResults() {
-    const data = await post(SCWRSite.url.event(EVENT_ID, 'results', 'getResults'), 'Results');
+    const data = await post(SCWRSite.url.data(EVENT_ID, 'results', 'getResults'), 'Results');
     if (!Array.isArray(data.eventResults) || data.isSearchResult) throw new Error('Full competition results unavailable.');
     return data.eventResults;
   }
@@ -671,7 +671,7 @@
   // so a failure here must never cost the reader the standings.
   async function fetchRoster() {
     try {
-      return SCWRModel.roster(await post(SCWRSite.url.event(EVENT_ID, 'participants'), 'Participants'));
+      return SCWRModel.roster(await post(SCWRSite.url.data(EVENT_ID, 'participants'), 'Participants'));
     } catch {
       return null;
     }

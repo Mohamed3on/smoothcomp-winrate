@@ -50,7 +50,11 @@ const SCWRSite = (() => {
   const id = (kind, href) => String(href ?? location.pathname).match(`/${kind}/(\\d+)`)?.[1] ?? null;
 
   const url = {
-    event: (event, ...rest) => [`/${locale()}/event/${event}`, ...rest].join('/'),
+    // Links follow the reader; anything the extension parses is pinned to
+    // English, because every parser here reads English — "Won by Submission",
+    // "Finished", "No Gi Kids". A German event serves "Gewonnen nach Punkten",
+    // which types no win at all and leaves every leaderboard empty.
+    data: (event, ...rest) => [`/en/event/${event}`, ...rest].join('/'),
     bracket: (event, bracket) => `/${locale()}/event/${event}/bracket/${bracket}`,
     profile: (user) => `/${locale()}/profile/${user}`,
     club: (club) => `/${locale()}/club/${club}`,
@@ -58,7 +62,7 @@ const SCWRSite = (() => {
 
   // One version stamp, one expiry rule, one place that survives a full disk.
   // Preferences use get/set and never expire; match data uses read/write and does.
-  const VERSION = 3;
+  const VERSION = 4;
   const FINAL_TTL = 12 * 60 * 60 * 1000;
   const LIVE_TTL = 5 * 60 * 1000;
   const store = {

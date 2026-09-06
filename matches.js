@@ -80,7 +80,7 @@ async function fetchPage(url) {
 }
 
 async function fetchAll(id, onProgress) {
-  const base = url.event(id, 'schedule', 'matchlist');
+  const base = url.data(id, 'schedule', 'matchlist');
 
   const parse = (html) => {
     const page = parsePage(html);
