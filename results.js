@@ -48,7 +48,6 @@
 
   const percent = (rate) => (rate === null || rate === undefined ? '—' : `${Math.round(rate * 100)}%`);
   const unit = (n, one, many = `${one}s`) => (n === 1 ? one : many);
-  const count = (n) => (n ? String(n) : '·');
   const record = (s) => `${s.wins}–${s.losses}`;
   const WIN_LABEL = {
     submission: ['submission', 'submissions'], points: ['points', 'points'],
@@ -76,8 +75,7 @@
       { key: 'wins', label: 'W–L', title: 'Match record. Byes never count; walkovers follow the toggle.', cell: (r) => strong(record(r)) },
       { key: 'rate', label: 'Win %', title: 'Wins ÷ matches contested.', cell: (r) => strong(percent(r.rate)) },
       { key: 'finish', label: 'How they won', align: 'start', title: 'Every win, ordered from the most decisive finish to the least.', cell: barCell, wide: true },
-      { key: 'submissions', label: 'Subs', title: 'Wins by submission.', cell: (r) => strong(count(r.submissions)) },
-      { key: 'submitted', label: 'Sub’d', title: 'Times they were submitted. Low is dominant.', cell: (r) => muted(count(r.submitted)), reverse: true },
+      { key: 'conceded', label: 'How they lost', align: 'start', title: 'Every loss, ordered from the most decisive finish to the least. Sorts by the share that ended in a submission, so the hardest to finish come first.', cell: lossBarCell, wide: true, reverse: true },
       ...MEDAL_COLUMNS,
       { key: 'biggest', label: 'Bracket size', title: 'Competitors in the largest bracket they entered, whatever they placed.', cell: (r) => muted(r.biggestBracket || '—') },
     ],
@@ -86,7 +84,7 @@
       { key: 'wins', label: 'W–L', title: 'Combined record of every athlete from this academy.', cell: (r) => strong(record(r)) },
       { key: 'rate', label: 'Win %', title: 'Wins ÷ matches contested.', cell: (r) => strong(percent(r.rate)) },
       { key: 'finish', label: 'How they won', align: 'start', title: 'Every win, ordered from the most decisive finish to the least.', cell: barCell, wide: true },
-      { key: 'submissions', label: 'Subs', title: 'Wins by submission.', cell: (r) => strong(count(r.submissions)) },
+      { key: 'conceded', label: 'How they lost', align: 'start', title: 'Every loss this academy took, ordered from the most decisive finish to the least. Sorts by the share that ended in a submission, so the hardest to finish come first.', cell: lossBarCell, wide: true, reverse: true },
       { key: 'depth', label: 'W/athlete', title: 'Wins per athlete entered. Separates a deep team from one carried by a single competitor.', cell: (r) => muted(r.depth ? r.depth.toFixed(1) : '—') },
       ...MEDAL_COLUMNS,
       { key: 'athletes', label: 'Athletes', title: 'Athletes this academy entered who appear in the published results.', cell: (r) => muted(r.athletes) },
@@ -114,44 +112,119 @@
   const profileHref = (person) =>
     (person?.userId && !person.hidden ? SCWRSite.url.profile(person.userId) : null);
 
+  // Only worth saying when the event actually drew an age line: an adult
+  // division tells the reader nothing they cannot already see.
+  function ageLabel(bands) {
+    if (!bands?.length) return '';
+    if (bands.length === 1) return bands[0] === 'masters' ? 'masters' : `${bands[0]} yrs`;
+    const years = bands.filter((b) => /^\d/.test(b));
+    return years.length === bands.length ? `${years.join(', ')} yrs` : bands.join(', ');
+  }
+
+  // Only about a third of competitors have uploaded a photo, so initials are
+  // part of the design rather than an error state: they keep every row the same
+  // height and the column the same width.
+  // A hidden profile gets initials even when a photo ships in the payload —
+  // Smoothcomp serves it, but the athlete asked not to be shown.
+  function avatar(person) {
+    if (!('userId' in person)) return null;
+    const words = person.name.split(/\s+/).filter(Boolean);
+    const monogram = () => {
+      const node = el('span', (words[0]?.[0] ?? '') + (words.length > 1 ? words.at(-1)[0] : ''), 'scwr-face scwr-monogram');
+      node.setAttribute('aria-hidden', 'true');
+      return node;
+    };
+    if (!person.logo || person.hidden) return monogram();
+    const img = el('img', undefined, 'scwr-face');
+    img.src = person.logo;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.addEventListener('error', () => img.replaceWith(monogram()), { once: true });
+    return img;
+  }
+
+  const withFlag = (name, flag) => {
+    const line = el('span', undefined, 'scwr-named');
+    line.append(name, flag);
+    return line;
+  };
+
+  // The flag is decoration; the country name rides along as the accessible label so
+  // a missing glyph (or a region Unicode has no flag for) never loses the fact.
+  function flagFor(person) {
+    const glyph = SCWRSite.flag(person.country);
+    if (!glyph || !person.countryName) return null;
+    const node = el('span', undefined, 'scwr-flag');
+    // Regions Unicode skipped arrive as drawn markup rather than a glyph.
+    if (glyph.startsWith('<')) node.innerHTML = glyph;
+    else node.textContent = glyph;
+    node.title = person.countryName;
+    node.setAttribute('aria-label', person.countryName);
+    node.setAttribute('role', 'img');
+    return node;
+  }
+
   function identityCell(row) {
     const wrap = el('div', undefined, 'scwr-identity');
+    const face = avatar(row);
+    if (face) wrap.append(face);
+    const text = el('div', undefined, 'scwr-identity-text');
     const name = row.href ? el('a', row.name, 'scwr-name') : el('span', row.name, 'scwr-name');
     if (row.href) name.href = row.href;
-    wrap.append(name);
-    if (row.meta) wrap.append(el('span', row.meta, 'scwr-meta'));
+    const flag = flagFor(row);
+    // 18 competitors here compete for regions Unicode has no flag for; the name
+    // still carries the country so nothing is lost to a missing glyph.
+    if (!flag && row.countryName) name.title = row.countryName;
+    text.append(flag ? withFlag(name, flag) : name);
+    if (row.meta) {
+      const meta = el('span', row.meta, 'scwr-meta');
+      meta.title = row.meta;
+      text.append(meta);
+    }
+    wrap.append(text);
     return wrap;
   }
 
-  // Bar length is total wins against the leader; the ordinal ramp inside it runs
-  // from the most decisive finish to the least.
-  function barCell(row, ctx) {
+  // Bar length is the total against the busiest row on screen; the ordinal ramp
+  // inside it runs from the most decisive finish to the least. Wins and losses
+  // share the renderer and the colours, so the two bars in a row read as one
+  // sentence: what they did to people, and what was done to them.
+  function bar(total, types, scale, ...noun) {
     const wrap = el('div', undefined, 'scwr-bar');
-    if (!row.wins) return wrap.append(el('span', '—', 'scwr-num scwr-num-muted')), wrap;
+    if (!total) return wrap.append(el('span', '—', 'scwr-num scwr-num-muted')), wrap;
     const track = el('div', undefined, 'scwr-bar-track');
-    track.style.width = `${Math.max(4, (row.wins / (ctx.maxWins || 1)) * 100)}%`;
+    track.style.width = `${Math.max(4, (total / (scale || 1)) * 100)}%`;
     for (const type of WIN_TYPES) {
-      const n = row.types[type];
+      const n = types[type];
       if (!n) continue;
       const seg = el('i', undefined, `scwr-seg scwr-seg-${type}`);
       seg.style.flexGrow = String(n);
       seg.title = `${n} by ${type}`;
       track.append(seg);
     }
-    const legend = el('span', shortBreakdown(row.types), 'scwr-bar-legend');
-    legend.title = `${row.wins} ${unit(row.wins, 'win')}: ${breakdown(row.types)}`;
+    const legend = el('span', shortBreakdown(types), 'scwr-bar-legend');
+    legend.title = `${total} ${unit(total, ...noun)}: ${breakdown(types)}`;
     wrap.append(track, legend);
     return wrap;
   }
+  function barCell(row, ctx) { return bar(row.wins, row.types, ctx.maxWins, 'win'); }
+  function lossBarCell(row, ctx) { return bar(row.losses, row.lossTypes, ctx.maxLosses, 'loss', 'losses'); }
 
   function personCell(person, absent = 'Not awarded') {
     const wrap = el('div', undefined, 'scwr-identity');
     if (!person) return wrap.append(el('span', absent, 'scwr-meta')), wrap;
+    const face = avatar(person);
+    if (face) wrap.append(face);
+    const text = el('div', undefined, 'scwr-identity-text');
     const href = profileHref(person);
     const name = href ? el('a', person.name, 'scwr-name') : el('span', person.name, 'scwr-name');
     if (href) name.href = href;
-    wrap.append(name);
-    wrap.append(el('span', `${person.club || 'Unaffiliated'} · ${record(person)} here · ${breakdown(person.types) || 'no counted wins'}`, 'scwr-meta'));
+    const flag = flagFor(person);
+    if (!flag && person.countryName) name.title = person.countryName;
+    text.append(flag ? withFlag(name, flag) : name);
+    text.append(el('span', `${person.club || 'Unaffiliated'} · ${record(person)} here · ${breakdown(person.types) || 'no counted wins'}`, 'scwr-meta'));
+    wrap.append(text);
     return wrap;
   }
 
@@ -224,7 +297,7 @@
     </div>
     <div class="scwr-tools">
       <label class="scwr-field scwr-field-grow"><span>Search</span>
-        <input data-filter="search" type="search" placeholder="Name, academy or division" autocomplete="off"></label>
+        <input data-filter="search" type="search" placeholder="Name, country, academy or division" autocomplete="off"></label>
       <label class="scwr-field"><span>Division</span><select data-filter="division">
         <option value="all">All</option><option value="gi">Gi</option><option value="nogi">No Gi</option></select></label>
       <label class="scwr-field"><span>Age group</span><select data-filter="age">
@@ -249,7 +322,7 @@
     <div class="scwr-foot">
       <button type="button" class="scwr-btn" data-action="more" hidden>Show more</button>
       <p class="scwr-note"></p>
-      <ul class="scwr-key" aria-label="How they won, most decisive first"></ul>
+      <ul class="scwr-key" aria-label="How matches ended, most decisive first"></ul>
     </div>
     <div class="scwr-official">
       <label class="scwr-field"><span>Order the official results below</span><select data-filter="bracketSort">
@@ -360,7 +433,10 @@
     const cols = columns();
     const visible = rows.slice(0, state.limit);
     // One scale for every bar on screen, so lengths stay comparable.
-    const ctx = { maxWins: Math.max(1, ...rows.map((r) => r.wins || 0)) };
+    const ctx = {
+      maxWins: Math.max(1, ...rows.map((r) => r.wins || 0)),
+      maxLosses: Math.max(1, ...rows.map((r) => r.losses || 0)),
+    };
     const nodes = [];
     visible.forEach((row, index) => {
       const tr = el('tr', undefined, 'scwr-row');
@@ -438,7 +514,9 @@
     }),
     athletes: (s) => Object.assign(s, {
       href: profileHref(s),
-      meta: `${s.club || 'Unaffiliated'} \u00b7 ${s.divisions} ${unit(s.divisions, 'division')}`,
+      meta: [s.club || 'Unaffiliated', s.belt, `${s.divisions} ${unit(s.divisions, 'division')}`,
+        // A real age from the registration beats the band the division implies.
+        s.age ? `${s.age} yrs` : ageLabel(s.ageBands)].filter(Boolean).join(' \u00b7 '),
     }),
   };
 
@@ -447,7 +525,7 @@
   }
 
   const SCOPE = { all: 'every division', adults: 'adult divisions only', youth: 'kids & teens only' };
-  const TIEBREAK = 'ties go to more wins, then a higher win rate, then more golds, then A–Z';
+  const TIEBREAK = 'ties go to more wins, then a higher win rate, then more golds, then a longer record, then A–Z';
   const EXPLAIN = {
     athletes: 'One row per athlete across every division they entered. Expand a row to see each bracket.',
     academies: 'Every athlete\'s record combined by academy. Expand a row to see who did the work.',
@@ -572,17 +650,31 @@
     requestAnimationFrame(() => { queued = false; decorate(); });
   });
 
-  async function fetchResults() {
+  async function post(path, label) {
     const token = document.querySelector('meta[name="csrf-token"]')?.content;
-    const response = await fetch(SCWRSite.url.event(EVENT_ID, 'results', 'getResults'), {
+    const response = await fetch(path, {
       method: 'POST', credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', ...(token ? { 'X-CSRF-TOKEN': token } : {}) },
       body: '{}',
     });
-    if (!response.ok) throw new Error(`Results request failed (${response.status}).`);
-    const data = await response.json();
+    if (!response.ok) throw new Error(`${label} request failed (${response.status}).`);
+    return response.json();
+  }
+
+  async function fetchResults() {
+    const data = await post(SCWRSite.url.event(EVENT_ID, 'results', 'getResults'), 'Results');
     if (!Array.isArray(data.eventResults) || data.isSearchResult) throw new Error('Full competition results unavailable.');
     return data.eventResults;
+  }
+
+  // Ages, belts and photos live only in the registration list. They are a bonus,
+  // so a failure here must never cost the reader the standings.
+  async function fetchRoster() {
+    try {
+      return SCWRModel.roster(await post(SCWRSite.url.event(EVENT_ID, 'participants'), 'Participants'));
+    } catch {
+      return null;
+    }
   }
 
   function skeleton() {
@@ -607,10 +699,11 @@
     renderHead();
     skeleton();
     try {
-      const [results, data] = await Promise.all([
+      const [results, data, people] = await Promise.all([
         fetchResults(), SCWRMatches.loadEvent((done, total) => { status.textContent = `Reading the match list · page ${done} of ${total}`; }, { refresh }),
+        fetchRoster(),
       ]);
-      model = SCWRModel.build(results, data.matches);
+      model = SCWRModel.attachRoster(SCWRModel.build(results, data.matches), people);
       updatedAt = data.at;
       rebuildSummaries();
       render(); orderResults(); decorate();
@@ -680,7 +773,7 @@
       const key = sort.dataset.sort;
       const column = columns().find((c) => c.key === key);
       // Every column opens on its most useful end: biggest first, except names
-      // and "times submitted", where the best story is the smallest number.
+      // and "how they lost", where the best story is the smallest number.
       const opening = key === 'name' || column?.reverse ? 1 : -1;
       state.direction = state.sort === key ? -state.direction : opening;
       state.sort = key;

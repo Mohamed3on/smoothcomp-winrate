@@ -29,7 +29,9 @@ const SCWRModel = (() => {
         const athlete = athletes.get(key) ?? {
           key, name: p.target?.fullname || 'Unnamed athlete',
           club: p.club?.name || '', clubId: p.club?.id ? String(p.club.id) : null,
+          country: p.target?.country || null, countryName: p.target?.country_human || null,
           userId: p.target?.user_id ? String(p.target.user_id) : null,
+          logo: p.target?.logo_image || null,
           hidden: Boolean(p.target?.hide_public_profile), entries: [],
         };
         athlete.hidden ||= Boolean(p.target?.hide_public_profile);
@@ -90,6 +92,9 @@ const SCWRModel = (() => {
     finishRate: wins ? (types.submission ?? 0) / wins : null,
     // Share of every match they contested that they finished.
     submissionRate: wins + losses ? (types.submission ?? 0) / (wins + losses) : null,
+    // The mirror of finishRate: share of their losses that ended with them
+    // finished. Null when they never lost, which sorts as the best possible.
+    concededRate: losses ? (lossTypes.submission ?? 0) / losses : null,
     golds: medals[0],
     silvers: medals[1],
     bronzes: medals[2],
@@ -122,9 +127,58 @@ const SCWRModel = (() => {
         tally((e) => e.wins), tally((e) => e.losses), medals),
       entries,
       divisions: entries.length,
+      ageBands: [...new Set(entries.map((e) => SCWRSite.ageBand(model.brackets.get(e.bracketId).name)).filter(Boolean))],
       biggestGold: Math.max(0, ...goldSizes),
       biggestBracket: Math.max(0, ...entries.map(size)),
     };
+  }
+
+  // The participants payload is the only place Smoothcomp publishes a real age, a
+  // belt or a photo for everyone who entered; the results payload carries none of
+  // it. Registrations repeat per division, so the first one for a user wins.
+  function roster(payload) {
+    const labels = new Map((payload?.categories ?? []).map((c) => [c.id, c]));
+    // The same field is called "Belt" in gi divisions and "Level" in no-gi ones.
+    const grade = (registration) => {
+      for (const { category_value_id: id } of registration.categories ?? []) {
+        const value = labels.get(id);
+        if (value && /^(belt|level)$/i.test(value.category_name)) return value.name;
+      }
+      return null;
+    };
+    const people = new Map();
+    for (const group of payload?.participants ?? []) {
+      for (const r of group.registrations ?? []) {
+        if (!r.user_id || people.has(String(r.user_id))) continue;
+        people.set(String(r.user_id), {
+          age: Number.isFinite(r.age) ? r.age : null,
+          birth: r.birth || null,
+          country: r.country || null,
+          // A competitor with no photo still ships a placeholder URL, so the
+          // image id is the only reliable test.
+          photo: r.profile_image_id && r.profile_image && !/placeholder/i.test(r.profile_image)
+            ? r.profile_image : null,
+          belt: grade(r),
+        });
+      }
+    }
+    return people;
+  }
+
+  // Fold the roster onto athletes already built from the published results.
+  function attachRoster(model, people) {
+    if (!people?.size) return model;
+    for (const athlete of model.athletes.values()) {
+      const entry = athlete.userId ? people.get(athlete.userId) : null;
+      if (!entry) continue;
+      athlete.age = entry.age;
+      athlete.belt = entry.belt;
+      // The results payload already carries the code; the roster only knows the name.
+      athlete.countryName ||= entry.country;
+      // Only fills a gap: a photo already in the results payload stays authoritative.
+      if (!athlete.logo) athlete.logo = entry.photo;
+    }
+    return model;
   }
 
   // One bracket entry's record under a win-type allowlist. Cheaper than a full
@@ -169,13 +223,15 @@ const SCWRModel = (() => {
 
   const METRICS = {
     wins: 'wins', losses: 'losses', rate: 'rate', submissions: 'submissions', submitted: 'submitted',
-    finish: 'finishRate', submissionRate: 'submissionRate', golds: 'golds', podiums: 'podiums',
+    finish: 'finishRate', conceded: 'concededRate', submissionRate: 'submissionRate', golds: 'golds', podiums: 'podiums',
     silvers: 'silvers', bronzes: 'bronzes', biggest: 'biggestBracket', biggestGold: 'biggestGold', gap: 'gap', divisions: 'divisions', athletes: 'athletes', depth: 'depth', size: 'size',
   };
 
   // Descending by default: every metric here reads "more is better". Ties fall
   // through a fixed chain — more wins, then a higher win rate, then more golds,
-  // then name — so a re-sort never reshuffles rows that genuinely tie.
+  // then a longer record, then name — so a re-sort never reshuffles rows that
+  // genuinely tie. The record length is what separates two winless athletes:
+  // 0–6 is a more convincing 0% than 0–2, so it ranks first either way.
   function rank(rows, sort, direction = -1) {
     const metric = METRICS[sort] ?? sort;
     const value = (row) => {
@@ -187,7 +243,7 @@ const SCWRModel = (() => {
       const primary = (value(a) - value(b)) * direction;
       return primary || b.wins - a.wins || (b.rate ?? -1) - (a.rate ?? -1) ||
         b.golds - a.golds || (b.biggestGold ?? 0) - (a.biggestGold ?? 0) ||
-        a.name.localeCompare(b.name);
+        b.total - a.total || a.name.localeCompare(b.name);
     });
   }
 
@@ -244,12 +300,15 @@ const SCWRModel = (() => {
       .filter((s) => s.entries.length);
 
     const rows = table === 'academies'
+      // An academy is findable by any of its athletes, so it inherits their
+      // countries too — searching "Ukraine" surfaces the clubs that brought some.
       ? academies(people).filter((c) => c.total >= minimum &&
-        matches(`${c.name} ${c.roster.map((a) => a.name).join(' ')}`))
+        matches([c.name, ...c.roster.flatMap((a) => [a.name, a.countryName])].join(' ')))
       : people.filter((s) => s.total >= minimum &&
-        matches([s.name, s.club, ...s.entries.map((e) => model.brackets.get(e.bracketId).name)].join(' ')));
+        matches([s.name, s.club, s.countryName,
+          ...s.entries.map((e) => model.brackets.get(e.bracketId).name)].join(' ')));
     return rank(rows, sort, direction);
   }
 
-  return { build, summarize, entryRecord, academies, leaderboard, rank, placements, athleteKey, normalize, METRICS };
+  return { build, summarize, entryRecord, academies, roster, attachRoster, leaderboard, rank, placements, athleteKey, normalize, METRICS };
 })();

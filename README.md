@@ -12,7 +12,9 @@ and shows the result on three pages.
 
 **Results page** — a sortable competition leaderboard above the official results: athletes,
 academies, and a brackets view pairing each division's gold medallist with whoever actually
-won the most matches there. Every athlete in the official list below gets their record inline.
+won the most matches there. Rows carry the photo, flag, belt and age the registration list
+publishes and the results page drops, and search reaches countries as well as names, academies
+and divisions. Every athlete in the official list below gets their record inline.
 
 **Team rankings (toplist)** — a Win rate column, with the site's own Wins/Losses columns kept
 in step with the win types you're counting. Click any academy to fade out everyone with a
@@ -37,9 +39,20 @@ No build step. Clone, then load it unpacked:
 | `results.js` | The results page panel |
 | `toplist.js` | The team-rankings Win rate column |
 | `participants.js` | The participants page |
+| `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
 `site.js` loads first on every page; the rest share globals through page scope in manifest
 order. `model.js` is pure — no DOM, no network, no storage — which is what makes it testable.
+
+Chrome will not load an SVG icon, so `icons/icon.svg` is the source and the PNGs are rendered
+from it. After editing the SVG:
+
+```sh
+for s in 16 32 48 128; do
+  uv run --with cairosvg python -c \
+    "import cairosvg,sys;s=int(sys.argv[1]);cairosvg.svg2png(url='icons/icon.svg',write_to=f'icons/icon{s}.png',output_width=s,output_height=s)" $s
+done
+```
 
 ## Tests
 

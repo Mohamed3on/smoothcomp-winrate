@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Smoothcomp Win Rate">
+  <title>Smoothcomp Win Rate</title>
+  <!-- A bracket fork: two entrants meet, one advances. The gold line is the
+       path that actually won, which is the whole point of the extension. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a7ad0"/>
+      <stop offset="1" stop-color="#0a4a86"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#tile)"/>
+  <g fill="none" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+    <!-- The entrant who went out: same weight, dimmed, so the fork still reads. -->
+    <path d="M32 90H58V64" stroke="#fff" stroke-opacity=".6"/>
+    <!-- Drawn last so gold owns the junction. -->
+    <path d="M32 38H58V64H96" stroke="#f2c65c"/>
+  </g>
+</svg>

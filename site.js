@@ -6,6 +6,43 @@ const SCWRSite = (() => {
   // (ippon, tko, ...) and sort after these.
   const WIN_TYPES = ['submission', 'points', 'decision', 'disqualification', 'walkover'];
   const isYouth = (name) => /^(Gi|No Gi)\s+(Kids|Teens)/i.test(name);
+  // Smoothcomp publishes no birth date or age, so the only age information an
+  // event carries is the band its divisions were drawn for. "Adult" is the
+  // default and says nothing, so it reads as no band at all.
+  const ageBand = (name) => {
+    const years = name.match(/(\d+)\s*-\s*(\d+)\s*years/i);
+    if (years) return `${years[1]}–${years[2]}`;
+    const master = name.match(/Master[^(]*\((\d+)\+\)/i);
+    if (master) return `${master[1]}+`;
+    if (/Masters?\s*&\s*Seniors/i.test(name)) return 'masters';
+    return null;
+  };
+
+  // Smoothcomp uses ISO alpha-2 for countries and its own codes for a handful of
+  // regions. Unicode has flag glyphs for only four of those — the three British
+  // nations and Kosovo — so the rest are drawn, sized and rounded to sit level
+  // with the emoji beside them. Callers get a glyph or markup; both are strings.
+  const svg = (...shapes) =>
+    `<svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true" style="border-radius:2px">${shapes.join('')}</svg>`;
+  const band = (y, h, fill) => `<rect y="${y}" width="16" height="${h}" fill="${fill}"/>`;
+  const FLAG = {
+    'gb-eng': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}',
+    'gb-sct': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}',
+    'gb-wls': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}',
+    kos: '\u{1F1FD}\u{1F1F0}',
+    // Chechnya: a gold ornament band at the hoist over a green/white/red tricolour.
+    'ru-cri': svg(band(0, 12, '#0f8f3f'), band(5.2, 1.6, '#fff'), band(6.8, 5.2, '#c8102e'),
+      '<rect width="2.6" height="12" fill="#e8a020"/>'),
+    'ru-da': svg(band(0, 12, '#0f8f3f'), band(4, 4, '#1e4fa3'), band(8, 4, '#c8102e')),
+    krd: svg(band(0, 12, '#e03a3e'), band(4, 4, '#fff'), band(8, 4, '#1a8f4c'),
+      '<circle cx="8" cy="6" r="2.1" fill="#f5c518"/>'),
+  };
+  const flag = (code) => {
+    const c = String(code ?? '').toLowerCase();
+    if (FLAG[c]) return FLAG[c];
+    if (!/^[a-z]{2}$/.test(c)) return null;
+    return String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 97));
+  };
 
   // The manifest matches every locale segment, so follow the page rather than
   // forcing /en/ and bouncing the reader into English.
@@ -75,5 +112,5 @@ const SCWRSite = (() => {
     },
   };
 
-  return { WIN_TYPES, isYouth, locale, url, store, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href), clubId: (href) => id('club', href) };
+  return { WIN_TYPES, isYouth, ageBand, flag, locale, url, store, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href), clubId: (href) => id('club', href) };
 })();

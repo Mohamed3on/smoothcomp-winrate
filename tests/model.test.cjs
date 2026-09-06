@@ -33,6 +33,9 @@ test('submission rate uses every counted match including losses', () => {
   const m = api.build([bracket(1, 2, [p(1, 'A'), p(2, 'B', 2)])], [match(1, 1, 1, 2), match(2, 1, 1, 2, 'points'), match(3, 1, 2, 1, 'decision')]);
   const a = summary(m, 1);
   assert.equal(a.submissions, 1); assert.equal(a.rate, 2 / 3); assert.equal(a.submissionRate, 1 / 3);
+  // Its mirror is measured against losses alone: A lost once, on a decision;
+  // B was submitted in one of two.
+  assert.equal(a.concededRate, 0); assert.equal(summary(m, 2).concededRate, 1 / 2);
 });
 
 test('duplicate match IDs are counted once; rematches with different IDs survive', () => {
@@ -152,6 +155,11 @@ test('rank falls through a fixed tie-break chain and sorts names both ways', () 
   assert.equal(api.rank([row('Late'), row('Early', { golds: 2 })], 'wins')[0].name, 'Early');
   // A null rate never outranks a real one.
   assert.equal(api.rank([row('None'), row('Some', { rate: 0 })], 'rate')[0].name, 'Some');
+  // Two winless athletes tie on every record metric, so the longer record wins
+  // the slot rather than the alphabet — 0–6 is a more convincing 0% than 0–2.
+  const winless = [row('Adam', { rate: 0, total: 2 }), row('Zoe', { rate: 0, total: 6 })];
+  assert.equal(api.rank(winless, 'rate')[0].name, 'Zoe');
+  assert.equal(api.rank(winless, 'rate', 1)[0].name, 'Zoe');
 });
 
 // --- leaderboard: the whole filter-and-rank pipeline the pages render ---------
@@ -214,4 +222,70 @@ test('changing the counted win types changes who leads a bracket', () => {
   assert.equal(onSubs.leader.name, 'Grinder');
   assert.equal(onSubs.champion.wins, 0, 'gold won nothing that counts once only submissions do');
   assert.equal(onSubs.gapCount, 1);
+});
+
+// Shapes taken verbatim from a real POST /en/event/{id}/participants response.
+const CATEGORIES = [
+  { event_category_id: 823906, category_name: 'Belt', id: 6173100, name: 'White' },
+  { event_category_id: 823906, category_name: 'Belt', id: 6173101, name: 'Blue' },
+  { event_category_id: 823913, category_name: 'Level', id: 6173140, name: 'Intermediate (Blue)' },
+  { event_category_id: 823907, category_name: 'Division', id: 6173105, name: 'Adult' },
+  { event_category_id: 823908, category_name: 'Weight', id: 6173110, name: '-155 lbs' },
+];
+const PLACEHOLDER = '/build/webpack/img/placeholder-image-profile-inverted.bcebcff626c61413d7d5..png';
+const registration = (userId, extra = {}) => ({
+  user_id: userId, age: 22, birth: '2003', gender: 'M', country: 'Germany',
+  profile_image_id: 1, profile_image: `https://smoothcomp.com/pictures/t/${userId}/x.jpg`,
+  categories: [{ category_value_id: 6173100 }, { category_value_id: 6173105 }, { category_value_id: 6173110 }],
+  ...extra,
+});
+const payload = (registrations) => ({ categories: CATEGORIES, participants: [{ registrations }] });
+
+test('the roster reads age, belt, country and photo per competitor', () => {
+  const people = api.roster(payload([registration(1)]));
+  assert.equal(people.size, 1);
+  // The model runs in its own vm context, so its objects carry a foreign
+  // prototype; compare the fields rather than the identity.
+  assert.deepEqual({ ...people.get('1') }, {
+    age: 22, birth: '2003', country: 'Germany', belt: 'White',
+    photo: 'https://smoothcomp.com/pictures/t/1/x.jpg',
+  });
+});
+
+test('a no-gi division reports its grade under "Level" instead of "Belt"', () => {
+  const people = api.roster(payload([registration(1, { categories: [{ category_value_id: 6173140 }] })]));
+  assert.equal(people.get('1').belt, 'Intermediate (Blue)');
+});
+
+test('the placeholder avatar is not treated as a photo', () => {
+  const withPlaceholder = registration(1, { profile_image_id: null, profile_image: PLACEHOLDER });
+  assert.equal(api.roster(payload([withPlaceholder])).get('1').photo, null);
+});
+
+test('an entrant registered in several divisions is counted once', () => {
+  const people = api.roster(payload([registration(1), registration(1, { age: 99 })]));
+  assert.equal(people.size, 1);
+  assert.equal(people.get('1').age, 22, 'the first registration wins');
+});
+
+test('a missing age is null rather than NaN', () => {
+  assert.equal(api.roster(payload([registration(1, { age: null })])).get('1').age, null);
+});
+
+test('the roster attaches to athletes by user id and fills only missing photos', () => {
+  const m = api.build([bracket(1, 2, [p(1, 'A'), p(2, 'B', 2)])], [match(1, 1, 1, 2)]);
+  m.athletes.get('user:1').logo = 'https://smoothcomp.com/pictures/t/own.jpg';
+  api.attachRoster(m, api.roster(payload([registration(1), registration(2)])));
+  const first = m.athletes.get('user:1');
+  const second = m.athletes.get('user:2');
+  assert.equal(first.age, 22);
+  assert.equal(first.belt, 'White');
+  assert.equal(first.logo, 'https://smoothcomp.com/pictures/t/own.jpg', 'the results photo is kept');
+  assert.equal(second.logo, 'https://smoothcomp.com/pictures/t/2/x.jpg', 'the roster fills the gap');
+});
+
+test('an unavailable roster leaves the model untouched', () => {
+  const m = api.build([bracket(1, 2, [p(1, 'A'), p(2, 'B', 2)])], [match(1, 1, 1, 2)]);
+  assert.equal(api.attachRoster(m, null), m);
+  assert.equal(m.athletes.get('user:1').age, undefined);
 });
