@@ -55,3 +55,7 @@ No dependencies. `parsePage` needs a DOM and so skips by default; install `linke
 `plans/standalone-import-proof/` records why this has to be a content script: every
 unauthenticated request to Smoothcomp returns 403 behind a Cloudflare challenge, so the
 data can only be read from a browser session that is already signed in.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
