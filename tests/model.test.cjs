@@ -178,13 +178,21 @@ test('the leaderboard ranks athletes and academies from one model', () => {
   assert.deepEqual(names(api.leaderboard(m, { ...view, table: 'academies' })), ['Alpha', 'Beta']);
 });
 
-test('division, age, search and minimum each narrow the leaderboard', () => {
+test('minimum age uses participant ages while gi and no-gi stay combined', () => {
   const m = EVENT();
+  m.athletes.get('user:1').age = 34;
+  m.athletes.get('user:2').age = 29;
+  m.athletes.get('user:3').age = 42;
+  // Unknown ages remain visible without a floor, but cannot satisfy one.
+  m.athletes.get('user:4').age = null;
   const at = (over) => names(api.leaderboard(m, { ...view, table: 'athletes', ...over })).sort();
-  assert.deepEqual(at({ age: 'adults' }), ['A', 'B'], 'kids brackets drop out with their entrants');
-  assert.deepEqual(at({ age: 'youth' }), ['C', 'D']);
-  assert.deepEqual(at({ division: 'nogi' }), ['C', 'D']);
-  assert.deepEqual(at({ division: 'gi' }), ['A', 'B']);
+  assert.deepEqual(at({ minimumAge: 0 }), ['A', 'B', 'C', 'D']);
+  assert.deepEqual(at({ minimumAge: 30 }), ['A', 'C']);
+  assert.deepEqual(at({ minimumAge: 40 }), ['C']);
+  assert.deepEqual(at({ division: 'gi', age: 'adults' }), ['A', 'B', 'C', 'D'],
+    'legacy name-based filters no longer split gi, no-gi or named age groups');
+  assert.deepEqual(names(api.leaderboard(m, { ...view, table: 'academies', minimumAge: 40 })), ['Beta'],
+    'academy totals are built only from age-eligible athletes');
   assert.deepEqual(at({ search: 'alpha' }), ['A', 'D'], 'search reaches the academy, not just the name');
   assert.deepEqual(at({ search: 'no gi' }), ['C', 'D'], 'and the division names an athlete entered');
   assert.deepEqual(at({ minimum: 2 }), ['A', 'B'], 'minimum counts contested matches, not wins');

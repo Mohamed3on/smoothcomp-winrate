@@ -6,7 +6,7 @@
   const EVENT_ID = SCWRSite.eventId();
   const counting = () => ({ types: state.types });
   const state = {
-    view: 'athletes', sort: 'wins', direction: -1, search: '', minimum: 1, division: 'all', age: 'all',
+    view: 'athletes', sort: 'wins', direction: -1, search: '', minimum: 1, minimumAge: 0,
     // Same default as the team rankings page: every decided win type but walkovers.
     types: WIN_TYPES.filter((t) => t !== 'walkover'),
     limit: 25, bracketSort: 'placement', open: new Set(),
@@ -92,7 +92,7 @@
     brackets: [
       { key: 'name', label: 'Division', align: 'start', cell: identityCell, grow: true },
       { key: 'size', label: 'Bracket size', title: 'Competitors in the published placement list.', cell: (r) => strong(r.size) },
-      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, and the record they posted in this bracket.', cell: (r) => personCell(r.champion), wide: true },
+      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, and the record they posted in this bracket.', cell: (r) => personCell(r.champion, r.championExcluded ? 'Below minimum age' : 'Not awarded'), wide: true },
       { key: 'gap', label: 'Most wins', align: 'start', title: 'Whoever actually won the most matches here under the win types you are counting. Ties go to the medallist. Sorts by that leader\u2019s win count.', cell: leaderCell, wide: true },
       { key: 'gapCount', label: 'Gap', title: 'How many more wins the leader has than the gold medallist. Zero means the medal and the match wins agree.', cell: gapCell },
     ],
@@ -111,15 +111,6 @@
   // Smoothcomp has no page to send a hidden profile to, so those stay plain text.
   const profileHref = (person) =>
     (person?.userId && !person.hidden ? SCWRSite.url.profile(person.userId) : null);
-
-  // Only worth saying when the event actually drew an age line: an adult
-  // division tells the reader nothing they cannot already see.
-  function ageLabel(bands) {
-    if (!bands?.length) return '';
-    if (bands.length === 1) return bands[0] === 'masters' ? 'masters' : `${bands[0]} yrs`;
-    const years = bands.filter((b) => /^\d/.test(b));
-    return years.length === bands.length ? `${years.join(', ')} yrs` : bands.join(', ');
-  }
 
   // Only about a third of competitors have uploaded a photo, so initials are
   // part of the design rather than an error state: they keep every row the same
@@ -144,11 +135,39 @@
     return img;
   }
 
-  const withFlag = (name, flag) => {
+  const nameLine = (name, flag) => {
+    if (!flag) return name;
     const line = el('span', undefined, 'scwr-named');
     line.append(name, flag);
     return line;
   };
+
+  const BELT_TONES = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black', 'red'];
+  const beltTone = (belt) => {
+    const value = String(belt ?? '').toLowerCase().replace('gray', 'grey');
+    const words = new Set(value.match(/[a-z]+/g) ?? []);
+    return BELT_TONES.find((tone) => words.has(tone)) ?? null;
+  };
+
+  function detailsLine(person, detail) {
+    const line = el('span', undefined, 'scwr-details');
+    const tone = beltTone(person.belt);
+    if (tone) {
+      const belt = el('span', undefined, 'scwr-belt');
+      belt.dataset.belt = tone;
+      belt.title = person.belt;
+      belt.setAttribute('role', 'img');
+      belt.setAttribute('aria-label', `${person.belt} belt or level`);
+      line.append(belt);
+    }
+    const age = Number.isFinite(person.age) ? el('span', `${person.age} yrs`, 'scwr-age') : null;
+    if (age) {
+      age.title = `Age ${person.age}`;
+      line.append(age);
+    }
+    if (detail) line.append(detail);
+    return line;
+  }
 
   // The flag is decoration; the country name rides along as the accessible label so
   // a missing glyph (or a region Unicode has no flag for) never loses the fact.
@@ -176,11 +195,11 @@
     // 18 competitors here compete for regions Unicode has no flag for; the name
     // still carries the country so nothing is lost to a missing glyph.
     if (!flag && row.countryName) name.title = row.countryName;
-    text.append(flag ? withFlag(name, flag) : name);
+    text.append(nameLine(name, flag));
     if (row.meta) {
       const meta = el('span', row.meta, 'scwr-meta');
       meta.title = row.meta;
-      text.append(meta);
+      text.append(detailsLine(row, meta));
     }
     wrap.append(text);
     return wrap;
@@ -222,8 +241,9 @@
     if (href) name.href = href;
     const flag = flagFor(person);
     if (!flag && person.countryName) name.title = person.countryName;
-    text.append(flag ? withFlag(name, flag) : name);
-    text.append(el('span', `${person.club || 'Unaffiliated'} · ${record(person)} here · ${breakdown(person.types) || 'no counted wins'}`, 'scwr-meta'));
+    text.append(nameLine(name, flag));
+    text.append(detailsLine(person,
+      el('span', `${person.club || 'Unaffiliated'} · ${record(person)} here · ${breakdown(person.types) || 'no counted wins'}`, 'scwr-meta')));
     wrap.append(text);
     return wrap;
   }
@@ -250,7 +270,7 @@
   // events and reloads. Search and expanded rows deliberately do not: a stored
   // search that hides everything is baffling on the next visit.
   const PREFS_KEY = 'results-prefs';
-  const PERSISTED = ['view', 'sort', 'direction', 'division', 'age', 'minimum', 'types', 'bracketSort'];
+  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'minimum', 'types', 'bracketSort'];
 
   // Stored values are never trusted. A column can be renamed or dropped between
   // versions, and one bad field would otherwise take the whole table down.
@@ -260,10 +280,10 @@
     const oneOf = (value, allowed) => (allowed.includes(value) ? value : undefined);
     const restored = {
       view: oneOf(saved.view, Object.keys(VIEWS)),
-      division: oneOf(saved.division, ['all', 'gi', 'nogi']),
-      age: oneOf(saved.age, ['all', 'adults', 'youth']),
       bracketSort: oneOf(saved.bracketSort, ['placement', 'size', 'wins', 'submissions']),
       direction: oneOf(saved.direction, [1, -1]),
+      minimumAge: Number.isFinite(saved.minimumAge) && saved.minimumAge >= 0 && saved.minimumAge <= 120
+        ? Math.floor(saved.minimumAge) : undefined,
       minimum: Number.isFinite(saved.minimum) && saved.minimum >= 0 ? Math.floor(saved.minimum) : undefined,
       types: Array.isArray(saved.types) ? WIN_TYPES.filter((t) => saved.types.includes(t)) : undefined,
     };
@@ -298,11 +318,16 @@
     <div class="scwr-tools">
       <label class="scwr-field scwr-field-grow"><span>Search</span>
         <input data-filter="search" type="search" placeholder="Name, country, academy or division" autocomplete="off"></label>
-      <label class="scwr-field"><span>Division</span><select data-filter="division">
-        <option value="all">All</option><option value="gi">Gi</option><option value="nogi">No Gi</option></select></label>
-      <label class="scwr-field"><span>Age group</span><select data-filter="age">
-        <option value="all">All</option><option value="adults">Adults</option>
-        <option value="youth">Kids &amp; teens</option></select></label>
+      <label class="scwr-field scwr-field-narrow"><span>Minimum age</span>
+        <span class="scwr-age-control" data-active="false">
+          <input data-filter="minimumAge" type="number" inputmode="numeric" min="0" max="120" step="1"
+            placeholder="All" list="scwr-age-presets" title="Uses the age Smoothcomp publishes for each competitor. Leave empty to show every age.">
+          <span class="scwr-age-suffix" aria-hidden="true">+</span>
+        </span>
+        <datalist id="scwr-age-presets">
+          <option value="0"></option><option value="16"></option><option value="18"></option>
+          <option value="30"></option><option value="35"></option><option value="40"></option>
+        </datalist></label>
       <label class="scwr-field scwr-field-narrow" data-only="athletes academies"><span>Min. matches</span>
         <input data-filter="minimum" type="number" inputmode="numeric" min="0" step="1" value="1"
           list="scwr-minimum-presets" title="Hide anyone with fewer contested matches than this. 0 shows everyone.">
@@ -394,6 +419,7 @@
 
   function detailRow(row, span) {
     const tr = el('tr', undefined, 'scwr-detail');
+    tr.id = `scwr-detail-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`;
     const cell = el('td');
     cell.colSpan = span;
     const grid = el('div', undefined, 'scwr-detail-grid');
@@ -442,7 +468,18 @@
       const tr = el('tr', undefined, 'scwr-row');
       tr.dataset.key = row.key;
       if (index < 3 && state.direction === -1) tr.classList.add('scwr-top');
-      const rank = el('td', String(index + 1), 'scwr-rank');
+      const rank = el('td', undefined, 'scwr-rank');
+      if (state.view === 'brackets') {
+        rank.textContent = String(index + 1);
+      } else {
+        const open = state.open.has(row.key);
+        const toggle = el('button', String(index + 1), 'scwr-expand');
+        toggle.type = 'button';
+        toggle.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${row.name}`);
+        toggle.setAttribute('aria-expanded', String(open));
+        toggle.setAttribute('aria-controls', `scwr-detail-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`);
+        rank.append(toggle);
+      }
       tr.append(rank);
       for (const col of cols) {
         const td = el('td', undefined, `scwr-col scwr-col-${col.key}`);
@@ -454,10 +491,7 @@
         tr.append(td);
       }
       if (state.view !== 'brackets') {
-        tr.tabIndex = 0;
-        tr.setAttribute('role', 'button');
         const open = state.open.has(row.key);
-        tr.setAttribute('aria-expanded', String(open));
         tr.classList.toggle('scwr-open', open);
         nodes.push(tr);
         if (open) nodes.push(detailRow(row, cols.length + 1));
@@ -472,8 +506,8 @@
       const empty = el('div', undefined, 'scwr-empty');
       empty.append(el('p', `No ${VIEWS[state.view].unit[1]} match these filters.`, 'scwr-empty-title'));
       empty.append(el('p', state.search
-        ? `Nothing matches “${state.search}”. Clear the search, or widen the division and minimum-match filters.`
-        : `Lower the minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}, or switch the division and age filters back to All.`, 'scwr-meta'));
+        ? `Nothing matches “${state.search}”. Clear the search, or lower the minimum age and match filters.`
+        : `Lower the minimum age${state.minimumAge ? ` below ${state.minimumAge}` : ''} or minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}.`, 'scwr-meta'));
       cell.append(empty);
       tr.append(cell);
       nodes.push(tr);
@@ -514,9 +548,8 @@
     }),
     athletes: (s) => Object.assign(s, {
       href: profileHref(s),
-      meta: [s.club || 'Unaffiliated', s.belt, `${s.divisions} ${unit(s.divisions, 'division')}`,
-        // A real age from the registration beats the band the division implies.
-        s.age ? `${s.age} yrs` : ageLabel(s.ageBands)].filter(Boolean).join(' \u00b7 '),
+      meta: [s.club || 'Unaffiliated', beltTone(s.belt) ? null : s.belt,
+        `${s.divisions} ${unit(s.divisions, 'division')}`].filter(Boolean).join(' \u00b7 '),
     }),
   };
 
@@ -524,7 +557,6 @@
     rows = SCWRModel.leaderboard(model, { ...state, table: state.view }).map(DECORATE[state.view]);
   }
 
-  const SCOPE = { all: 'every division', adults: 'adult divisions only', youth: 'kids & teens only' };
   const TIEBREAK = 'ties go to more wins, then a higher win rate, then more golds, then a longer record, then A–Z';
   const EXPLAIN = {
     athletes: 'One row per athlete across every division they entered. Expand a row to see each bracket.',
@@ -558,9 +590,13 @@
       `${model.athletes.size} athletes`, `${model.brackets.size} brackets`,
       `${model.fought} fought ${unit(model.fought, 'match', 'matches')}`,
       `${model.walkovers} ${unit(model.walkovers, 'walkover')} ${countsWalkovers ? 'counted' : 'excluded'}`,
-      `covering ${SCOPE[state.age]}`,
+      state.minimumAge ? `ages ${state.minimumAge}+` : 'all ages',
       `updated ${new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
     ];
+    if (state.minimumAge) {
+      const unknownAges = [...model.athletes.values()].filter((athlete) => !Number.isFinite(athlete.age)).length;
+      if (unknownAges) parts.push(`${unknownAges} unknown ${unit(unknownAges, 'age')} excluded`);
+    }
     if (model.unresolved) parts.push(`${model.unresolved} undecided ${unit(model.unresolved, 'match', 'matches')} excluded`);
     // Two very different situations used to share one warning. A fought match
     // that will not attach to a bracket really does leave a record short. A
@@ -739,9 +775,14 @@
   panel.addEventListener('input', (event) => {
     const key = event.target.dataset.filter;
     if (!key) return;
-    state[key] = key === 'minimum'
-      ? Math.max(0, Math.floor(Number(event.target.value)) || 0)
-      : event.target.value;
+    if (key === 'minimum' || key === 'minimumAge') {
+      const value = Math.max(0, Math.floor(Number(event.target.value)) || 0);
+      state[key] = key === 'minimumAge' ? Math.min(120, value) : value;
+      event.target.value = key === 'minimumAge' && !state[key] ? '' : String(state[key]);
+      if (key === 'minimumAge') event.target.parentElement.dataset.active = String(state.minimumAge > 0);
+    } else {
+      state[key] = event.target.value;
+    }
     state.limit = 25;
     savePrefs();
     render();
@@ -794,12 +835,6 @@
   });
 
   panel.addEventListener('keydown', (event) => {
-    const row = event.target.closest('.scwr-row');
-    if (row && (event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault();
-      row.click();
-      return;
-    }
     const tab = event.target.closest('.scwr-tab');
     if (!tab || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
     event.preventDefault();
@@ -810,10 +845,13 @@
   });
 
   function syncControls() {
-    for (const [key, value] of Object.entries({ division: state.division, age: state.age, minimum: state.minimum, bracketSort: state.bracketSort })) {
+    for (const [key, value] of Object.entries({ minimum: state.minimum, bracketSort: state.bracketSort })) {
       const control = panel.querySelector(`[data-filter="${key}"]`);
       if (control) control.value = String(value);
     }
+    const ageInput = panel.querySelector('[data-filter="minimumAge"]');
+    ageInput.value = state.minimumAge ? String(state.minimumAge) : '';
+    ageInput.parentElement.dataset.active = String(state.minimumAge > 0);
     for (const tab of panel.querySelectorAll('.scwr-tab')) {
       const on = tab.dataset.view === state.view;
       tab.setAttribute('aria-selected', String(on));

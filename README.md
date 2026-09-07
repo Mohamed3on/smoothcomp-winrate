@@ -13,8 +13,9 @@ and shows the result on three pages.
 **Results page** — a sortable competition leaderboard above the official results: athletes,
 academies, and a brackets view pairing each division's gold medallist with whoever actually
 won the most matches there. Rows carry the photo, flag, belt and age the registration list
-publishes and the results page drops, and search reaches countries as well as names, academies
-and divisions. Every athlete in the official list below gets their record inline.
+publishes and the results page drops. A minimum-age filter uses those registration ages across
+division names while gi and no-gi stay combined; search reaches countries as well as names,
+academies and divisions. Every athlete in the official list below gets their record inline.
 
 **Team rankings (toplist)** — a Win rate column, with the site's own Wins/Losses columns kept
 in step with the win types you're counting. Click any academy to fade out everyone with a
@@ -33,7 +34,7 @@ No build step. Clone, then load it unpacked:
 
 | File | What it is |
 | --- | --- |
-| `site.js` | Everything that knows what Smoothcomp is: win-type vocabulary, age groups, URL shapes, the versioned store, the Vue view-model adapter |
+| `site.js` | Everything that knows what Smoothcomp is: win-type vocabulary, URL shapes, the versioned store, the Vue view-model adapter |
 | `matches.js` | Fetches and parses the event's match list; infers which age group a toplist covers |
 | `model.js` | Pure joins — matches to published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |

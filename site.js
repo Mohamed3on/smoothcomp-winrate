@@ -6,17 +6,6 @@ const SCWRSite = (() => {
   // (ippon, tko, ...) and sort after these.
   const WIN_TYPES = ['submission', 'points', 'decision', 'disqualification', 'walkover'];
   const isYouth = (name) => /^(Gi|No Gi)\s+(Kids|Teens)/i.test(name);
-  // Smoothcomp publishes no birth date or age, so the only age information an
-  // event carries is the band its divisions were drawn for. "Adult" is the
-  // default and says nothing, so it reads as no band at all.
-  const ageBand = (name) => {
-    const years = name.match(/(\d+)\s*-\s*(\d+)\s*years/i);
-    if (years) return `${years[1]}–${years[2]}`;
-    const master = name.match(/Master[^(]*\((\d+)\+\)/i);
-    if (master) return `${master[1]}+`;
-    if (/Masters?\s*&\s*Seniors/i.test(name)) return 'masters';
-    return null;
-  };
 
   // Smoothcomp uses ISO alpha-2 for countries and its own codes for a handful of
   // regions. Unicode has flag glyphs for only four of those — the three British
@@ -116,5 +105,5 @@ const SCWRSite = (() => {
     },
   };
 
-  return { WIN_TYPES, isYouth, ageBand, flag, locale, url, store, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href), clubId: (href) => id('club', href) };
+  return { WIN_TYPES, isYouth, flag, locale, url, store, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href), clubId: (href) => id('club', href) };
 })();

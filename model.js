@@ -1,7 +1,6 @@
 // Pure result/match joins for one event: who fought whom, who won, and how the
 // leaderboards rank them. Shared by the results page and the regression tests.
 const SCWRModel = (() => {
-  const { isYouth } = SCWRSite;
   const normalize = (s) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
   const placements = (r) => [...(r.top3 ?? []), ...(r.after3 ?? [])];
   const athleteKey = (p, bracketId) => p.target?.user_id
@@ -127,7 +126,6 @@ const SCWRModel = (() => {
         tally((e) => e.wins), tally((e) => e.losses), medals),
       entries,
       divisions: entries.length,
-      ageBands: [...new Set(entries.map((e) => SCWRSite.ageBand(model.brackets.get(e.bracketId).name)).filter(Boolean))],
       biggestGold: Math.max(0, ...goldSizes),
       biggestBracket: Math.max(0, ...entries.map(size)),
     };
@@ -150,8 +148,9 @@ const SCWRModel = (() => {
     for (const group of payload?.participants ?? []) {
       for (const r of group.registrations ?? []) {
         if (!r.user_id || people.has(String(r.user_id))) continue;
+        const age = r.age === null || r.age === '' ? NaN : Number(r.age);
         people.set(String(r.user_id), {
-          age: Number.isFinite(r.age) ? r.age : null,
+          age: Number.isFinite(age) ? age : null,
           birth: r.birth || null,
           country: r.country || null,
           // A competitor with no photo still ships a placeholder URL, so the
@@ -247,29 +246,30 @@ const SCWRModel = (() => {
     });
   }
 
-  // Which brackets a set of filters leaves standing. Division and age group are
-  // read off the bracket name because that is the only place Smoothcomp records them.
-  function scopeBrackets(model, { division = 'all', age = 'all' } = {}) {
-    return new Set([...model.brackets.values()].filter((b) => {
-      const nogi = /no[ -]?gi/i.test(b.name);
-      return (division === 'all' || (division === 'nogi' ? nogi : !nogi)) &&
-        (age === 'all' || (age === 'youth' ? isYouth(b.name) : !isYouth(b.name)));
-    }).map((b) => b.id));
-  }
+  // Age comes from Smoothcomp's participant payload, never from competition-
+  // specific division names. When a minimum is active, an unknown age cannot
+  // safely be treated as eligible; with no minimum, everybody remains visible.
+  const meetsMinimumAge = (athlete, minimumAge) =>
+    minimumAge <= 0 || (Number.isFinite(athlete?.age) && athlete.age >= minimumAge);
 
   // Every entrant of one bracket with the record they posted in it, plus the two
   // people the brackets view is actually about: who was awarded gold, and who won
   // the most matches. Ties go to the better placement, so the medallist only
   // loses the slot when someone strictly out-won them.
-  function bracketRow(bracket, model, types) {
-    const entrants = [...bracket.entries.values()].map((entry) => ({
-      ...model.athletes.get(entry.key), ...entryRecord(entry, types), placement: entry.placement,
-    }));
+  function bracketRow(bracket, model, types, minimumAge) {
+    const awardedChampion = [...bracket.entries.values()].find((entry) => entry.placement === 1);
+    const entrants = [...bracket.entries.values()]
+      .filter((entry) => meetsMinimumAge(model.athletes.get(entry.key), minimumAge))
+      .map((entry) => ({
+        ...model.athletes.get(entry.key), ...entryRecord(entry, types), placement: entry.placement,
+      }));
+    if (!entrants.length) return null;
     const champion = entrants.find((p) => p.placement === 1) ?? null;
     const leader = entrants.slice().sort((x, y) =>
       y.wins - x.wins || x.losses - y.losses || x.placement - y.placement)[0] ?? null;
     return {
       ...bracket, key: bracket.id, champion, leader,
+      championExcluded: Boolean(awardedChampion && !champion),
       wins: champion?.wins ?? 0,
       leaderWins: leader?.wins ?? 0,
       gapCount: Math.max(0, (leader?.wins ?? 0) - (champion?.wins ?? 0)),
@@ -280,15 +280,16 @@ const SCWRModel = (() => {
   // which win types count, and how the reader has narrowed it down. Returns data
   // only: the page adds its own links and captions.
   function leaderboard(model, view) {
-    const { table, types, search = '', minimum = 0, sort, direction = -1 } = view;
-    const bracketIds = scopeBrackets(model, view);
+    const { table, types, search = '', minimum = 0, minimumAge = 0, sort, direction = -1 } = view;
+    const ageFloor = Number.isFinite(minimumAge) ? Math.max(0, Math.floor(minimumAge)) : 0;
     const query = normalize(search);
     const matches = (text) => normalize(text).includes(query);
 
     if (table === 'brackets') {
       const rows = [...model.brackets.values()]
-        .filter((b) => bracketIds.has(b.id) && matches(b.name))
-        .map((b) => bracketRow(b, model, types));
+        .filter((b) => matches(b.name))
+        .map((b) => bracketRow(b, model, types, ageFloor))
+        .filter(Boolean);
       const field = { name: 'name', wins: 'wins', gap: 'leaderWins', gapCount: 'gapCount' }[sort] ?? 'size';
       return rows.sort((a, b) => (sort === 'name'
         ? direction * a.name.localeCompare(b.name)
@@ -296,8 +297,8 @@ const SCWRModel = (() => {
     }
 
     const people = [...model.athletes.values()]
-      .map((a) => summarize(a, model, { types, bracketIds }))
-      .filter((s) => s.entries.length);
+      .filter((a) => meetsMinimumAge(a, ageFloor))
+      .map((a) => summarize(a, model, { types }));
 
     const rows = table === 'academies'
       // An academy is findable by any of its athletes, so it inherits their
