@@ -181,11 +181,12 @@ const SCWRModel = (() => {
   // it. Registrations repeat per division, so the first one for a user wins.
   function roster(payload) {
     const labels = new Map((payload?.categories ?? []).map((c) => [c.id, c]));
-    // The same field is called "Belt" in gi divisions and "Level" in no-gi ones.
+    // Organisers name the same field "Belt", "Level" or "Rank", depending on the
+    // event and whether the division is gi or no-gi.
     const grade = (registration) => {
       for (const { category_value_id: id } of registration.categories ?? []) {
         const value = labels.get(id);
-        if (value && /^(belt|level)$/i.test(value.category_name)) return value.name;
+        if (value && /^(belt|level|rank)$/i.test(value.category_name)) return value.name;
       }
       return null;
     };
