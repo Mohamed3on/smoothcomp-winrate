@@ -79,6 +79,51 @@ const SCWRModel = (() => {
     return { athletes, brackets, unmatched, unmatchedContested, unresolved, completed, walkovers, fought: completed - walkovers };
   }
 
+  // Every direct meeting between two named academies, plus the aggregate record.
+  // This works from the match feed rather than the published placements so the
+  // ledger and its total can never disagree about which bouts were counted.
+  function headToHead(matches, academyA, academyB, types = null, includeSide = null) {
+    const names = [String(academyA ?? ''), String(academyB ?? '')];
+    const keys = names.map(normalize);
+    const allowed = types ? new Set(types) : null;
+    const sides = names.map((name) => ({ name, wins: 0, types: {} }));
+    const meetings = [];
+    const seen = new Set();
+
+    if (!keys[0] || !keys[1] || keys[0] === keys[1]) return { a: sides[0], b: sides[1], total: 0, matches: meetings };
+
+    for (const match of matches ?? []) {
+      if (seen.has(match.id)) continue;
+      seen.add(match.id);
+      if (match.sides?.length !== 2) continue;
+      const indexed = match.sides.map((side) => ({ side, academy: keys.indexOf(normalize(side.club)) }));
+      if (indexed.some(({ academy }) => academy < 0) || indexed[0].academy === indexed[1].academy) continue;
+      if (includeSide && indexed.some(({ side }) => !includeSide(side))) continue;
+      const winners = indexed.filter(({ side }) => side.won);
+      if (winners.length !== 1 || winners[0].side.won === 'bye') continue;
+      const winType = winners[0].side.won;
+      if (allowed && !allowed.has(winType)) continue;
+      const winner = winners[0];
+      const loser = indexed.find(({ side }) => side !== winner.side);
+      sides[winner.academy].wins++;
+      sides[winner.academy].types[winType] = (sides[winner.academy].types[winType] ?? 0) + 1;
+      meetings.push({
+        id: String(match.id), bracketId: String(match.bracketId), category: match.cat || '', winType,
+        winner: { ...winner.side, academy: names[winner.academy] },
+        loser: { ...loser.side, academy: names[loser.academy] },
+      });
+    }
+    // The ledger reads in the incumbent finish order the aggregate bar and the
+    // win-type chips already use, so the marker column scans top to bottom the
+    // way the bar scans left to right. Divisions group under it — day 1 and day
+    // 2 of one bracket together — and match order settles the rest.
+    const rank = (t) => (SCWRSite.WIN_TYPES.indexOf(t) < 0 ? SCWRSite.WIN_TYPES.length : SCWRSite.WIN_TYPES.indexOf(t));
+    meetings.sort((x, y) => rank(x.winType) - rank(y.winType)
+      || category(x.category).localeCompare(category(y.category))
+      || (Number(x.id) || 0) - (Number(y.id) || 0));
+    return { a: sides[0], b: sides[1], total: meetings.length, matches: meetings };
+  }
+
   // Smoothcomp's match list publishes no scores, so dominance is measured by how
   // decisively a match ended: finishes landed versus finishes conceded.
   const derive = (row, wins, losses, types, lossTypes, medals) => ({
@@ -311,5 +356,5 @@ const SCWRModel = (() => {
     return rank(rows, sort, direction);
   }
 
-  return { build, summarize, entryRecord, academies, roster, attachRoster, leaderboard, rank, placements, athleteKey, normalize, METRICS };
+  return { build, headToHead, summarize, entryRecord, academies, roster, attachRoster, leaderboard, rank, placements, athleteKey, normalize, METRICS };
 })();

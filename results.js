@@ -10,8 +10,15 @@
     // Same default as the team rankings page: every decided win type but walkovers.
     types: WIN_TYPES.filter((t) => t !== 'walkover'),
     limit: 25, bracketSort: 'placement', open: new Set(),
+    matchupOpen: false,
+    academyA: '', academyB: '',
   };
   let model = null;
+  let eventMatches = [];
+  let academyNames = [];
+  const matchDetails = new Map();
+  const DETAIL_KEY = `match-details:${EVENT_ID}`;
+  let detailCache = null;
   let summaries = new Map();
   let rows = [];
   let vm = null;
@@ -149,23 +156,27 @@
     return BELT_TONES.find((tone) => words.has(tone)) ?? null;
   };
 
+  function beltSwatch(person) {
+    const tone = beltTone(person?.belt);
+    if (!tone) return null;
+    const belt = el('span', undefined, 'scwr-belt');
+    belt.dataset.belt = tone;
+    belt.title = person.belt;
+    belt.setAttribute('role', 'img');
+    belt.setAttribute('aria-label', `${person.belt} belt or level`);
+    return belt;
+  }
+
+  function ageChip(person) {
+    if (!Number.isFinite(person?.age)) return null;
+    const age = el('span', `${person.age} yrs`, 'scwr-age');
+    age.title = `Age ${person.age}`;
+    return age;
+  }
+
   function detailsLine(person, detail) {
     const line = el('span', undefined, 'scwr-details');
-    const tone = beltTone(person.belt);
-    if (tone) {
-      const belt = el('span', undefined, 'scwr-belt');
-      belt.dataset.belt = tone;
-      belt.title = person.belt;
-      belt.setAttribute('role', 'img');
-      belt.setAttribute('aria-label', `${person.belt} belt or level`);
-      line.append(belt);
-    }
-    const age = Number.isFinite(person.age) ? el('span', `${person.age} yrs`, 'scwr-age') : null;
-    if (age) {
-      age.title = `Age ${person.age}`;
-      line.append(age);
-    }
-    if (detail) line.append(detail);
+    for (const badge of [beltSwatch(person), ageChip(person), detail]) if (badge) line.append(badge);
     return line;
   }
 
@@ -270,7 +281,8 @@
   // events and reloads. Search and expanded rows deliberately do not: a stored
   // search that hides everything is baffling on the next visit.
   const PREFS_KEY = 'results-prefs';
-  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'minimum', 'types', 'bracketSort'];
+  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'minimum', 'types', 'bracketSort',
+    'matchupOpen', 'academyA', 'academyB'];
 
   // Stored values are never trusted. A column can be renamed or dropped between
   // versions, and one bad field would otherwise take the whole table down.
@@ -286,6 +298,9 @@
         ? Math.floor(saved.minimumAge) : undefined,
       minimum: Number.isFinite(saved.minimum) && saved.minimum >= 0 ? Math.floor(saved.minimum) : undefined,
       types: Array.isArray(saved.types) ? WIN_TYPES.filter((t) => saved.types.includes(t)) : undefined,
+      matchupOpen: typeof saved.matchupOpen === 'boolean' ? saved.matchupOpen : undefined,
+      academyA: typeof saved.academyA === 'string' ? saved.academyA : undefined,
+      academyB: typeof saved.academyB === 'string' ? saved.academyB : undefined,
     };
     for (const [key, value] of Object.entries(restored)) if (value !== undefined) state[key] = value;
     // Leaving every win type off would render an empty table with no way back.
@@ -314,7 +329,10 @@
     <div class="scwr-tabs" role="tablist" aria-label="Leaderboard view">
       ${Object.entries(VIEWS).map(([key, v], i) => `<button type="button" role="tab" class="scwr-tab" data-view="${key}"
         id="scwr-tab-${key}" aria-controls="scwr-panel" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${v.label}</button>`).join('')}
+      <button type="button" role="tab" class="scwr-tab scwr-matchup-tab" data-view="matchups"
+        id="scwr-tab-matchups" aria-controls="scwr-matchup-slot" aria-selected="false" tabindex="-1">Matchups</button>
     </div>
+    <div class="scwr-matchup-slot" id="scwr-matchup-slot" role="tabpanel" aria-labelledby="scwr-tab-matchups"></div>
     <div class="scwr-tools">
       <label class="scwr-field scwr-field-grow"><span>Search</span>
         <input data-filter="search" type="search" placeholder="Name, country, academy or division" autocomplete="off"></label>
@@ -322,7 +340,6 @@
         <span class="scwr-age-control" data-active="false">
           <input data-filter="minimumAge" type="number" inputmode="numeric" min="0" max="120" step="1"
             placeholder="All" list="scwr-age-presets" title="Uses the age Smoothcomp publishes for each competitor. Leave empty to show every age.">
-          <span class="scwr-age-suffix" aria-hidden="true">+</span>
         </span>
         <datalist id="scwr-age-presets">
           <option value="0"></option><option value="16"></option><option value="18"></option>
@@ -359,6 +376,11 @@
   root.before(panel);
 
   const status = panel.querySelector('.scwr-status');
+  const matchupSlot = panel.querySelector('.scwr-matchup-slot');
+  const tools = panel.querySelector('.scwr-tools');
+  const scroll = panel.querySelector('.scwr-scroll');
+  const foot = panel.querySelector('.scwr-foot');
+  const officialControl = panel.querySelector('.scwr-official');
   const table = panel.querySelector('.scwr-table');
   const head = table.querySelector('thead');
   const body = table.querySelector('tbody');
@@ -388,6 +410,370 @@
     item.append(el('i', undefined, `scwr-seg scwr-seg-${type}`), el('span', WIN_LABEL[type][1]));
     return item;
   }));
+
+  function syncAcademyNames() {
+    if (!model) return;
+    const ranked = SCWRModel.leaderboard(model, {
+      table: 'academies', types: state.types, sort: 'wins', direction: -1,
+      minimum: 0, minimumAge: state.minimumAge, search: '',
+    }).map((academy) => academy.name).filter((name) => name !== 'Unaffiliated');
+    const seen = new Set(ranked.map(normalize));
+    const extras = [];
+    for (const name of eventMatches.flatMap((match) => match.sides ?? []).map((side) => side.club).filter(Boolean)) {
+      const key = normalize(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      extras.push(name);
+    }
+    extras.sort((a, b) => a.localeCompare(b));
+    academyNames = [...ranked, ...extras];
+    const exact = (name) => academyNames.find((candidate) => normalize(candidate) === normalize(name));
+    const savedA = exact(state.academyA);
+    const savedB = exact(state.academyB);
+    if (savedA && savedB && savedA !== savedB) {
+      state.academyA = savedA;
+      state.academyB = savedB;
+      return;
+    }
+
+    // A first visit should demonstrate the feature, not land on an arbitrary
+    // zero–zero. Count actual cross-academy pairings once and open the busiest
+    // rivalry in this event; explicit selections remain sticky after that.
+    const pairCounts = new Map();
+    const countedMatches = new Set();
+    for (const match of eventMatches) {
+      if (countedMatches.has(match.id)) continue;
+      countedMatches.add(match.id);
+      if (match.sides?.length !== 2) continue;
+      const winners = match.sides.filter((side) => side.won);
+      if (winners.length !== 1 || winners[0].won === 'bye' || !state.types.includes(winners[0].won)) continue;
+      if (match.sides.some((side) => !matchupSideAllowed(side))) continue;
+      const clubs = match.sides.map((side) => exact(side.club)).filter(Boolean);
+      if (clubs.length !== 2 || clubs[0] === clubs[1]) continue;
+      const pair = clubs.slice().sort((a, b) => a.localeCompare(b));
+      const key = pair.map(normalize).join('\0');
+      const current = pairCounts.get(key) ?? { pair, count: 0 };
+      current.count++;
+      pairCounts.set(key, current);
+    }
+    const best = [...pairCounts.values()].sort((a, b) => b.count - a.count || a.pair[0].localeCompare(b.pair[0]))[0]?.pair;
+    [state.academyA, state.academyB] = best ?? [academyNames[0] ?? '', academyNames[1] ?? ''];
+  }
+
+  function matchupSideAllowed(side) {
+    if (!state.minimumAge) return true;
+    let athlete = side.userId ? model.athletes.get(`user:${side.userId}`) : null;
+    if (!athlete) {
+      const candidates = [...model.athletes.values()].filter((person) =>
+        normalize(person.name) === normalize(side.name) && normalize(person.club) === normalize(side.club));
+      athlete = candidates.length === 1 ? candidates[0] : null;
+    }
+    return Number.isFinite(athlete?.age) && athlete.age >= state.minimumAge;
+  }
+
+  function matchupData() {
+    return SCWRModel.headToHead(eventMatches, state.academyA, state.academyB, state.types, matchupSideAllowed);
+  }
+
+  function academyOptions(key) {
+    const other = key === 'academyA' ? state.academyB : state.academyA;
+    return academyNames.map((name) => {
+      const option = new Option(name, name, false, state[key] === name);
+      option.disabled = name === other;
+      return option;
+    });
+  }
+
+  function academyField(key, label) {
+    const field = el('label', undefined, 'scwr-field scwr-h2h-field');
+    field.append(el('span', label));
+    const select = el('select');
+    select.dataset.matchupAcademy = key;
+    select.disabled = academyNames.length < 2;
+    select.replaceChildren(...academyOptions(key));
+    field.append(select);
+    return field;
+  }
+
+  function swapButton() {
+    const button = el('button', 'Swap', 'scwr-btn scwr-h2h-swap');
+    button.type = 'button';
+    button.dataset.matchupAction = 'swap';
+    button.disabled = academyNames.length < 2;
+    return button;
+  }
+
+  function matchupControls() {
+    const controls = el('div', undefined, 'scwr-h2h-controls');
+    controls.append(academyField('academyA', 'Academy one'), swapButton(), academyField('academyB', 'Academy two'));
+    return controls;
+  }
+
+  function matchupTypes() {
+    const field = el('div', undefined, 'scwr-field scwr-h2h-types');
+    const label = el('span', 'Count these wins');
+    const group = el('div', undefined, 'scwr-chips');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'Win types counted in the academy matchup');
+    for (const type of WIN_TYPES) {
+      const button = el('button', undefined, 'scwr-chip-toggle');
+      button.type = 'button';
+      button.dataset.type = type;
+      button.dataset.matchupType = type;
+      button.append(el('i', undefined, `scwr-seg scwr-seg-${type}`), el('span', WIN_LABEL[type]?.[1] ?? type));
+      group.append(button);
+    }
+    field.append(label, group);
+    return field;
+  }
+
+  function matchupAgeFilter() {
+    const field = el('label', undefined, 'scwr-field scwr-h2h-age');
+    field.append(el('span', 'Minimum age'));
+    const control = el('span', undefined, 'scwr-age-control');
+    control.dataset.active = String(state.minimumAge > 0);
+    const input = el('input');
+    input.type = 'number';
+    input.inputMode = 'numeric';
+    input.min = '0';
+    input.max = '120';
+    input.step = '1';
+    input.placeholder = 'All';
+    input.value = state.minimumAge ? String(state.minimumAge) : '';
+    input.dataset.filter = 'minimumAge';
+    input.setAttribute('list', 'scwr-age-presets');
+    input.title = 'Only count matches where both athletes meet this age.';
+    control.append(input);
+    field.append(control);
+    return field;
+  }
+
+  function matchupFilters() {
+    const filters = el('div', undefined, 'scwr-h2h-filters');
+    filters.append(matchupAgeFilter(), matchupTypes());
+    return filters;
+  }
+
+  function matchupSide(side, position, leads) {
+    const article = el('article', undefined, `scwr-h2h-side scwr-h2h-side-${position}`);
+    const heading = el('h4');
+    heading.append(el('span', side.name || 'Choose an academy', 'scwr-h2h-side-name'));
+    if (leads) heading.append(el('span', 'Leads', 'scwr-h2h-leads'));
+    const wins = el('p', `${side.wins} ${unit(side.wins, 'win')}`, 'scwr-h2h-side-result');
+    if (leads) wins.classList.add('scwr-h2h-lead');
+    article.append(heading, wins, el('p', shortBreakdown(side.types) || 'No counted wins', 'scwr-h2h-side-mix'));
+    return article;
+  }
+
+  // Every head-to-head figure on the band is read the same way: the leading side
+  // in accent, the trailing side stepped back. Two numbers this small need no
+  // chart — and when wins and points disagree, the colours flip between the two
+  // lines, which is the whole story in one glance.
+  function scoreline(a, b) {
+    const node = el('strong');
+    [a, b].forEach((value, index) => {
+      if (index) node.append(el('i', '–', 'scwr-h2h-dash'));
+      const digit = el('span', String(value));
+      const other = index ? a : b;
+      if (value > other) digit.classList.add('scwr-h2h-lead');
+      else if (value < other) digit.classList.add('scwr-h2h-trails');
+      node.append(digit);
+    });
+    return node;
+  }
+
+  function matchupSummary(h2h, kind) {
+    const summary = el('section', undefined, `scwr-h2h-summary scwr-h2h-summary-${kind}`);
+    const total = h2h.total || 0;
+    const aggregate = el('div', undefined, 'scwr-h2h-aggregate');
+    const record = scoreline(h2h.a.wins, h2h.b.wins);
+    record.title = h2h.a.wins === h2h.b.wins
+      ? `Level at ${h2h.a.wins}–${h2h.b.wins}.`
+      : `${(h2h.a.wins > h2h.b.wins ? h2h.a : h2h.b).name} leads this rivalry.`;
+    aggregate.append(record, el('small', `${total} ${unit(total, 'match', 'matches')}`));
+    summary.append(
+      matchupSide(h2h.a, 'a', h2h.a.wins > h2h.b.wins),
+      aggregate,
+      matchupSide(h2h.b, 'b', h2h.b.wins > h2h.a.wins),
+    );
+    return summary;
+  }
+
+  function matchupPerson(person, won) {
+    const athlete = person?.userId ? model.athletes.get(`user:${person.userId}`) : null;
+    const href = athlete ? profileHref(athlete) : null;
+    const node = href ? el('a', undefined, 'scwr-h2h-person') : el('span', undefined, 'scwr-h2h-person');
+    if (href) node.href = href;
+    node.append(el('span', person?.name || 'Unnamed athlete', 'scwr-h2h-person-name'));
+    for (const badge of athlete ? [flagFor(athlete), beltSwatch(athlete), ageChip(athlete)] : []) if (badge) node.append(badge);
+    if (won) {
+      node.classList.add('scwr-h2h-winner');
+      node.append(el('span', 'Winner', 'scwr-h2h-winner-label'));
+    }
+    return node;
+  }
+
+  // Smoothcomp orders the sides by bracket seeding; the ledger row and the points
+  // tally both read academy A first.
+  function orientedSides(data, leftWon) {
+    const sides = [data.left, data.right];
+    if (Boolean(sides[1]?.isWinner) === leftWon) sides.reverse();
+    return sides;
+  }
+
+  function matchFacts(sides, data) {
+    const pair = (key) => sides.map((side) => Number(side?.[key]) || 0);
+    const [scores, advantages, penalties] = ['score', 'advantage', 'penalty'].map(pair);
+    const facts = [`${scores[0]}–${scores[1]}`];
+    if (advantages.some(Boolean)) facts.push(`${advantages[0]}–${advantages[1]} adv`);
+    if (penalties.some(Boolean)) facts.push(`${penalties[0]}–${penalties[1]} pen`);
+    if (data.matchInfo?.time) facts.push(data.matchInfo.time);
+    return facts.join(' \u00b7 ');
+  }
+
+  // Only what the ledger and the tally read. A whole event's raw payloads would
+  // not fit local storage, and everything else in them is already on the page.
+  const trimSide = (side) => ({
+    score: Number(side?.score) || 0,
+    advantage: Number(side?.advantage) || 0,
+    penalty: Number(side?.penalty) || 0,
+    isWinner: Boolean(side?.isWinner),
+  });
+  const trimDetail = (data) => ({
+    left: trimSide(data.left), right: trimSide(data.right), matchInfo: { time: data.matchInfo?.time ?? null },
+  });
+
+  // A finished match's score never changes again, so it is kept between visits
+  // and only the matches missing from the store are ever fetched.
+  function storedDetails() {
+    detailCache ??= SCWRSite.store.read(DETAIL_KEY)?.details ?? {};
+    return detailCache;
+  }
+
+  function matchDetail(id) {
+    const stored = storedDetails()[id];
+    if (stored) return Promise.resolve(stored);
+    if (!matchDetails.has(id)) {
+      const request = fetch(SCWRSite.url.match(id), {
+        credentials: 'include',
+        headers: { Accept: 'application/json, text/plain, */*' },
+      }).then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+        .then(trimDetail);
+      // A failure drops out of the cache so the next render can try again.
+      request.catch(() => matchDetails.delete(id));
+      matchDetails.set(id, request);
+    }
+    return matchDetails.get(id);
+  }
+
+  // The points tally needs every counted match, so the ledger reads the whole set
+  // at once and writes back whatever it had to fetch. A match that fails to load
+  // leaves its row as the match list already described it and drops out of the tally.
+  async function fillMatchDetails(entries, summary, h2h) {
+    const read = (await Promise.all(entries.map((entry) => matchDetail(entry.id)
+      .then((data) => ({ entry, data, sides: orientedSides(data, entry.leftWon) }))
+      .catch(() => null)))).filter(Boolean);
+    const cache = storedDetails();
+    const fetched = read.filter(({ entry }) => !cache[entry.id]);
+    for (const { entry, data } of fetched) cache[entry.id] = data;
+    if (fetched.length) {
+      SCWRSite.store.write(DETAIL_KEY, { details: cache }, eventMatches.every((m) => m.status === 'Finished'));
+    }
+    for (const { entry, data, sides } of read) {
+      if (entry.node.isConnected) entry.node.textContent = matchFacts(sides, data);
+    }
+    const aggregate = summary.querySelector('.scwr-h2h-aggregate');
+    if (!read.length || !aggregate?.isConnected) return;
+    const points = [0, 1].map((i) => read.reduce((sum, { sides }) => sum + (Number(sides[i]?.score) || 0), 0));
+    const line = el('p', undefined, 'scwr-h2h-points');
+    line.append(el('span', 'Points'), scoreline(points[0], points[1]));
+    line.title = read.length < entries.length
+      ? `Points scored across the ${read.length} of ${entries.length} counted matches Smoothcomp published scores for.`
+      : `Points scored across all ${read.length} counted ${unit(read.length, 'match', 'matches')}.`;
+    aggregate.append(line);
+  }
+
+  function matchupLedger(h2h, entries) {
+    const section = el('section', undefined, 'scwr-h2h-ledger');
+    if (!h2h.matches.length) {
+      section.append(el('p', 'No counted direct matches. Try another academy pair or count more win types.', 'scwr-h2h-empty'));
+      return section;
+    }
+    for (const match of h2h.matches) {
+      const winnerIsA = normalize(match.winner.academy) === normalize(state.academyA);
+      const left = winnerIsA ? match.winner : match.loser;
+      const right = winnerIsA ? match.loser : match.winner;
+      const row = el('div', undefined, 'scwr-h2h-match');
+      const detail = el('span', undefined, 'scwr-h2h-match-detail');
+      const bracket = el('a', match.category || 'Division', 'scwr-h2h-division');
+      bracket.href = SCWRSite.url.bracket(EVENT_ID, match.bracketId);
+      const outcome = el('span', undefined, 'scwr-h2h-match-outcome');
+      const facts = el('span', undefined, 'scwr-h2h-match-facts');
+      entries.push({ id: match.id, leftWon: winnerIsA, node: facts });
+      outcome.append(
+        el('i', undefined, `scwr-seg scwr-seg-${match.winType}`),
+        el('strong', WIN_LABEL[match.winType]?.[0] ?? match.winType),
+        facts,
+      );
+      detail.append(bracket, outcome);
+      row.append(matchupPerson(left, winnerIsA), detail, matchupPerson(right, !winnerIsA));
+      section.append(row);
+    }
+    return section;
+  }
+
+  function matchupHeader(title, copy) {
+    const header = el('header', undefined, 'scwr-h2h-head');
+    const text = el('div');
+    text.append(el('h3', title), el('p', copy, 'scwr-sub'));
+    header.append(text);
+    return header;
+  }
+
+  function matchupResults(h2h) {
+    const entries = [];
+    const summary = matchupSummary(h2h, 'lab');
+    const ledger = matchupLedger(h2h, entries);
+    return { summary, ledger, fill: () => fillMatchDetails(entries, summary, h2h) };
+  }
+
+  function labSurface(h2h) {
+    const surface = el('div', undefined, 'scwr-h2h scwr-h2h-lab');
+    const header = matchupHeader('Academy head-to-head', 'Aggregate record and every counted match where these academies met.');
+    header.append(matchupFilters());
+    const results = matchupResults(h2h);
+    surface.append(header, matchupControls(), results.summary, results.ledger);
+    return { surface, fill: results.fill };
+  }
+
+  function renderMatchupSurface() {
+    matchupSlot.replaceChildren();
+    matchupSlot.hidden = true;
+    if (!model || !state.matchupOpen) return;
+    syncAcademyNames();
+    const lab = labSurface(matchupData());
+    matchupSlot.append(lab.surface);
+    matchupSlot.hidden = false;
+    for (const button of matchupSlot.querySelectorAll('[data-matchup-type]')) {
+      const on = state.types.includes(button.dataset.matchupType);
+      button.setAttribute('aria-pressed', String(on));
+    }
+    lab.fill();
+  }
+
+  function renderMatchupResults() {
+    const surface = matchupSlot.querySelector('.scwr-h2h');
+    if (!surface) return;
+    syncAcademyNames();
+    for (const select of surface.querySelectorAll('[data-matchup-academy]')) {
+      select.replaceChildren(...academyOptions(select.dataset.matchupAcademy));
+    }
+    const h2h = matchupData();
+    const results = matchupResults(h2h);
+    surface.querySelector('.scwr-h2h-summary')?.replaceWith(results.summary);
+    surface.querySelector('.scwr-h2h-ledger')?.replaceWith(results.ledger);
+    results.fill();
+  }
 
   function columns() { return COLUMNS[state.view]; }
 
@@ -566,6 +952,10 @@
 
   function render({ animate = false } = {}) {
     if (!model) return;
+    const matchupOnly = state.matchupOpen;
+    for (const surface of [tools, status, scroll, foot, officialControl]) surface.hidden = matchupOnly;
+    renderMatchupSurface();
+    if (matchupOnly) return;
     table.dataset.view = state.view;
     for (const field of panel.querySelectorAll('[data-only]')) {
       field.hidden = !field.dataset.only.split(' ').includes(state.view);
@@ -739,9 +1129,11 @@
         fetchResults(), SCWRMatches.loadEvent((done, total) => { status.textContent = `Reading the match list · page ${done} of ${total}`; }, { refresh }),
         fetchRoster(),
       ]);
+      eventMatches = data.matches;
       model = SCWRModel.attachRoster(SCWRModel.build(results, data.matches), people);
       updatedAt = data.at;
       rebuildSummaries();
+      syncAcademyNames();
       render(); orderResults(); decorate();
     } catch (error) {
       // Put the numbers we already had back on screen; skeleton() cleared them,
@@ -756,14 +1148,26 @@
   }
 
   function setView(view) {
-    if (state.view === view) return;
+    if (view === 'matchups') {
+      if (state.matchupOpen) return;
+      state.matchupOpen = true;
+      for (const tab of panel.querySelectorAll('.scwr-tab')) {
+        const on = tab.dataset.view === 'matchups';
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+      }
+      savePrefs();
+      return render();
+    }
+    if (state.view === view && !state.matchupOpen) return;
+    state.matchupOpen = false;
     state.view = view;
     state.limit = 25;
     state.open.clear();
     state.sort = DEFAULT_SORT[view];
     state.direction = -1;
     for (const tab of panel.querySelectorAll('.scwr-tab')) {
-      const on = tab.dataset.view === view;
+      const on = tab.dataset.view === state.view;
       tab.setAttribute('aria-selected', String(on));
       tab.tabIndex = on ? 0 : -1;
     }
@@ -785,11 +1189,24 @@
     }
     state.limit = 25;
     savePrefs();
+    if (state.matchupOpen && key === 'minimumAge' && event.target.closest('.scwr-h2h-age')) {
+      renderMatchupResults();
+      return;
+    }
     render();
     if (key === 'bracketSort') { orderResults(); decorate(); }
   });
 
   panel.addEventListener('click', (event) => {
+    const matchupAction = event.target.closest('[data-matchup-action]')?.dataset.matchupAction;
+    if (matchupAction === 'swap') {
+      [state.academyA, state.academyB] = [state.academyB, state.academyA];
+      savePrefs();
+      renderMatchupSurface();
+      matchupSlot.querySelector('[data-matchup-action="swap"]')?.focus();
+      return;
+    }
+
     const tab = event.target.closest('.scwr-tab');
     if (tab) return setView(tab.dataset.view);
 
@@ -803,6 +1220,15 @@
       savePrefs();
       if (model) rebuildSummaries();
       paintChips();
+      if (chip.dataset.matchupType) {
+        for (const button of matchupSlot.querySelectorAll('[data-matchup-type]')) {
+          button.setAttribute('aria-pressed', String(state.types.includes(button.dataset.matchupType)));
+        }
+        renderMatchupResults();
+        orderResults();
+        decorate();
+        return;
+      }
       render({ animate: true });
       orderResults();
       decorate();
@@ -834,6 +1260,17 @@
     }
   });
 
+  panel.addEventListener('change', (event) => {
+    const key = event.target.dataset.matchupAcademy;
+    if (!key) return;
+    state[key] = event.target.value;
+    const other = key === 'academyA' ? 'academyB' : 'academyA';
+    if (state[key] === state[other]) state[other] = academyNames.find((name) => name !== state[key]) ?? '';
+    savePrefs();
+    renderMatchupSurface();
+    matchupSlot.querySelector(`[data-matchup-academy="${key}"]`)?.focus();
+  });
+
   panel.addEventListener('keydown', (event) => {
     const tab = event.target.closest('.scwr-tab');
     if (!tab || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
@@ -853,7 +1290,7 @@
     ageInput.value = state.minimumAge ? String(state.minimumAge) : '';
     ageInput.parentElement.dataset.active = String(state.minimumAge > 0);
     for (const tab of panel.querySelectorAll('.scwr-tab')) {
-      const on = tab.dataset.view === state.view;
+      const on = tab.dataset.view === (state.matchupOpen ? 'matchups' : state.view);
       tab.setAttribute('aria-selected', String(on));
       tab.tabIndex = on ? 0 : -1;
     }

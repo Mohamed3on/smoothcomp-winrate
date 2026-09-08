@@ -44,6 +44,66 @@ test('duplicate match IDs are counted once; rematches with different IDs survive
   assert.equal(summary(m, 1).wins, 2); assert.equal(m.completed, 2);
 });
 
+test('academy head-to-head returns one aggregate backed by its direct match ledger', () => {
+  const bouts = [
+    { id: '1', bracketId: '10', cat: 'Adult / Black', sides: [
+      { userId: '1', name: 'Alice', club: 'Fightzone', won: 'submission' },
+      { userId: '2', name: 'Bea', club: 'Cicero Costha', won: null },
+    ] },
+    { id: '2', bracketId: '11', cat: 'Master / Brown', sides: [
+      { userId: '3', name: 'Carla', club: 'Cicero Costha', won: 'points' },
+      { userId: '4', name: 'Dina', club: 'Fightzone', won: null },
+    ] },
+    { id: '3', bracketId: '12', cat: 'Adult / Purple', sides: [
+      { userId: '5', name: 'Eva', club: 'Fightzone', won: 'decision' },
+      { userId: '6', name: 'Fran', club: 'Other', won: null },
+    ] },
+  ];
+  const h2h = api.headToHead(bouts, ' Fightzone ', 'CICERO COSTHA', ['submission', 'points']);
+  assert.equal(h2h.a.wins, 1); assert.equal(h2h.b.wins, 1); assert.equal(h2h.total, 2);
+  assert.deepEqual(plain(h2h.a.types), { submission: 1 });
+  assert.deepEqual(plain(h2h.b.types), { points: 1 });
+  assert.deepEqual(plain(h2h.matches.map((m) => [m.id, m.winner.name, m.category])), [
+    ['1', 'Alice', 'Adult / Black'], ['2', 'Carla', 'Master / Brown'],
+  ]);
+});
+
+test('the direct-match ledger reads most decisive first, then division, then match order', () => {
+  const bout = (id, cat, type) => ({ id, bracketId: id, cat, sides: [
+    { name: `W${id}`, club: 'Alpha', won: type }, { name: `L${id}`, club: 'Beta', won: null },
+  ] });
+  const h2h = api.headToHead([
+    bout('4', 'B Division (Day 2)', 'points'), bout('1', 'C Division', 'walkover'),
+    bout('3', 'B Division (Day 1)', 'points'), bout('2', 'A Division', 'submission'),
+  ], 'Alpha', 'Beta', ['submission', 'points', 'walkover']);
+  assert.deepEqual(plain(h2h.matches.map((m) => m.id)), ['2', '3', '4', '1']);
+});
+
+test('academy head-to-head ignores duplicates, byes, undecided bouts and same-academy matches', () => {
+  const direct = { id: '1', bracketId: '10', sides: [
+    { name: 'A', club: 'Alpha', won: 'submission' }, { name: 'B', club: 'Beta', won: null },
+  ] };
+  const h2h = api.headToHead([direct, direct,
+    { ...direct, id: '2', sides: [{ name: 'A', club: 'Alpha', won: 'bye' }, { name: 'B', club: 'Beta', won: null }] },
+    { ...direct, id: '3', sides: [{ name: 'A', club: 'Alpha', won: null }, { name: 'B', club: 'Beta', won: null }] },
+    { ...direct, id: '4', sides: [{ name: 'A', club: 'Alpha', won: 'points' }, { name: 'B', club: 'Alpha', won: null }] },
+  ], 'Alpha', 'Beta');
+  assert.equal(h2h.total, 1); assert.equal(h2h.a.wins, 1); assert.equal(h2h.b.wins, 0);
+});
+
+test('academy head-to-head applies the same athlete eligibility rule to both sides', () => {
+  const bouts = [{ id: '1', bracketId: '10', sides: [
+    { userId: '1', name: 'Adult', club: 'Alpha', won: 'points' },
+    { userId: '2', name: 'Youth', club: 'Beta', won: null },
+  ] }, { id: '2', bracketId: '10', sides: [
+    { userId: '3', name: 'Adult B', club: 'Beta', won: 'decision' },
+    { userId: '4', name: 'Adult A', club: 'Alpha', won: null },
+  ] }];
+  const eligible = (side) => side.userId !== '2';
+  const h2h = api.headToHead(bouts, 'Alpha', 'Beta', ['points', 'decision'], eligible);
+  assert.equal(h2h.total, 1); assert.equal(h2h.a.wins, 0); assert.equal(h2h.b.wins, 1);
+});
+
 test('hidden profile joins require a unique name and academy within the bracket', () => {
   const m = api.build([bracket(1, 2, [p(1, 'A', 1, 'Academy', true), p(2, 'B', 2)])], [{ ...match(1, 1, 1, 2), sides: [
     { name: ' A ', club: 'ACADEMY', won: 'submission' }, { userId: '2', name: 'B', won: null },

@@ -9,6 +9,7 @@ test('links follow the reader\u2019s locale; fetched data is pinned to English',
   assert.equal(en.eventId(), '19856');
   assert.equal(en.url.profile(7), '/en/profile/7');
   assert.equal(en.url.bracket(19856, 42), '/en/event/19856/bracket/42');
+  assert.equal(en.url.match(99), 'https://smoothcomp.com/en/getBracketMatchData/99');
   assert.equal(en.url.data(19856, 'schedule', 'matchlist'), '/en/event/19856/schedule/matchlist');
   assert.equal(en.url.data(19856), '/en/event/19856');
   // The manifest matches every locale segment, so a Swedish reader stays in Swedish.

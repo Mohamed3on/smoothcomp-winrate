@@ -45,6 +45,7 @@ const SCWRSite = (() => {
     // which types no win at all and leaves every leaderboard empty.
     data: (event, ...rest) => [`/en/event/${event}`, ...rest].join('/'),
     bracket: (event, bracket) => `/${locale()}/event/${event}/bracket/${bracket}`,
+    match: (match) => `https://smoothcomp.com/${locale()}/getBracketMatchData/${match}`,
     profile: (user) => `/${locale()}/profile/${user}`,
     club: (club) => `/${locale()}/club/${club}`,
   };

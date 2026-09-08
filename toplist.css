@@ -1,3 +1,6 @@
+/* These cells sit in rows Smoothcomp drew, so they take their size from the
+   row rather than from a scale of ours — the Borrowed Ink Rule applied to type.
+   One step: 0.78em, shared by the label and the win/loss mix. */
 .scwr-cell {
   flex: 0 0 auto;
   min-width: 96px;
@@ -21,8 +24,8 @@
 
 /* The academy everyone else is being measured against. */
 .scwr-cell.scwr-ref {
-  border-radius: 7px;
-  padding-block: 5px;
+  border-radius: 6px;
+  padding-block: 4px;
   background: color-mix(in srgb, currentColor 10%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 38%, transparent);
 }
@@ -36,7 +39,7 @@
 .scwr-bar {
   display: block;
   height: 3px;
-  margin-top: 5px;
+  margin-top: 4px;
   border-radius: 2px;
   background: rgba(128, 128, 128, 0.3);
   overflow: hidden;
@@ -49,34 +52,48 @@
   background: currentColor;
 }
 
+/* The toolbar is a surface this extension owns rather than one it borrows, so
+   it carries the same three steps and the same 4px rhythm as the results panel.
+   The tokens are repeated here because the two stylesheets never load on the
+   same page — the manifest scopes each to its own URL. */
 .scwr-toolbar {
+  --t-body: 13px;
+  --t-small: 11.5px;
+  --t-label: 10px;
+  --s-0: 2px;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --radius-md: 6px;
+
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 16px;
-  padding: 8px 14px;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+  padding: var(--s-2) var(--s-3);
   border: 1px solid rgba(128, 128, 128, 0.28);
   border-radius: 7px;
-  font-size: 13px;
+  font-size: var(--t-body);
 }
 
 .scwr-title,
 .scwr-min {
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: var(--t-label);
   opacity: 0.55;
 }
 
 .scwr-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 12px;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-3);
   border: 0;
-  border-radius: 99px;
+  border-radius: 999px;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -104,18 +121,18 @@
 
 .scwr-btn i {
   font-style: normal;
-  font-size: 11px;
+  font-size: var(--t-small);
 }
 
 .scwr-min {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   margin: 0 0 0 auto;
 }
 
 .scwr-note {
-  font-size: 11px;
+  font-size: var(--t-small);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   opacity: 0.45;
@@ -129,15 +146,15 @@
 .scwr-min select {
   max-width: 210px;
   appearance: none;
-  padding: 4px 22px 4px 10px;
+  padding: var(--s-1) 22px var(--s-1) var(--s-2);
   border: 1px solid rgba(128, 128, 128, 0.35);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.6'/%3E%3C/svg%3E")
     no-repeat right 7px center/9px;
   color: inherit;
-  font: inherit;
-  font-size: 12px;
+  font-family: inherit;
+  font-size: var(--t-small);
   text-transform: none;
   cursor: pointer;
 }
@@ -155,7 +172,7 @@
   /* Beat the site's ~30px gutter between stat columns. */
   .ranking-list.ranking-list-detail .stats > div.scwr-cell {
     margin-left: 0;
-    padding: 0 0 0 10px;
+    padding: 0 0 0 8px;
   }
   .scwr-label {
     display: none;
@@ -169,22 +186,22 @@
 .scwr-types {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--s-1);
   flex-wrap: wrap;
   flex-basis: 100%;
-  margin-top: 8px;
-  padding-top: 8px;
+  margin-top: var(--s-2);
+  padding-top: var(--s-2);
   border-top: 1px solid rgba(128, 128, 128, 0.2);
 }
 
 .scwr-chip {
-  padding: 3px 10px;
+  padding: var(--s-1) var(--s-3);
   border: 1px solid rgba(128, 128, 128, 0.35);
-  border-radius: 99px;
+  border-radius: 999px;
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--t-small);
   text-transform: capitalize;
   opacity: 0.5;
   cursor: pointer;
@@ -209,7 +226,7 @@
 
 .scwr-status {
   margin-left: auto;
-  font-size: 11px;
+  font-size: var(--t-small);
   font-variant-numeric: tabular-nums;
   opacity: 0.45;
   white-space: nowrap;
@@ -226,10 +243,10 @@
   display: flex;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 2px 7px;
-  margin-top: 5px;
-  font-size: 10px;
-  line-height: 1.3;
+  gap: 2px 8px;
+  margin-top: 4px;
+  font-size: 0.78em;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
   opacity: 0.72;
 }
@@ -258,7 +275,7 @@
 .scwr-mix i {
   margin-left: 2px;
   font-style: normal;
-  font-weight: 500;
+  font-weight: 400;
   opacity: 0.72;
 }
 

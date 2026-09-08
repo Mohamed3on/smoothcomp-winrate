@@ -5,7 +5,7 @@
   background: none;
   color: inherit;
   opacity: 0.4;
-  font-size: 0.75em;
+  font-size: 0.7em;
   font-weight: 600;
   letter-spacing: 0.04em;
   vertical-align: middle;
@@ -35,7 +35,36 @@
   --win-decision: #4f9ae0;
   --win-disqualification: #7fb2e0;
   --win-walkover: #b9bec6;
+
+  /* Type. Six steps, and the Type block below is the only place they are
+     applied — component rules carry colour, layout and truncation, never a
+     size. Weight is the one typographic axis left to the components, and it
+     runs 400 / 600 / 700 only. */
+  --t-display: 28px;
+  --t-headline: 19px;
+  --t-title: 15px;
+  --t-body: 13px;
+  --t-small: 11.5px;
+  --t-label: 10px;
+
+  /* Space. One 4px rhythm, with a 2px half-step for stacked text. --pad is the
+     panel gutter, and every section reads it rather than repeating 20px, so the
+     narrow container redefines that one value instead of overriding six rules.
+     Dimensions that are derived rather than rhythmic — the detail indent, the
+     head-to-head centre column, control widths — stay literal at their rule. */
+  --s-0: 2px;
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-7: 32px;
+  --pad: var(--s-5);
+
   --radius: 10px;
+  --radius-md: 6px;
+  --radius-sm: 4px;
 }
 .scwr-results[data-scwr-theme='dark'] {
   --fg: #f0f2f4;
@@ -63,12 +92,12 @@
   /* Smoothcomp's own container decides how much room this panel gets, and it is
      not the viewport width. Every breakpoint below asks the panel, not the page. */
   container: scwr / inline-size;
-  margin: 24px 0 36px;
+  margin: var(--s-6) 0 var(--s-7);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--t-body);
   line-height: 1.45;
   font-variant-numeric: tabular-nums;
   text-align: left;
@@ -77,9 +106,67 @@
 .scwr-results :is(button, select, input, a, tr):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 .scwr-results [hidden] { display: none !important; }
+
+/* ── Type ───────────────────────────────────────────────────────────────────
+   Six steps. Every font-size in the panel is set here and nowhere else, so the
+   whole typographic range is one screen rather than forty scattered rules.
+   Smoothcomp's Bootstrap sizes bare headings and <small>, so each step names
+   its elements explicitly instead of trusting inheritance from the panel root.
+   The inline notes on the host's own results are not covered: they sit outside
+   .scwr-results and size themselves in em against whatever they were dropped
+   into, which is the Borrowed Ink Rule applied to type. */
+
+/* Display — the head-to-head record. One instance per surface. */
+.scwr-h2h-aggregate strong {
+  font-size: var(--t-display);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+/* Headline — the panel's own title. */
+.scwr-head h2 {
+  font-size: var(--t-headline);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+/* Title — a heading that owns a surface inside the panel, and the empty state. */
+.scwr-results :is(.scwr-h2h-head h3, .scwr-empty-title, .scwr-glyph) {
+  font-size: var(--t-title);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+/* Body — the panel default: table cells, tabs, names and figures. */
+.scwr-results,
+.scwr-results :is(.scwr-h2h-side h4, .scwr-h2h-side-result strong, .scwr-h2h-points strong) {
+  font-size: var(--t-body);
+  line-height: 1.45;
+}
+/* Small — everything that supports a figure: copy, metadata, controls, legends. */
+.scwr-results :is(
+  .scwr-sub, .scwr-btn, .scwr-status, .scwr-note, .scwr-rank, .scwr-meta, .scwr-agree,
+  .scwr-bar-legend, .scwr-key, .scwr-chip-toggle, select, input,
+  .scwr-h2h-person, .scwr-h2h-side-result, .scwr-h2h-side-mix,
+  .scwr-h2h-match-detail, .scwr-h2h-match-facts
+) {
+  font-size: var(--t-small);
+  line-height: 1.4;
+}
+/* Label — uppercase chrome: field labels, column headers, pills and markers. */
+.scwr-results :is(
+  .scwr-field > span:not(.scwr-age-control), .scwr-sort, .scwr-rank-head, .scwr-age,
+  .scwr-monogram, .scwr-h2h-leads, .scwr-h2h-winner-label, .scwr-h2h-aggregate > small,
+  .scwr-h2h-points > span, .scwr-h2h-match-outcome strong
+) {
+  font-size: var(--t-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
 .scwr-head {
@@ -87,28 +174,20 @@
   flex-wrap: wrap;
   align-items: start;
   justify-content: space-between;
-  gap: 12px;
-  padding: 18px 20px 14px;
+  gap: var(--s-3);
+  padding: var(--s-5) var(--pad) var(--s-4);
 }
-.scwr-head h2 {
-  margin: 0;
-  color: var(--fg);
-  font-size: 19px;
-  font-weight: 700;
-  letter-spacing: -0.011em;
-  line-height: 1.2;
-}
-.scwr-sub { margin: 5px 0 0; color: var(--fg-2); font-size: 12px; max-width: 62ch; }
+.scwr-head h2 { margin: 0; color: var(--fg); }
+.scwr-sub { margin: var(--s-1) 0 0; color: var(--fg-2); max-width: 62ch; }
 
 .scwr-btn {
   min-height: 32px;
-  padding: 0 13px;
+  padding: 0 var(--s-3);
   border: 1px solid var(--line-2);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--fg);
   font: inherit;
-  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -117,19 +196,18 @@
 /* ── Tabs ───────────────────────────────────────────────────────────────── */
 .scwr-tabs {
   display: flex;
-  gap: 2px;
-  padding: 0 20px;
+  gap: var(--s-0);
+  padding: 0 var(--pad);
   border-bottom: 1px solid var(--line);
 }
 .scwr-tab {
   position: relative;
-  padding: 0 2px 9px;
-  margin-right: 20px;
+  padding: 0 var(--s-0) var(--s-2);
+  margin-right: var(--s-5);
   border: 0;
   background: none;
   color: var(--fg-2);
   font: inherit;
-  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -150,31 +228,24 @@
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: 10px 14px;
-  padding: 14px 20px;
+  gap: var(--s-3) var(--s-4);
+  padding: var(--s-4) var(--pad);
   background: var(--raised);
   border-bottom: 1px solid var(--line);
 }
-.scwr-field { display: grid; gap: 4px; margin: 0; min-width: 0; }
+.scwr-field { display: grid; gap: var(--s-1); margin: 0; min-width: 0; }
 .scwr-field-grow { flex: 1 1 200px; }
-.scwr-field > span:not(.scwr-age-control) {
-  color: var(--fg-2);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
+.scwr-field > span:not(.scwr-age-control) { color: var(--fg-2); }
 .scwr-results :is(select, input[type='search'], input[type='number']) {
   min-height: 32px;
   width: 100%;
-  padding: 0 9px;
+  padding: 0 var(--s-2);
   border: 1px solid var(--line-2);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--fg);
   caret-color: var(--accent);
-  font: inherit;
-  font-size: 12.5px;
+  font-family: inherit;
 }
 .scwr-results input[type='search']::placeholder { color: var(--fg-3); }
 .scwr-results select { min-width: 92px; appearance: auto; }
@@ -184,12 +255,11 @@
 .scwr-results input[type='number'] { width: 82px; }
 .scwr-age-control {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px;
-  width: 92px;
+  width: 74px;
   min-height: 32px;
   overflow: hidden;
   border: 1px solid var(--line-2);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
@@ -200,39 +270,24 @@
 .scwr-results .scwr-age-control > input[type='number'] {
   min-height: 30px;
   width: 100%;
-  padding-right: 0;
   border: 0;
   background: transparent;
   outline: 0;
   font-weight: 600;
 }
 .scwr-age-control:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
-.scwr-age-suffix {
-  display: grid;
-  place-items: center;
-  align-self: stretch;
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 700;
-  opacity: 0;
-}
-.scwr-age-control[data-active='true'] .scwr-age-suffix {
-  background: var(--accent-soft);
-  opacity: 1;
-}
-.scwr-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.scwr-chips { display: flex; flex-wrap: wrap; gap: var(--s-1); }
 .scwr-chip-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--s-2);
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0 var(--s-3);
   border: 1px solid var(--line-2);
   border-radius: 999px;
   background: transparent;
   color: var(--fg-3);
   font: inherit;
-  font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -242,15 +297,14 @@
 
 .scwr-status {
   margin: 0;
-  padding: 10px 20px;
+  padding: var(--s-3) var(--pad);
   border-bottom: 1px solid var(--line);
   color: var(--fg-2);
-  font-size: 11.5px;
 }
 
 /* ── Table ──────────────────────────────────────────────────────────────── */
 .scwr-scroll { overflow: visible; }
-.scwr-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.scwr-table { width: 100%; border-collapse: collapse; }
 .scwr-table thead th {
   position: sticky;
   top: 0;
@@ -261,22 +315,18 @@
   border-bottom: 1px solid var(--line-2);
   font-weight: 600;
 }
-.scwr-rank-head { color: var(--fg-3); font-size: 10.5px; text-align: left; }
+.scwr-rank-head { color: var(--fg-3); text-align: left; }
 .scwr-sort {
   display: flex;
   align-items: center;
   justify-content: end;
-  gap: 4px;
+  gap: var(--s-1);
   width: 100%;
-  padding: 9px 10px;
+  padding: var(--s-2);
   border: 0;
   background: none;
   color: var(--fg-2);
   font: inherit;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   cursor: pointer;
 }
 .scwr-start .scwr-sort { justify-content: start; }
@@ -296,8 +346,8 @@
 .scwr-sort[data-direction='asc'] .scwr-caret { transform: rotate(180deg); }
 .scwr-sort:hover .scwr-caret { opacity: 0.45; }
 
-.scwr-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
-.scwr-table :is(td, th):last-child { padding-right: 20px; }
+.scwr-table td { padding: var(--s-2); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.scwr-table :is(td, th):last-child { padding-right: var(--pad); }
 .scwr-table :is(td, th) { text-align: right; }
 .scwr-table :is(td, th).scwr-start { text-align: left; }
 /* Column budgets, one per view, each summing to 100%. Fixed layout makes these
@@ -306,7 +356,7 @@
    whichever cell happens to hold the longest string. When a breakpoint hides a
    column its share is redistributed the same way. */
 .scwr-table[data-view] { table-layout: fixed; }
-.scwr-table :is(.scwr-rank-head, .scwr-rank) { width: 5%; padding-left: 14px; padding-right: 2px; }
+.scwr-table :is(.scwr-rank-head, .scwr-rank) { width: 5%; padding-left: var(--s-4); padding-right: var(--s-0); }
 .scwr-table[data-view='athletes'] {
   --col-name: 33%; --col-wins: 6.5%; --col-rate: 6.5%; --col-finish: 15%;
   --col-conceded: 15%; --col-medal: 3%; --col-biggest: 10%;
@@ -331,20 +381,20 @@
 .scwr-col-gapCount { width: var(--col-gapCount); }
 .scwr-table :is(td, th):is(.scwr-col-golds, .scwr-col-silvers, .scwr-col-bronzes) {
   width: var(--col-medal);
-  padding-inline: 4px;
+  padding-inline: var(--s-1);
 }
-.scwr-col-golds .scwr-sort, .scwr-col-silvers .scwr-sort, .scwr-col-bronzes .scwr-sort { padding-inline: 4px; }
+.scwr-col-golds .scwr-sort, .scwr-col-silvers .scwr-sort, .scwr-col-bronzes .scwr-sort { padding-inline: var(--s-1); }
 /* Fixed layout will not grow a cell for its content, so long strings must be
    told what to do instead of silently overflowing. */
 .scwr-table td { overflow: hidden; }
-.scwr-glyph { font-size: 15px; line-height: 1; letter-spacing: 0; }
+.scwr-glyph { line-height: 1; letter-spacing: 0; }
 
 .scwr-row { cursor: pointer; }
 .scwr-row:hover > td { background: var(--hover); }
 .scwr-row.scwr-open > td { background: var(--accent-soft); border-bottom-color: transparent; }
 .scwr-table td.scwr-sorted { background: var(--accent-soft); }
 .scwr-row:hover > td.scwr-sorted { background: var(--hover); }
-.scwr-rank { color: var(--fg-3); font-size: 11.5px; }
+.scwr-rank { color: var(--fg-3); }
 .scwr-top .scwr-rank { color: var(--fg); font-weight: 700; }
 .scwr-expand {
   width: 100%;
@@ -358,19 +408,19 @@
   cursor: pointer;
 }
 
-.scwr-num { font-size: 13.5px; font-weight: 600; }
-.scwr-num-muted { color: var(--fg-3); font-weight: 500; }
+.scwr-num { font-weight: 600; }
+.scwr-num-muted { color: var(--fg-3); font-weight: 400; }
 .scwr-medal { font-weight: 700; }
 .scwr-medal-0:not(.scwr-num-muted) { color: var(--gold); }
 .scwr-medal-1:not(.scwr-num-muted) { color: var(--silver); }
 .scwr-medal-2:not(.scwr-num-muted) { color: var(--bronze); }
 
-.scwr-identity { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.scwr-identity-text { display: grid; gap: 1px; min-width: 0; }
-.scwr-named { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.scwr-identity { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.scwr-identity-text { display: grid; gap: var(--s-0); min-width: 0; }
+.scwr-named { display: flex; align-items: baseline; gap: var(--s-1); min-width: 0; }
 .scwr-named > .scwr-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scwr-flag { flex: none; font-size: 12px; line-height: 1; }
-.scwr-details { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.scwr-flag { flex: none; line-height: 1; }
+.scwr-details { display: flex; align-items: center; gap: var(--s-1); min-width: 0; }
 .scwr-details > .scwr-meta { flex: 1; min-width: 0; }
 .scwr-belt {
   --belt: var(--fg-3);
@@ -403,12 +453,10 @@
 .scwr-belt[data-belt='red'] { --belt: #b53b42; }
 .scwr-age {
   flex: none;
-  padding: 1px 6px;
+  padding: var(--s-0) var(--s-2);
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 10px;
-  font-weight: 700;
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -428,16 +476,10 @@
   display: grid;
   place-items: center;
   color: var(--fg-3);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
 }
 .scwr-name {
   color: var(--fg);
-  font-size: 13.5px;
   font-weight: 600;
-  letter-spacing: -0.003em;
   overflow-wrap: anywhere;
   text-decoration: none;
 }
@@ -446,20 +488,19 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
    height. One line always, the full text on hover. */
 .scwr-meta {
   color: var(--fg-3);
-  font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .scwr-detail .scwr-meta { white-space: normal; overflow-wrap: anywhere; }
-.scwr-agree { font-weight: 600; font-size: 12px; }
+.scwr-agree { font-weight: 600; }
 .scwr-gap { color: var(--accent); }
 
 /* ── Win-type bar ───────────────────────────────────────────────────────── */
-.scwr-bar { display: grid; gap: 4px; min-width: 0; }
+.scwr-bar { display: grid; gap: var(--s-1); min-width: 0; }
 .scwr-bar-track {
   display: flex;
-  gap: 2px;
+  gap: var(--s-0);
   height: 6px;
   border-radius: 3px;
   overflow: hidden;
@@ -472,33 +513,30 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 .scwr-seg-walkover { background: var(--win-walkover); }
 .scwr-bar-legend {
   color: var(--fg-3);
-  font-size: 10.5px;
-  line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 /* ── Expanded row ───────────────────────────────────────────────────────── */
-.scwr-detail > td { padding: 2px 20px 12px 44px; background: var(--accent-soft); text-align: left; }
-.scwr-detail-grid { display: grid; gap: 6px; }
-.scwr-detail-row { display: grid; grid-template-columns: 9px minmax(0, 1fr); align-items: baseline; gap: 3px 8px; }
+.scwr-detail > td { padding: var(--s-0) var(--pad) var(--s-3) 44px; background: var(--accent-soft); text-align: left; }
+.scwr-detail-grid { display: grid; gap: var(--s-2); }
+.scwr-detail-row { display: grid; grid-template-columns: 9px minmax(0, 1fr); align-items: baseline; gap: var(--s-1) var(--s-2); }
 .scwr-detail-row > .scwr-name, .scwr-detail-row > .scwr-meta { grid-column: 2; }
-.scwr-detail-row > .scwr-name { font-size: 12.5px; }
 .scwr-pip { width: 7px; height: 7px; border-radius: 50%; align-self: center; }
 .scwr-pip.scwr-medal-0 { background: var(--gold); }
 .scwr-pip.scwr-medal-1 { background: var(--silver); }
 .scwr-pip.scwr-medal-2 { background: var(--bronze); }
 
 /* ── Empty & loading ────────────────────────────────────────────────────── */
-.scwr-empty-row td { padding: 34px 20px; text-align: center; }
-.scwr-empty { display: grid; gap: 4px; justify-items: center; }
-.scwr-empty-title { margin: 0; color: var(--fg); font-size: 14px; font-weight: 600; }
+.scwr-empty-row td { padding: var(--s-7) var(--pad); text-align: center; }
+.scwr-empty { display: grid; gap: var(--s-1); justify-items: center; }
+.scwr-empty-title { margin: 0; color: var(--fg); }
 .scwr-empty .scwr-meta { max-width: 46ch; }
 .scwr-shimmer {
   display: block;
   height: 9px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--hover);
 }
 .scwr-skeleton { cursor: default; }
@@ -510,27 +548,26 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 14px;
-  padding: 13px 20px;
+  gap: var(--s-3) var(--s-4);
+  padding: var(--s-3) var(--pad);
 }
-.scwr-note { margin: 0; flex: 1 1 240px; color: var(--fg-3); font-size: 11.5px; }
+.scwr-note { margin: 0; flex: 1 1 240px; color: var(--fg-3); }
 .scwr-key {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: var(--s-1) var(--s-3);
   margin: 0;
   padding: 0;
   list-style: none;
   color: var(--fg-3);
-  font-size: 10.5px;
 }
-.scwr-key li { display: flex; align-items: center; gap: 5px; }
+.scwr-key li { display: flex; align-items: center; gap: var(--s-1); }
 .scwr-key .scwr-seg { width: 12px; height: 6px; border-radius: 2px; }
 .scwr-official {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  padding: 13px 20px;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--pad);
   border-top: 1px solid var(--line);
   background: var(--raised);
   border-radius: 0 0 var(--radius) var(--radius);
@@ -539,7 +576,7 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 /* ── Inline notes on the official results ───────────────────────────────── */
 .scwr-bracket-size {
   margin-left: 0.5em;
-  font-size: 0.68em;
+  font-size: 0.7em;
   font-weight: 600;
   letter-spacing: 0.04em;
   opacity: 0.5;
@@ -552,16 +589,140 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
   gap: 4px 12px;
   margin-top: 6px;
   clear: both;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 0.78em;
   line-height: 1.4;
   text-transform: none;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 .scwr-chip { display: inline-flex; align-items: baseline; gap: 4px; }
-.scwr-chip b { font-size: 12px; font-weight: 700; }
+.scwr-chip b { font-weight: 700; }
 .scwr-chip span { opacity: 0.62; }
+
+/* ── Academy head-to-head ──────────────────────────────────────────────── */
+.scwr-matchup-slot:empty { display: none; }
+.scwr-matchup-slot { border-bottom: 1px solid var(--line); }
+.scwr-h2h { padding: var(--s-5) var(--pad); }
+.scwr-h2h-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.scwr-h2h-head h3 { margin: 0; color: var(--fg); }
+.scwr-h2h-head p { margin-top: var(--s-1); }
+.scwr-h2h-filters { display: flex; flex-wrap: wrap; align-items: end; justify-content: flex-end; gap: var(--s-3) var(--s-4); }
+.scwr-h2h-age { flex: 0 0 92px; }
+.scwr-h2h-types { flex: 0 1 auto; }
+.scwr-h2h-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--s-3);
+}
+.scwr-h2h-controls .scwr-h2h-swap { min-width: 58px; }
+.scwr-h2h-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 118px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-4);
+  margin: var(--s-5) calc(-1 * var(--pad)) 0;
+  padding: var(--pad);
+  border-block: 1px solid var(--line);
+  background: var(--raised);
+}
+.scwr-h2h-side { min-width: 0; }
+.scwr-h2h-side-b { text-align: right; }
+.scwr-h2h-side h4 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0;
+  min-width: 0;
+  color: var(--fg);
+  font-weight: 700;
+}
+.scwr-h2h-side-b h4 { flex-direction: row-reverse; }
+.scwr-h2h-side-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scwr-h2h-leads {
+  flex: none;
+  color: var(--accent);
+}
+.scwr-h2h-side-result { margin: var(--s-2) 0 0; color: var(--fg-2); }
+.scwr-h2h-side-result strong { color: var(--fg); }
+.scwr-h2h-lead, .scwr-h2h-winner { color: var(--accent) !important; }
+.scwr-h2h-side-mix {
+  margin: var(--s-1) 0 0;
+  overflow: hidden;
+  color: var(--fg-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scwr-h2h-aggregate { display: grid; justify-items: center; text-align: center; }
+.scwr-h2h-aggregate > small, .scwr-h2h-points > span { color: var(--fg-2); }
+/* Each figure carries its own verdict: the leading side in accent, the trailing
+   side stepped back. `LEADS` beside the academy name is the reading that does not
+   depend on colour. */
+.scwr-h2h-aggregate strong { display: flex; align-items: baseline; margin: var(--s-1) 0; color: var(--fg); }
+.scwr-h2h-dash { margin: 0 1px; color: var(--fg-3); font-style: normal; }
+.scwr-h2h-trails { color: var(--fg-2); }
+.scwr-h2h-points { display: flex; align-items: baseline; gap: var(--s-2); margin: var(--s-2) 0 0; }
+.scwr-h2h-aggregate .scwr-h2h-points strong { margin: 0; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.scwr-h2h-ledger { margin-top: var(--s-2); padding: 0; }
+.scwr-h2h-match {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(100px, 1.3fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 46px;
+  border-top: 1px solid var(--line);
+}
+.scwr-h2h-person {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  width: max-content;
+  max-width: 100%;
+  margin-left: calc(-1 * var(--s-2));
+  padding: var(--s-1) var(--s-2);
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  color: var(--fg-2);
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scwr-h2h-person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The winner pill is already accent-soft; a second soft pill inside it would vanish. */
+.scwr-h2h-person .scwr-age { padding: 0; background: none; color: var(--fg-3); }
+.scwr-h2h-person .scwr-belt { width: 18px; height: 7px; }
+.scwr-h2h-person:last-child { justify-self: end; margin-right: calc(-1 * var(--s-2)); margin-left: 0; text-align: right; }
+.scwr-h2h-person.scwr-h2h-winner { background: var(--accent-soft); font-weight: 700; }
+.scwr-h2h-winner-label { flex: none; color: var(--accent); }
+a.scwr-h2h-person:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.scwr-h2h-match-detail { position: relative; display: grid; justify-items: center; min-width: 0; color: var(--fg-2); text-align: center; }
+.scwr-h2h-division { max-width: 100%; overflow: hidden; color: inherit; text-overflow: ellipsis; white-space: nowrap; }
+.scwr-h2h-match-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-top: var(--s-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.scwr-h2h-match-outcome .scwr-seg { width: 13px; height: 5px; flex: none; border-radius: 2px; }
+.scwr-h2h-match-outcome strong { flex: none; color: var(--fg); }
+.scwr-h2h-match-facts {
+  overflow: hidden;
+  color: var(--fg-2);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scwr-h2h-empty { margin: 0; padding: var(--s-6) var(--s-3); border-top: 1px solid var(--line); color: var(--fg-2); text-align: center; }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @container scwr (max-width: 1080px) {
@@ -576,23 +737,34 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
   .scwr-table { min-width: 580px; }
 }
 @container scwr (max-width: 620px) {
-  .scwr-head, .scwr-tabs, .scwr-tools, .scwr-status, .scwr-foot, .scwr-official { padding-inline: 14px; }
-  .scwr-table :is(.scwr-rank-head, .scwr-rank) { padding-left: 14px; }
-  .scwr-table :is(td, th):last-child { padding-right: 14px; }
-  .scwr-detail > td { padding-left: 38px; padding-right: 14px; }
+  /* An element is never matched by its own container query, so the narrow
+     gutter lands on the children that read it rather than on .scwr-results. */
+  .scwr-results > * { --pad: var(--s-3); }
+  .scwr-table :is(.scwr-rank-head, .scwr-rank) { padding-left: var(--s-3); }
+  .scwr-detail > td { padding-left: 38px; }
   .scwr-tools { display: grid; grid-template-columns: 1fr 1fr; }
   .scwr-field-grow, .scwr-field-wide { grid-column: 1 / -1; }
   .scwr-col-biggest, .scwr-col-athletes { display: none; }
   .scwr-table { min-width: 560px; }
+  .scwr-h2h-head { align-items: start; }
+  .scwr-h2h-head > .scwr-h2h-types { width: 100%; }
+  .scwr-h2h-controls { grid-template-columns: 1fr auto; }
+  .scwr-h2h-controls .scwr-h2h-field:first-child { grid-column: 1 / -1; }
+  .scwr-h2h-controls .scwr-h2h-field:last-child { grid-column: 1; }
+  .scwr-h2h-summary { grid-template-columns: minmax(0, 1fr) 76px minmax(0, 1fr); gap: var(--s-2); padding-block: var(--s-4); }
+  .scwr-h2h-side h4 { white-space: normal; }
+  .scwr-h2h-match { grid-template-columns: minmax(0, 1fr) 86px minmax(0, 1fr); gap: var(--s-2); }
+  .scwr-h2h :is(select, .scwr-btn, .scwr-chip-toggle) { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .scwr-tab::after { transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: left; }
   .scwr-results :is(.scwr-btn, .scwr-tab, .scwr-sort, .scwr-name) { transition: color 0.15s ease, background-color 0.15s ease; }
   .scwr-row > td { transition: background-color 0.15s ease; }
-  .scwr-age-suffix { transition: opacity 0.15s ease; }
   .scwr-shimmer { animation: scwr-pulse 1.4s ease-in-out infinite; }
+  .scwr-h2h-lab { animation: scwr-h2h-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both; }
   @keyframes scwr-pulse { 50% { opacity: 0.4; } }
+  @keyframes scwr-h2h-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 }
 @media (hover: hover) and (pointer: fine) {
   .scwr-btn:hover:not(:disabled) { border-color: var(--fg-3); background: var(--hover); }
