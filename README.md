@@ -5,8 +5,8 @@ own match list, and adds the views the site doesn't have.
 
 Smoothcomp's published win rate counts walkovers as wins, so an athlete who advanced
 on two no-shows reads the same as one who submitted two opponents. This extension
-refetches the event's match list, recounts every record under the win types you choose,
-and shows the result on three pages.
+reads every match off the event's schedule, live or finished, recounts every record under
+the win types you choose, and shows the result on the results page.
 
 ## What it adds
 
@@ -17,10 +17,6 @@ publishes and the results page drops. A minimum-age filter uses those registrati
 division names while gi and no-gi stay combined, and a belt filter narrows every table to the
 grades you keep switched on — one chip per grade the event published, with the spellings of a
 colour folded together. Search reaches countries as well as names, academies and divisions. Every athlete in the official list below gets their record inline.
-
-**Team rankings (toplist)** — a Win rate column, with the site's own Wins/Losses columns kept
-in step with the win types you're counting. Click any academy to fade out everyone with a
-thinner sample than theirs.
 
 **Participants page** — unrolls the infinite scroll and shows every bracket at once, biggest first.
 
@@ -36,10 +32,9 @@ No build step. Clone, then load it unpacked:
 | File | What it is |
 | --- | --- |
 | `site.js` | Everything that knows what Smoothcomp is: win-type vocabulary, URL shapes, the versioned store, the Vue view-model adapter |
-| `matches.js` | Fetches and parses the event's match list; infers which age group a toplist covers |
-| `model.js` | Pure joins — matches to published placements, then athlete, academy and bracket leaderboards |
+| `matches.js` | Reads every match off the event's schedule, one request per mat |
+| `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
-| `toplist.js` | The team-rankings Win rate column |
 | `participants.js` | The participants page |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
@@ -62,8 +57,11 @@ done
 npm test
 ```
 
-No dependencies. `parsePage` needs a DOM and so skips by default; install `linkedom` or
-`jsdom` as a dev dependency and it runs.
+No dependencies. The tests replay two real events through the extension's own loading,
+caching and joining code: a finished Grappling Industries event (25901), and ADCC Amateur
+Worlds (29650) recorded mid-event. `tests/fixtures/` holds what
+Smoothcomp served, trimmed to the fields the extension reads, with every competitor renamed
+and renumbered.
 
 ## Notes
 

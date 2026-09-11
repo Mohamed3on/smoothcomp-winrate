@@ -10,7 +10,7 @@
     // Belts are held as the grades left *out*, not the ones kept: an allowlist
     // saved at a gi event would empty the table at a no-gi one graded by level.
     beltsOff: [],
-    // Same default as the team rankings page: every decided win type but walkovers.
+    // Every decided win type but walkovers, which are forfeits, not contests.
     types: WIN_TYPES.filter((t) => t !== 'walkover'),
     limit: 25, bracketSort: 'placement', open: new Set(),
     matchupOpen: false,
@@ -448,10 +448,12 @@
   }
 
   // Stored preferences name the grades left out, so the allowlist is rebuilt
-  // against whatever this event actually published.
-  const activeBelts = () => (state.beltsOff.length
-    ? beltChoices.filter((option) => !state.beltsOff.includes(option.key)).map((option) => option.key)
-    : null);
+  // against whatever this event actually published. A grade switched off at
+  // another event and absent from this one restricts nothing.
+  const activeBelts = () => {
+    const counted = beltChoices.filter((option) => !state.beltsOff.includes(option.key)).map((option) => option.key);
+    return counted.length < beltChoices.length ? counted : null;
+  };
   const key = panel.querySelector('.scwr-key');
   key.replaceChildren(...WIN_TYPES.map((type) => {
     const item = el('li');
@@ -488,13 +490,10 @@
     // zero–zero. Count actual cross-academy pairings once and open the busiest
     // rivalry in this event; explicit selections remain sticky after that.
     const pairCounts = new Map();
-    const countedMatches = new Set();
     for (const match of eventMatches) {
-      if (countedMatches.has(match.id)) continue;
-      countedMatches.add(match.id);
-      if (match.sides?.length !== 2) continue;
+      if (match.sides.length !== 2) continue;
       const winners = match.sides.filter((side) => side.won);
-      if (winners.length !== 1 || winners[0].won === 'bye' || !state.types.includes(winners[0].won)) continue;
+      if (winners.length !== 1 || !state.types.includes(winners[0].won)) continue;
       if (match.sides.some((side) => !matchupSideAllowed(side))) continue;
       const clubs = match.sides.map((side) => exact(side.club)).filter(Boolean);
       if (clubs.length !== 2 || clubs[0] === clubs[1]) continue;
@@ -511,12 +510,7 @@
   function matchupSideAllowed(side) {
     const belts = activeBelts();
     if (!state.minimumAge && !belts) return true;
-    let athlete = side.userId ? model.athletes.get(`user:${side.userId}`) : null;
-    if (!athlete) {
-      const candidates = [...model.athletes.values()].filter((person) =>
-        normalize(person.name) === normalize(side.name) && normalize(person.club) === normalize(side.club));
-      athlete = candidates.length === 1 ? candidates[0] : null;
-    }
+    const athlete = model.athletes.get(`user:${side.userId}`);
     return Boolean(athlete) && SCWRModel.eligible(athlete, { minimumAge: state.minimumAge, belts });
   }
 
@@ -735,7 +729,7 @@
     const fetched = read.filter(({ entry }) => !cache[entry.id]);
     for (const { entry, data } of fetched) cache[entry.id] = data;
     if (fetched.length) {
-      SCWRSite.store.write(DETAIL_KEY, { details: cache }, eventMatches.every((m) => m.status === 'Finished'));
+      SCWRSite.store.write(DETAIL_KEY, { details: cache }, eventMatches.every((m) => m.finished));
     }
     for (const { entry, data, sides } of read) {
       if (entry.node.isConnected) entry.node.textContent = matchFacts(sides, data);
@@ -1061,19 +1055,23 @@
       if (unknownAges) parts.push(`${unknownAges} unknown ${unit(unknownAges, 'age')} excluded`);
     }
     if (model.unresolved) parts.push(`${model.unresolved} undecided ${unit(model.unresolved, 'match', 'matches')} excluded`);
-    // Two very different situations used to share one warning. A fought match
-    // that will not attach to a bracket really does leave a record short. A
-    // walkover against someone missing from the published results does not:
-    // the winner is credited, and the absentee has no record to shorten.
+    // Three very different situations, and only one leaves a record short. A
+    // division still being fought has no published results to join yet. A
+    // walkover against someone the results never list shortens nobody: the
+    // winner is credited, and the absentee has no record. A fought match that
+    // will not attach to its published bracket is the real shortfall.
     const notes = [];
-    if (model.unmatchedContested) {
-      parts.push(`${model.unmatchedContested} fought ${unit(model.unmatchedContested, 'match', 'matches')} unmatched`);
-      notes.push(`${model.unmatchedContested} contested ${unit(model.unmatchedContested, 'match', 'matches')} could not be attached to any published bracket, so the records involved are short by that much.`);
+    if (model.unpublished) {
+      parts.push(`${model.unpublished} ${unit(model.unpublished, 'match', 'matches')} in divisions not yet published`);
+      notes.push(`${model.unpublished} decided ${unit(model.unpublished, 'match', 'matches')} belong to divisions Smoothcomp has not published results for yet. They join the tables once it does.`);
     }
-    const noShows = model.unmatched - model.unmatchedContested;
-    if (countsWalkovers && noShows) {
-      parts.push(`${noShows} ${unit(noShows, 'walkover')} against a no-show`);
-      notes.push(`${noShows} ${unit(noShows, 'walkover')} were awarded against competitors who never appear in the published results — withdrawals and no-shows. The walkover win is still counted for the athlete who received it; there is simply nobody on the other side to record the loss against.`);
+    if (model.unmatched) {
+      parts.push(`${model.unmatched} fought ${unit(model.unmatched, 'match', 'matches')} unmatched`);
+      notes.push(`${model.unmatched} contested ${unit(model.unmatched, 'match', 'matches')} could not be attached to their published bracket, so the records involved are short by that much.`);
+    }
+    if (countsWalkovers && model.noShows) {
+      parts.push(`${model.noShows} ${unit(model.noShows, 'walkover')} against a no-show`);
+      notes.push(`${model.noShows} ${unit(model.noShows, 'walkover')} were awarded against competitors who never appear in the published results — withdrawals and no-shows. The walkover win is still counted for the athlete who received it; there is simply nobody on the other side to record the loss against.`);
     }
     status.textContent = parts.join(' · ');
     status.title = notes.join('\n\n');
@@ -1166,11 +1164,12 @@
     return data.eventResults;
   }
 
-  // Ages, belts and photos live only in the registration list. They are a bonus,
-  // so a failure here must never cost the reader the standings.
-  async function fetchRoster() {
+  // Ages, belts and photos live only in the registration list, and so does which
+  // user each scheduled side belongs to. Without it the joins fall back to name
+  // and academy, so a failure here must never cost the reader the standings.
+  async function fetchParticipants() {
     try {
-      return SCWRModel.roster(await post(SCWRSite.url.data(EVENT_ID, 'participants'), 'Participants'));
+      return await post(SCWRSite.url.data(EVENT_ID, 'participants'), 'Participants');
     } catch {
       return null;
     }
@@ -1198,12 +1197,12 @@
     renderHead();
     skeleton();
     try {
-      const [results, data, people] = await Promise.all([
-        fetchResults(), SCWRMatches.loadEvent((done, total) => { status.textContent = `Reading the match list · page ${done} of ${total}`; }, { refresh }),
-        fetchRoster(),
+      const [results, data, participants] = await Promise.all([
+        fetchResults(), SCWRMatches.loadEvent((done, total) => { status.textContent = `Reading the match list · mat ${done} of ${total}`; }, { refresh }),
+        fetchParticipants(),
       ]);
-      eventMatches = data.matches;
-      model = SCWRModel.attachRoster(SCWRModel.build(results, data.matches), people);
+      model = SCWRModel.build(results, data.matches, participants);
+      eventMatches = model.matches;
       updatedAt = data.at;
       buildBeltChips();
       rebuildSummaries();

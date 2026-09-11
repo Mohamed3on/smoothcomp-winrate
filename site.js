@@ -5,7 +5,6 @@ const SCWRSite = (() => {
   // Canonical order, most decisive finish first. Other sports bring their own
   // (ippon, tko, ...) and sort after these.
   const WIN_TYPES = ['submission', 'points', 'decision', 'disqualification', 'walkover'];
-  const isYouth = (name) => /^(Gi|No Gi)\s+(Kids|Teens)/i.test(name);
 
   // Smoothcomp uses ISO alpha-2 for countries and its own codes for a handful of
   // regions. Unicode has flag glyphs for only four of those — the three British
@@ -39,10 +38,9 @@ const SCWRSite = (() => {
   const id = (kind, href) => String(href ?? location.pathname).match(`/${kind}/(\\d+)`)?.[1] ?? null;
 
   const url = {
-    // Links follow the reader; anything the extension parses is pinned to
-    // English, because every parser here reads English — "Won by Submission",
-    // "Finished", "No Gi Kids". A German event serves "Gewonnen nach Punkten",
-    // which types no win at all and leaves every leaderboard empty.
+    // Links follow the reader; anything the extension reads is pinned to
+    // English, because the labels it matches are English — "No Gi Kids" in a
+    // division name, "Belt" in the registration list.
     data: (event, ...rest) => [`/en/event/${event}`, ...rest].join('/'),
     bracket: (event, bracket) => `/${locale()}/event/${event}/bracket/${bracket}`,
     match: (match) => `https://smoothcomp.com/${locale()}/getBracketMatchData/${match}`,
@@ -52,7 +50,7 @@ const SCWRSite = (() => {
 
   // One version stamp, one expiry rule, one place that survives a full disk.
   // Preferences use get/set and never expire; match data uses read/write and does.
-  const VERSION = 4;
+  const VERSION = 5;
   const FINAL_TTL = 12 * 60 * 60 * 1000;
   const LIVE_TTL = 5 * 60 * 1000;
   const store = {
@@ -106,5 +104,5 @@ const SCWRSite = (() => {
     },
   };
 
-  return { WIN_TYPES, isYouth, flag, locale, url, store, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href), clubId: (href) => id('club', href) };
+  return { WIN_TYPES, flag, locale, url, store, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href) };
 })();

@@ -6,9 +6,12 @@ const SCWRModel = (() => {
   const athleteKey = (p, bracketId) => p.target?.user_id
     ? `user:${p.target.user_id}` : `placement:${bracketId}:${p.id}`;
   const identity = (name, club) => `${normalize(name)}\0${normalize(club)}`;
-  const category = (name) => normalize(name).replace(/\s*\(day\s+\d+\)\s*$/, '');
 
-  function build(results, matches) {
+  // One event, joined: the published results, the schedule's matches, and the
+  // registration list, which says whose each scheduled side is and carries the
+  // ages, belts and photos the results leave out. Without the list, sides join
+  // by name and academy, and nobody has an age or a belt.
+  function build(results, schedule, participants = null) {
     const athletes = new Map();
     const brackets = new Map();
     const categories = new Map();
@@ -38,21 +41,22 @@ const SCWRModel = (() => {
         athletes.set(key, athlete);
       }
       brackets.set(id, bracket);
-      const siblings = categories.get(category(bracket.name)) ?? [];
+      const siblings = categories.get(normalize(bracket.name)) ?? [];
       siblings.push(bracket);
-      categories.set(category(bracket.name), siblings);
+      categories.set(normalize(bracket.name), siblings);
     }
-    let unmatched = 0;
-    let unmatchedContested = 0;
+    attachRoster(athletes, roster(participants));
+    const matches = identify(schedule, participants, athletes);
     let walkovers = 0;
     let unresolved = 0;
     let completed = 0;
-    const seen = new Set();
+    // Decided matches the tables cannot show yet, or can show only one side of.
+    let unpublished = 0;
+    let noShows = 0;
+    let unmatched = 0;
     for (const match of matches) {
-      if (seen.has(match.id)) continue;
-      seen.add(match.id);
       const winners = match.sides.filter((s) => s.won);
-      if (winners.length !== 1 || match.sides.length !== 2 || winners[0].won === 'bye') {
+      if (winners.length !== 1 || match.sides.length !== 2) {
         unresolved++;
         continue;
       }
@@ -62,47 +66,51 @@ const SCWRModel = (() => {
       // Round-robin pools can link to a different bracket ID than the final
       // published placement list. Join those pools by the exact division name,
       // only when it identifies one published result bracket.
-      const categoryMatches = categories.get(category(match.cat)) ?? [];
+      const categoryMatches = categories.get(normalize(match.cat)) ?? [];
       const bracket = brackets.get(String(match.bracketId)) ?? (categoryMatches.length === 1 ? categoryMatches[0] : null);
+      // Mid-event, a division is fought before its results are published.
+      if (!bracket) { unpublished++; continue; }
+      let attached = 0;
       for (const side of match.sides) {
         let key = side.userId ? `user:${side.userId}` : null;
         if (!key) {
-          const candidates = bracket?.names.get(identity(side.name, side.club)) ?? [];
+          const candidates = bracket.names.get(identity(side.name, side.club)) ?? [];
           if (candidates.length === 1) key = candidates[0];
         }
-        const entry = bracket?.entries.get(key);
-        if (!entry) { unmatched++; if (!isWalkover) unmatchedContested++; continue; }
+        const entry = bracket.entries.get(key);
+        if (!entry) continue;
+        attached++;
         const bucket = side === winners[0] ? entry.wins : entry.losses;
         bucket[winners[0].won] = (bucket[winners[0].won] ?? 0) + 1;
       }
+      if (attached < 2) {
+        if (isWalkover) noShows++;
+        else unmatched++;
+      }
     }
-    return { athletes, brackets, unmatched, unmatchedContested, unresolved, completed, walkovers, fought: completed - walkovers };
+    return { athletes, brackets, matches, unpublished, noShows, unmatched, unresolved, walkovers, fought: completed - walkovers };
   }
 
   // Every direct meeting between two named academies, plus the aggregate record.
   // This works from the match feed rather than the published placements so the
   // ledger and its total can never disagree about which bouts were counted.
-  function headToHead(matches, academyA, academyB, types = null, includeSide = null) {
+  function headToHead(matches, academyA, academyB, types, includeSide = null) {
     const names = [String(academyA ?? ''), String(academyB ?? '')];
     const keys = names.map(normalize);
-    const allowed = types ? new Set(types) : null;
     const sides = names.map((name) => ({ name, wins: 0, types: {} }));
     const meetings = [];
-    const seen = new Set();
 
     if (!keys[0] || !keys[1] || keys[0] === keys[1]) return { a: sides[0], b: sides[1], total: 0, matches: meetings };
 
-    for (const match of matches ?? []) {
-      if (seen.has(match.id)) continue;
-      seen.add(match.id);
-      if (match.sides?.length !== 2) continue;
+    for (const match of matches) {
+      if (match.sides.length !== 2) continue;
       const indexed = match.sides.map((side) => ({ side, academy: keys.indexOf(normalize(side.club)) }));
       if (indexed.some(({ academy }) => academy < 0) || indexed[0].academy === indexed[1].academy) continue;
       if (includeSide && indexed.some(({ side }) => !includeSide(side))) continue;
       const winners = indexed.filter(({ side }) => side.won);
-      if (winners.length !== 1 || winners[0].side.won === 'bye') continue;
+      if (winners.length !== 1) continue;
       const winType = winners[0].side.won;
-      if (allowed && !allowed.has(winType)) continue;
+      if (!types.includes(winType)) continue;
       const winner = winners[0];
       const loser = indexed.find(({ side }) => side !== winner.side);
       sides[winner.academy].wins++;
@@ -115,11 +123,11 @@ const SCWRModel = (() => {
     }
     // The ledger reads in the incumbent finish order the aggregate bar and the
     // win-type chips already use, so the marker column scans top to bottom the
-    // way the bar scans left to right. Divisions group under it — day 1 and day
-    // 2 of one bracket together — and match order settles the rest.
+    // way the bar scans left to right. Divisions group under it, and match order
+    // settles the rest.
     const rank = (t) => (SCWRSite.WIN_TYPES.indexOf(t) < 0 ? SCWRSite.WIN_TYPES.length : SCWRSite.WIN_TYPES.indexOf(t));
     meetings.sort((x, y) => rank(x.winType) - rank(y.winType)
-      || category(x.category).localeCompare(category(y.category))
+      || normalize(x.category).localeCompare(normalize(y.category))
       || (Number(x.id) || 0) - (Number(y.id) || 0));
     return { a: sides[0], b: sides[1], total: meetings.length, matches: meetings };
   }
@@ -145,13 +153,10 @@ const SCWRModel = (() => {
     podiums: medals[0] + medals[1] + medals[2],
   });
 
-  // `types` is an explicit allowlist of win types; without one, everything but
-  // byes counts, and walkovers only when asked for.
-  function summarize(athlete, model, { walkovers = false, types = null, bracketIds = null } = {}) {
+  // `types` is the allowlist of win types that count.
+  function summarize(athlete, model, { types, bracketIds = null }) {
     const entries = athlete.entries.filter((e) => !bracketIds || bracketIds.has(e.bracketId));
-    const skip = (type) => (types
-      ? !types.includes(type)
-      : (type === 'walkover' && !walkovers) || type === 'bye');
+    const skip = (type) => !types.includes(type);
     const counts = (bucket) => Object.entries(bucket).reduce((n, [type, count]) =>
       n + (skip(type) ? 0 : count), 0);
     const tally = (pick) => {
@@ -177,8 +182,9 @@ const SCWRModel = (() => {
   }
 
   // The participants payload is the only place Smoothcomp publishes a real age, a
-  // belt or a photo for everyone who entered; the results payload carries none of
-  // it. Registrations repeat per division, so the first one for a user wins.
+  // belt or a photo for everyone who entered, and the academy of everyone the
+  // results leave without one. Registrations repeat per division, so the first
+  // one for a user wins.
   function roster(payload) {
     const labels = new Map((payload?.categories ?? []).map((c) => [c.id, c]));
     // Organisers name the same field "Belt", "Level" or "Rank", depending on the
@@ -197,8 +203,9 @@ const SCWRModel = (() => {
         const age = r.age === null || r.age === '' ? NaN : Number(r.age);
         people.set(String(r.user_id), {
           age: Number.isFinite(age) ? age : null,
-          birth: r.birth || null,
           country: r.country || null,
+          club: r.clubName || null,
+          clubId: r.club_id ? String(r.club_id) : null,
           // A competitor with no photo still ships a placeholder URL, so the
           // image id is the only reliable test.
           photo: r.profile_image_id && r.profile_image && !/placeholder/i.test(r.profile_image)
@@ -210,10 +217,25 @@ const SCWRModel = (() => {
     return people;
   }
 
+  // The schedule names each side by its registration: the registration list says
+  // whose it is, and every side of an athlete counts for that athlete's academy,
+  // so the matchups and the academies table always agree. A side nobody can
+  // name keeps the club it registered with and falls back to name and academy.
+  function identify(schedule, participants, athletes) {
+    const users = new Map((participants?.participants ?? []).flatMap((group) => group.registrations ?? [])
+      .filter((r) => r.user_id).map((r) => [String(r.id), String(r.user_id)]));
+    return schedule.map((match) => ({
+      ...match, sides: match.sides.map((side) => {
+        const userId = users.get(side.registrationId) ?? null;
+        const athlete = athletes.get(`user:${userId}`);
+        return { ...side, userId, club: athlete ? athlete.club || null : side.club };
+      }),
+    }));
+  }
+
   // Fold the roster onto athletes already built from the published results.
-  function attachRoster(model, people) {
-    if (!people?.size) return model;
-    for (const athlete of model.athletes.values()) {
+  function attachRoster(athletes, people) {
+    for (const athlete of athletes.values()) {
       const entry = athlete.userId ? people.get(athlete.userId) : null;
       if (!entry) continue;
       athlete.age = entry.age;
@@ -222,8 +244,10 @@ const SCWRModel = (() => {
       athlete.countryName ||= entry.country;
       // Only fills a gap: a photo already in the results payload stays authoritative.
       if (!athlete.logo) athlete.logo = entry.photo;
+      // The results leave the academy blank until it approves the registration;
+      // the athlete still fights for it, and the bracket pages already say so.
+      if (!athlete.club && entry.club) [athlete.club, athlete.clubId] = [entry.club, entry.clubId];
     }
-    return model;
   }
 
   // One bracket entry's record under a win-type allowlist. Cheaper than a full
@@ -405,6 +429,6 @@ const SCWRModel = (() => {
     return rank(rows, sort, direction);
   }
 
-  return { build, headToHead, summarize, entryRecord, academies, roster, attachRoster, leaderboard, rank,
-    placements, athleteKey, normalize, beltTone, beltKey, beltOptions, eligible, METRICS };
+  return { build, headToHead, summarize, entryRecord, leaderboard, rank,
+    placements, athleteKey, normalize, beltTone, beltOptions, eligible };
 })();

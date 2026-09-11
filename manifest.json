@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Smoothcomp Win Rate",
   "version": "1.4",
-  "description": "Athlete leaders, medals, bracket sizes and match-based win rates on Smoothcomp results, team rankings and participant lists",
+  "description": "Athlete leaders, medals, bracket sizes and match-based win rates on Smoothcomp results and participant lists",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -10,21 +10,6 @@
     "128": "icons/icon128.png"
   },
   "content_scripts": [
-    {
-      "matches": [
-        "https://*.smoothcomp.com/*/toplist*",
-        "https://smoothcomp.com/*/toplist*"
-      ],
-      "js": [
-        "site.js",
-        "matches.js",
-        "toplist.js"
-      ],
-      "css": [
-        "toplist.css"
-      ],
-      "run_at": "document_idle"
-    },
     {
       "matches": [
         "https://*.smoothcomp.com/*/event/*/participants*",

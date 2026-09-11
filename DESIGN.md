@@ -109,9 +109,9 @@ components:
 
 **Creative North Star: "The Incumbent Competition Ledger"**
 
-This extension has no page of its own. It appears inside Smoothcomp — on a results page, on a rankings page — and its entire visual argument is that it belongs there. It recomputes an event's numbers from the published match list rather than trusting the site's own counters, and the credibility of that recount depends on looking like a native part of the page that produced it, not like a widget bolted on top.
+This extension has no page of its own. It appears inside Smoothcomp's results page, and its entire visual argument is that it belongs there. It recomputes an event's numbers from the published match list rather than trusting the site's own counters, and the credibility of that recount depends on looking like a native part of the page that produced it, not like a widget bolted on top.
 
-That produces a system with two registers, chosen by how much of the page the code owns. Where it owns a container — the Competition Leaders panel on a results page — it brings a complete token set scoped to `.scwr-results`, reads the host's real backdrop at runtime, and stamps `data-scwr-theme` so a light Smoothcomp and a dark Smoothcomp each get a panel built for them. Where it only injects cells into rows the site already drew — the rankings toplist — it declares almost no colour at all, painting in `currentColor` and translucent greys so it inherits whatever that row happens to be wearing.
+That produces a system with two registers, chosen by how much of the page the code owns. Where it owns a container — the Competition Leaders panel on a results page — it brings a complete token set scoped to `.scwr-results`, reads the host's real backdrop at runtime, and stamps `data-scwr-theme` so a light Smoothcomp and a dark Smoothcomp each get a panel built for them. Where it only injects cells into rows the site already drew — the records inline on the official results — it declares almost no colour at all, painting in `currentColor` and translucent greys so it inherits whatever that row happens to be wearing.
 
 Everything else follows from density. This is a statistics panel read by someone scanning for a name or a record, so it is flat, tabular and quiet: 1px rules and tonal layering instead of shadows, one restrained accent, and colour used to encode meaning rather than to decorate. The expressive budget is spent on the two things that carry information — the win-type ramp and the accent — and nowhere else.
 
@@ -195,8 +195,7 @@ The panel is a rounded 10px card with 20px padding, and it establishes `containe
 
 Tables use `table-layout: fixed` with a per-view set of column-width custom properties that sum to 100%. Extra width is therefore distributed proportionally across every column rather than handed to whichever cell holds the longest string, and a hidden column's share redistributes the same way.
 
-The head-to-head band is a three-column composition — academy one, a fixed 118px centre, academy two — laid on a raised ground that bleeds to the panel's edges. Each ledger row repeats that alignment, with the two athletes at the edges and the division, finish and score in the middle. The rankings toplist has no layout of its own: it inserts cells into Smoothcomp's existing flex rows, and only adjusts the site's gutters when they would truncate a name.
-
+The head-to-head band is a three-column composition — academy one, a fixed 118px centre, academy two — laid on a raised ground that bleeds to the panel's edges. Each ledger row repeats that alignment, with the two athletes at the edges and the division, finish and score in the middle.
 ### Named Rules
 
 **The Container Rule.** No `@media (max-width)` describes this panel's layout. If a rule reacts to width, it asks `@container scwr`.
@@ -269,13 +268,9 @@ A 6px clipped track whose segments are flex-grown by count in the fixed ramp ord
 - **The record** (28px) is the centre and the verdict: its leading digit is accent, its trailing digit steps back to `secondary-ink`, and the en dash between them is muted. Under it sit the match count and a `POINTS` line built by the same rule — so when wins and points disagree, the accent flips between the two lines and the split is visible without reading either number.
 - **Ledger rows:** athlete, then the division link over a finish marker and the score, then athlete. The winner's name takes the `accent-soft` pill and an uppercase `WINNER`. Scores are read in the row's own left-to-right direction, never in Smoothcomp's bracket-seeding order.
 
-### Rankings Toplist
-
-Cells injected into Smoothcomp's own ranking rows: a centred figure with an uppercase label, a 3px `currentColor` bar on a translucent grey track, and a win/loss mix in green and red. A pill toolbar above the list carries the win-type filters. Nothing here uses a panel token, and an adjusted win rate is marked with an asterisk on its label rather than with a colour.
-
 ### Named Rules
 
-**The Second Reading Rule.** Every state that colour communicates also exists in text or shape. The winner has a `WINNER` label, the leader has `LEADS`, the sorted column has a caret, the adjusted rate has an asterisk. Remove all colour and the panel still reports correctly.
+**The Second Reading Rule.** Every state that colour communicates also exists in text or shape. The winner has a `WINNER` label, the leader has `LEADS`, the sorted column has a caret. Remove all colour and the panel still reports correctly.
 
 ## Do's and Don'ts
 
