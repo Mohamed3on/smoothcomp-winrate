@@ -1,12 +1,15 @@
 // Keep the official results, with a sortable competition table above and records
 // inline. Every number here is recomputed from the event's own match list.
 (() => {
-  const { placements, athleteKey, normalize } = SCWRModel;
+  const { placements, athleteKey, normalize, beltTone } = SCWRModel;
   const { WIN_TYPES } = SCWRSite;
   const EVENT_ID = SCWRSite.eventId();
   const counting = () => ({ types: state.types });
   const state = {
     view: 'athletes', sort: 'wins', direction: -1, search: '', minimum: 1, minimumAge: 0,
+    // Belts are held as the grades left *out*, not the ones kept: an allowlist
+    // saved at a gi event would empty the table at a no-gi one graded by level.
+    beltsOff: [],
     // Same default as the team rankings page: every decided win type but walkovers.
     types: WIN_TYPES.filter((t) => t !== 'walkover'),
     limit: 25, bracketSort: 'placement', open: new Set(),
@@ -14,6 +17,7 @@
     academyA: '', academyB: '',
   };
   let model = null;
+  let beltChoices = [];
   let eventMatches = [];
   let academyNames = [];
   const matchDetails = new Map();
@@ -149,13 +153,6 @@
     return line;
   };
 
-  const BELT_TONES = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black', 'red'];
-  const beltTone = (belt) => {
-    const value = String(belt ?? '').toLowerCase().replace('gray', 'grey');
-    const words = new Set(value.match(/[a-z]+/g) ?? []);
-    return BELT_TONES.find((tone) => words.has(tone)) ?? null;
-  };
-
   function beltSwatch(person) {
     const tone = beltTone(person?.belt);
     if (!tone) return null;
@@ -281,7 +278,7 @@
   // events and reloads. Search and expanded rows deliberately do not: a stored
   // search that hides everything is baffling on the next visit.
   const PREFS_KEY = 'results-prefs';
-  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'minimum', 'types', 'bracketSort',
+  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'minimum', 'types', 'beltsOff', 'bracketSort',
     'matchupOpen', 'academyA', 'academyB'];
 
   // Stored values are never trusted. A column can be renamed or dropped between
@@ -298,6 +295,7 @@
         ? Math.floor(saved.minimumAge) : undefined,
       minimum: Number.isFinite(saved.minimum) && saved.minimum >= 0 ? Math.floor(saved.minimum) : undefined,
       types: Array.isArray(saved.types) ? WIN_TYPES.filter((t) => saved.types.includes(t)) : undefined,
+      beltsOff: Array.isArray(saved.beltsOff) ? saved.beltsOff.filter((b) => typeof b === 'string') : undefined,
       matchupOpen: typeof saved.matchupOpen === 'boolean' ? saved.matchupOpen : undefined,
       academyA: typeof saved.academyA === 'string' ? saved.academyA : undefined,
       academyB: typeof saved.academyB === 'string' ? saved.academyB : undefined,
@@ -353,7 +351,8 @@
           <option value="5"></option><option value="10"></option><option value="20"></option>
         </datalist></label>
       <div class="scwr-field scwr-field-wide"><span id="scwr-types-label">Count these wins</span>
-        <div class="scwr-chips" role="group" aria-labelledby="scwr-types-label"></div></div>
+        <div class="scwr-chips scwr-type-chips" role="group" aria-labelledby="scwr-types-label"></div></div>
+      <div class="scwr-field scwr-field-wide scwr-belt-field" hidden><span>Include these belts</span></div>
     </div>
     <p class="scwr-status" role="status" aria-live="polite">Reading the match list…</p>
     <div class="scwr-scroll">
@@ -387,7 +386,8 @@
   const note = panel.querySelector('.scwr-note');
   const more = panel.querySelector('[data-action="more"]');
   table.dataset.view = state.view;
-  const chips = panel.querySelector('.scwr-chips');
+  const chips = panel.querySelector('.scwr-type-chips');
+  const beltField = panel.querySelector('.scwr-belt-field');
   chips.replaceChildren(...WIN_TYPES.map((type) => {
     const chip = el('button', undefined, 'scwr-chip-toggle');
     chip.type = 'button';
@@ -403,7 +403,55 @@
         ? `Counting ${WIN_LABEL[chip.dataset.type][1]}. Click to leave them out.`
         : `Ignoring ${WIN_LABEL[chip.dataset.type][1]}. Click to count them.`;
     }
+    // The toolbar and the head-to-head panel each hold a copy of the belt row;
+    // both answer to the same state, so both repaint here.
+    for (const chip of panel.querySelectorAll('.scwr-chip-toggle[data-belt]')) {
+      const on = !state.beltsOff.includes(chip.dataset.belt);
+      const option = beltChoices.find((choice) => choice.key === chip.dataset.belt);
+      const held = option?.count ?? 0;
+      const also = option?.labels.slice(1) ?? [];
+      chip.setAttribute('aria-pressed', String(on));
+      chip.title = [`${held} ${unit(held, 'athlete')}`, also.length ? `also counts ${also.join(', ')}` : null,
+        on ? 'Counted. Click to leave them out.' : 'Left out. Click to count them.'].filter(Boolean).join(' · ');
+    }
   }
+
+  // Grades are offered wherever the reader can act on them: the toolbar, and the
+  // head-to-head panel, which hides the toolbar while it is open.
+  function beltChipGroup(label) {
+    const group = el('div', undefined, 'scwr-chips scwr-belt-chips');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', label);
+    group.replaceChildren(...beltChoices.map((option) => {
+      const chip = el('button', undefined, 'scwr-chip-toggle');
+      chip.type = 'button';
+      chip.dataset.belt = option.key;
+      if (option.tone) {
+        const swatch = el('span', undefined, 'scwr-belt');
+        swatch.dataset.belt = option.tone;
+        chip.append(swatch);
+      }
+      chip.append(el('span', option.label));
+      return chip;
+    }));
+    return group;
+  }
+
+  // One event's grades, read once per load. Nothing to filter below two of them:
+  // an event graded by nobody would otherwise offer a chip that does nothing.
+  function buildBeltChips() {
+    beltChoices = model ? SCWRModel.beltOptions(model) : [];
+    beltField.hidden = beltChoices.length < 2;
+    beltField.querySelector('.scwr-belt-chips')?.remove();
+    if (!beltField.hidden) beltField.append(beltChipGroup('Belts counted in the standings'));
+    paintChips();
+  }
+
+  // Stored preferences name the grades left out, so the allowlist is rebuilt
+  // against whatever this event actually published.
+  const activeBelts = () => (state.beltsOff.length
+    ? beltChoices.filter((option) => !state.beltsOff.includes(option.key)).map((option) => option.key)
+    : null);
   const key = panel.querySelector('.scwr-key');
   key.replaceChildren(...WIN_TYPES.map((type) => {
     const item = el('li');
@@ -415,7 +463,7 @@
     if (!model) return;
     const ranked = SCWRModel.leaderboard(model, {
       table: 'academies', types: state.types, sort: 'wins', direction: -1,
-      minimum: 0, minimumAge: state.minimumAge, search: '',
+      minimum: 0, minimumAge: state.minimumAge, belts: activeBelts(), search: '',
     }).map((academy) => academy.name).filter((name) => name !== 'Unaffiliated');
     const seen = new Set(ranked.map(normalize));
     const extras = [];
@@ -461,14 +509,15 @@
   }
 
   function matchupSideAllowed(side) {
-    if (!state.minimumAge) return true;
+    const belts = activeBelts();
+    if (!state.minimumAge && !belts) return true;
     let athlete = side.userId ? model.athletes.get(`user:${side.userId}`) : null;
     if (!athlete) {
       const candidates = [...model.athletes.values()].filter((person) =>
         normalize(person.name) === normalize(side.name) && normalize(person.club) === normalize(side.club));
       athlete = candidates.length === 1 ? candidates[0] : null;
     }
-    return Number.isFinite(athlete?.age) && athlete.age >= state.minimumAge;
+    return Boolean(athlete) && SCWRModel.eligible(athlete, { minimumAge: state.minimumAge, belts });
   }
 
   function matchupData() {
@@ -548,9 +597,18 @@
     return field;
   }
 
+  function matchupBelts() {
+    if (beltChoices.length < 2) return null;
+    const field = el('div', undefined, 'scwr-field scwr-h2h-belts');
+    field.append(el('span', 'Include these belts'), beltChipGroup('Belts counted in the academy matchup'));
+    return field;
+  }
+
   function matchupFilters() {
     const filters = el('div', undefined, 'scwr-h2h-filters');
-    filters.append(matchupAgeFilter(), matchupTypes());
+    // Belts come last of the three: the widest row wraps onto its own line
+    // rather than pushing a narrower one down.
+    filters.append(...[matchupAgeFilter(), matchupTypes(), matchupBelts()].filter(Boolean));
     return filters;
   }
 
@@ -758,6 +816,7 @@
       const on = state.types.includes(button.dataset.matchupType);
       button.setAttribute('aria-pressed', String(on));
     }
+    paintChips();
     lab.fill();
   }
 
@@ -891,9 +950,12 @@
       cell.colSpan = cols.length + 1;
       const empty = el('div', undefined, 'scwr-empty');
       empty.append(el('p', `No ${VIEWS[state.view].unit[1]} match these filters.`, 'scwr-empty-title'));
+      const counted = activeBelts();
       empty.append(el('p', state.search
         ? `Nothing matches “${state.search}”. Clear the search, or lower the minimum age and match filters.`
-        : `Lower the minimum age${state.minimumAge ? ` below ${state.minimumAge}` : ''} or minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}.`, 'scwr-meta'));
+        : counted && !counted.length
+          ? 'Every belt in this event is switched off — the filter you brought from another event leaves nobody here. Turn one back on.'
+          : `Lower the minimum age${state.minimumAge ? ` below ${state.minimumAge}` : ''} or minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}${counted ? ', or count more belts' : ''}.`, 'scwr-meta'));
       cell.append(empty);
       tr.append(cell);
       nodes.push(tr);
@@ -940,7 +1002,7 @@
   };
 
   function compute() {
-    rows = SCWRModel.leaderboard(model, { ...state, table: state.view }).map(DECORATE[state.view]);
+    rows = SCWRModel.leaderboard(model, { ...state, belts: activeBelts(), table: state.view }).map(DECORATE[state.view]);
   }
 
   const TIEBREAK = 'ties go to more wins, then a higher win rate, then more golds, then a longer record, then A–Z';
@@ -949,6 +1011,16 @@
     academies: 'Every athlete\'s record combined by academy. Expand a row to see who did the work.',
     brackets: 'The published gold medallist beside whoever won the most matches here under your win-type filter. Sort by Gap to find medals that match wins did not earn.',
   };
+
+  // Only worth a line once the reader has narrowed it — "all belts" on every
+  // event would be noise, and most events never publish a grade at all.
+  function beltSummary() {
+    const counted = activeBelts();
+    if (!counted) return null;
+    if (!counted.length) return 'no belts counted';
+    const names = beltChoices.filter((option) => counted.includes(option.key)).map((option) => option.label);
+    return `${names.slice(0, 3).join(', ')}${names.length > 3 ? ` +${names.length - 3} more` : ''} only`;
+  }
 
   function render({ animate = false } = {}) {
     if (!model) return;
@@ -981,8 +1053,9 @@
       `${model.fought} fought ${unit(model.fought, 'match', 'matches')}`,
       `${model.walkovers} ${unit(model.walkovers, 'walkover')} ${countsWalkovers ? 'counted' : 'excluded'}`,
       state.minimumAge ? `ages ${state.minimumAge}+` : 'all ages',
+      beltSummary(),
       `updated ${new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
-    ];
+    ].filter(Boolean);
     if (state.minimumAge) {
       const unknownAges = [...model.athletes.values()].filter((athlete) => !Number.isFinite(athlete.age)).length;
       if (unknownAges) parts.push(`${unknownAges} unknown ${unit(unknownAges, 'age')} excluded`);
@@ -1132,6 +1205,7 @@
       eventMatches = data.matches;
       model = SCWRModel.attachRoster(SCWRModel.build(results, data.matches), people);
       updatedAt = data.at;
+      buildBeltChips();
       rebuildSummaries();
       syncAcademyNames();
       render(); orderResults(); decorate();
@@ -1209,6 +1283,22 @@
 
     const tab = event.target.closest('.scwr-tab');
     if (tab) return setView(tab.dataset.view);
+
+    const beltChip = event.target.closest('.scwr-chip-toggle[data-belt]');
+    if (beltChip) {
+      const off = new Set(state.beltsOff);
+      off.has(beltChip.dataset.belt) ? off.delete(beltChip.dataset.belt) : off.add(beltChip.dataset.belt);
+      // Never leave every grade off from inside one event: the standings would
+      // empty with the filter itself as the only explanation.
+      if (beltChoices.every((option) => off.has(option.key))) return;
+      state.beltsOff = [...off];
+      state.limit = 25;
+      savePrefs();
+      paintChips();
+      // Rebuilding the whole matchup surface would take the focus off the chip.
+      if (state.matchupOpen) return renderMatchupResults();
+      return render({ animate: true });
+    }
 
     const chip = event.target.closest('.scwr-chip-toggle');
     if (chip) {

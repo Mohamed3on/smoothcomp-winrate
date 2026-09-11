@@ -298,14 +298,59 @@ const SCWRModel = (() => {
   const meetsMinimumAge = (athlete, minimumAge) =>
     minimumAge <= 0 || (Number.isFinite(athlete?.age) && athlete.age >= minimumAge);
 
+  // Organisers grade a division by colour ("Blue belt", "White/Grey") or by
+  // level ("Beginner", "Advanced"). Colours group by the colour so every
+  // spelling of one belt lands together; anything else groups by its own name,
+  // and everyone the registration list never graded shares the last bucket.
+  const BELT_TONES = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black', 'red'];
+  const UNGRADED = '\0ungraded';
+  const beltTone = (belt) => {
+    const words = new Set(String(belt ?? '').toLowerCase().replace('gray', 'grey').match(/[a-z]+/g) ?? []);
+    return BELT_TONES.find((tone) => words.has(tone)) ?? null;
+  };
+  const beltKey = (athlete) => beltTone(athlete?.belt) ?? (normalize(athlete?.belt) || UNGRADED);
+
+  // The grades this event actually published, in belt order and then however the
+  // organiser named the rest. Filter chips are built from this, so a reader is
+  // never offered a belt nobody here holds.
+  function beltOptions(model) {
+    const groups = new Map();
+    for (const athlete of model.athletes.values()) {
+      const key = beltKey(athlete);
+      const group = groups.get(key) ?? { key, tone: beltTone(athlete.belt), count: 0, labels: new Map() };
+      group.count++;
+      const label = String(athlete.belt ?? '').trim();
+      if (label) group.labels.set(label, (group.labels.get(label) ?? 0) + 1);
+      groups.set(key, group);
+    }
+    const order = (g) => (g.key === UNGRADED ? BELT_TONES.length + 1
+      : g.tone ? BELT_TONES.indexOf(g.tone) : BELT_TONES.length);
+    return [...groups.values()]
+      // One group routinely holds several spellings of one grade — "Beginner
+      // (White Belt)" beside "Beginner (White + Grey Belt)", and the odd typo.
+      // The commonest names the chip; the rest ride along so the page can say
+      // what else it folded in.
+      .map(({ labels, ...group }) => {
+        const spellings = [...labels].sort((a, b) => b[1] - a[1]).map(([label]) => label);
+        return { ...group, labels: spellings, label: spellings[0] ?? 'Not listed' };
+      })
+      .sort((a, b) => order(a) - order(b) || a.label.localeCompare(b.label));
+  }
+
+  // Everything the reader has said about who counts, in one predicate so the
+  // tables, the brackets and the head-to-head all draw the same line. `belts` is
+  // an allowlist of the keys above; without one, every grade counts.
+  const eligible = (athlete, { minimumAge = 0, belts = null } = {}) =>
+    meetsMinimumAge(athlete, minimumAge) && (!belts || belts.includes(beltKey(athlete)));
+
   // Every entrant of one bracket with the record they posted in it, plus the two
   // people the brackets view is actually about: who was awarded gold, and who won
   // the most matches. Ties go to the better placement, so the medallist only
   // loses the slot when someone strictly out-won them.
-  function bracketRow(bracket, model, types, minimumAge) {
+  function bracketRow(bracket, model, types, filter) {
     const awardedChampion = [...bracket.entries.values()].find((entry) => entry.placement === 1);
     const entrants = [...bracket.entries.values()]
-      .filter((entry) => meetsMinimumAge(model.athletes.get(entry.key), minimumAge))
+      .filter((entry) => eligible(model.athletes.get(entry.key), filter))
       .map((entry) => ({
         ...model.athletes.get(entry.key), ...entryRecord(entry, types), placement: entry.placement,
       }));
@@ -326,15 +371,18 @@ const SCWRModel = (() => {
   // which win types count, and how the reader has narrowed it down. Returns data
   // only: the page adds its own links and captions.
   function leaderboard(model, view) {
-    const { table, types, search = '', minimum = 0, minimumAge = 0, sort, direction = -1 } = view;
-    const ageFloor = Number.isFinite(minimumAge) ? Math.max(0, Math.floor(minimumAge)) : 0;
+    const { table, types, search = '', minimum = 0, minimumAge = 0, belts = null, sort, direction = -1 } = view;
+    const filter = {
+      minimumAge: Number.isFinite(minimumAge) ? Math.max(0, Math.floor(minimumAge)) : 0,
+      belts: Array.isArray(belts) ? belts : null,
+    };
     const query = normalize(search);
     const matches = (text) => normalize(text).includes(query);
 
     if (table === 'brackets') {
       const rows = [...model.brackets.values()]
         .filter((b) => matches(b.name))
-        .map((b) => bracketRow(b, model, types, ageFloor))
+        .map((b) => bracketRow(b, model, types, filter))
         .filter(Boolean);
       const field = { name: 'name', wins: 'wins', gap: 'leaderWins', gapCount: 'gapCount' }[sort] ?? 'size';
       return rows.sort((a, b) => (sort === 'name'
@@ -343,7 +391,7 @@ const SCWRModel = (() => {
     }
 
     const people = [...model.athletes.values()]
-      .filter((a) => meetsMinimumAge(a, ageFloor))
+      .filter((a) => eligible(a, filter))
       .map((a) => summarize(a, model, { types }));
 
     const rows = table === 'academies'
@@ -357,5 +405,6 @@ const SCWRModel = (() => {
     return rank(rows, sort, direction);
   }
 
-  return { build, headToHead, summarize, entryRecord, academies, roster, attachRoster, leaderboard, rank, placements, athleteKey, normalize, METRICS };
+  return { build, headToHead, summarize, entryRecord, academies, roster, attachRoster, leaderboard, rank,
+    placements, athleteKey, normalize, beltTone, beltKey, beltOptions, eligible, METRICS };
 })();

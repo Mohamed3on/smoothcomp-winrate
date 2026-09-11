@@ -294,6 +294,9 @@
 .scwr-chip-toggle[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); color: var(--fg); }
 .scwr-chip-toggle .scwr-seg { width: 9px; height: 9px; border-radius: 50%; flex: none; opacity: 0.35; }
 .scwr-chip-toggle[aria-pressed='true'] .scwr-seg { opacity: 1; }
+/* A belt chip wears the belt itself; unpressed, it steps back like the dots do. */
+.scwr-chip-toggle .scwr-belt { width: 18px; height: 7px; opacity: 0.4; }
+.scwr-chip-toggle[aria-pressed='true'] .scwr-belt { opacity: 1; }
 
 .scwr-status {
   margin: 0;
@@ -613,9 +616,12 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 }
 .scwr-h2h-head h3 { margin: 0; color: var(--fg); }
 .scwr-h2h-head p { margin-top: var(--s-1); }
-.scwr-h2h-filters { display: flex; flex-wrap: wrap; align-items: end; justify-content: flex-end; gap: var(--s-3) var(--s-4); }
+/* The filters read like the toolbar above them: a full-width band under the
+   heading, left to right, wrapping as the belt row grows. Hung off the right of
+   the title they went ragged the moment a third field joined. */
+.scwr-h2h-filters { display: flex; flex-wrap: wrap; align-items: end; flex: 1 1 100%; gap: var(--s-3) var(--s-4); }
 .scwr-h2h-age { flex: 0 0 92px; }
-.scwr-h2h-types { flex: 0 1 auto; }
+.scwr-h2h-types, .scwr-h2h-belts { flex: 0 1 auto; }
 .scwr-h2h-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -748,6 +754,7 @@ a.scwr-h2h-person:hover { color: var(--accent); text-decoration: underline; text
   .scwr-table { min-width: 560px; }
   .scwr-h2h-head { align-items: start; }
   .scwr-h2h-head > .scwr-h2h-types { width: 100%; }
+  .scwr-h2h-filters > .scwr-h2h-belts { width: 100%; }
   .scwr-h2h-controls { grid-template-columns: 1fr auto; }
   .scwr-h2h-controls .scwr-h2h-field:first-child { grid-column: 1 / -1; }
   .scwr-h2h-controls .scwr-h2h-field:last-child { grid-column: 1; }

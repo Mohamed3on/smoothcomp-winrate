@@ -259,6 +259,31 @@ test('minimum age uses participant ages while gi and no-gi stay combined', () =>
   assert.deepEqual(at({ search: 'nobody here' }), []);
 });
 
+test('the belt filter groups every spelling of a colour and keeps the ungraded findable', () => {
+  const m = EVENT();
+  m.athletes.get('user:1').belt = 'White belt';
+  m.athletes.get('user:2').belt = 'White/Grey';
+  m.athletes.get('user:3').belt = 'Advanced';
+  // D never turns up in the registration list, so D holds no published grade.
+  assert.deepEqual(plain(api.beltOptions(m).map((o) => [o.key, o.label, o.count, o.labels])),
+    [['white', 'White belt', 2, ['White belt', 'White/Grey']], ['advanced', 'Advanced', 1, ['Advanced']],
+      ['\u0000ungraded', 'Not listed', 1, []]],
+    'colours sort in belt order, named levels after them, the ungraded last');
+
+  const at = (belts, over) => names(api.leaderboard(m, { ...view, table: 'athletes', belts, ...over })).sort();
+  assert.deepEqual(at(null), ['A', 'B', 'C', 'D'], 'no allowlist counts every grade');
+  assert.deepEqual(at(['white']), ['A', 'B'], 'one key covers both spellings of the colour');
+  assert.deepEqual(at(['advanced', '\u0000ungraded']), ['C', 'D']);
+  assert.deepEqual(at([]), [], 'an empty allowlist is a filter, not an absent one');
+  m.athletes.get('user:1').age = 34;
+  assert.deepEqual(at(['white'], { minimumAge: 30 }), ['A'], 'belt and age narrow together');
+
+  assert.deepEqual(names(api.leaderboard(m, { ...view, table: 'academies', belts: ['advanced'] })), ['Beta'],
+    'academy totals are built only from the belts counted');
+  assert.deepEqual(names(api.leaderboard(m, { ...view, table: 'brackets', belts: ['white'] })), ['Gi Adult'],
+    'a bracket with no counted entrant leaves the table');
+});
+
 test('the brackets view names the gold medallist beside whoever won the most', () => {
   // Champ took gold on one win; Grinder won two in the same bracket.
   const m = api.build([bracket(1, 8, [p(1, 'Champ', 1), p(2, 'Runner', 2), p(3, 'Grinder', 3)])],

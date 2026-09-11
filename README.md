@@ -14,8 +14,9 @@ and shows the result on three pages.
 academies, and a brackets view pairing each division's gold medallist with whoever actually
 won the most matches there. Rows carry the photo, flag, belt and age the registration list
 publishes and the results page drops. A minimum-age filter uses those registration ages across
-division names while gi and no-gi stay combined; search reaches countries as well as names,
-academies and divisions. Every athlete in the official list below gets their record inline.
+division names while gi and no-gi stay combined, and a belt filter narrows every table to the
+grades you keep switched on — one chip per grade the event published, with the spellings of a
+colour folded together. Search reaches countries as well as names, academies and divisions. Every athlete in the official list below gets their record inline.
 
 **Team rankings (toplist)** — a Win rate column, with the site's own Wins/Losses columns kept
 in step with the win types you're counting. Click any academy to fade out everyone with a
