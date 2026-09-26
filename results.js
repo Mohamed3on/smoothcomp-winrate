@@ -98,12 +98,12 @@
       { key: 'conceded', label: 'How they lost', align: 'start', title: 'Every loss this academy took, ordered from the most decisive finish to the least. Sorts by the share that ended in a submission, so the hardest to finish come first.', cell: lossBarCell, wide: true, reverse: true },
       { key: 'depth', label: 'W/athlete', title: 'Wins per athlete entered. Separates a deep team from one carried by a single competitor.', cell: (r) => muted(r.depth ? r.depth.toFixed(1) : '—') },
       ...MEDAL_COLUMNS,
-      { key: 'athletes', label: 'Athletes', title: 'Athletes this academy entered who appear in the published results.', cell: (r) => muted(r.athletes) },
+      { key: 'athletes', label: 'Athletes', title: 'Athletes this academy entered who appear in the published results, or on the schedule of a division not yet published.', cell: (r) => muted(r.athletes) },
     ],
     brackets: [
       { key: 'name', label: 'Division', align: 'start', cell: identityCell, grow: true },
-      { key: 'size', label: 'Bracket size', title: 'Competitors in the published placement list.', cell: (r) => strong(r.size) },
-      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, and the record they posted in this bracket.', cell: (r) => personCell(r.champion, r.championExcluded ? 'Below minimum age' : 'Not awarded'), wide: true },
+      { key: 'size', label: 'Bracket size', title: 'Competitors in the published placement list, or on the schedule until the division is published.', cell: (r) => strong(r.size) },
+      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, and the record they posted in this bracket.', cell: (r) => personCell(r.champion, r.provisional ? 'Not published yet' : r.championExcluded ? 'Below minimum age' : 'Not awarded'), wide: true },
       { key: 'gap', label: 'Most wins', align: 'start', title: 'Whoever actually won the most matches here under the win types you are counting. Ties go to the medallist. Sorts by that leader\u2019s win count.', cell: leaderCell, wide: true },
       { key: 'gapCount', label: 'Gap', title: 'How many more wins the leader has than the gold medallist. Zero means the medal and the match wins agree.', cell: gapCell },
     ],
@@ -119,7 +119,9 @@
     return node;
   }
 
-  // Smoothcomp has no page to send a hidden profile to, so those stay plain text.
+  // A hidden profile only earns Smoothcomp's "This profile is not public", so
+  // those stay plain text. One the results have not ruled on yet links anyway:
+  // that notice is the worst it can land on.
   const profileHref = (person) =>
     (person?.userId && !person.hidden ? SCWRSite.url.profile(person.userId) : null);
 
@@ -127,7 +129,8 @@
   // part of the design rather than an error state: they keep every row the same
   // height and the column the same width.
   // A hidden profile gets initials even when a photo ships in the payload —
-  // Smoothcomp serves it, but the athlete asked not to be shown.
+  // Smoothcomp serves it, but the athlete asked not to be shown. So does one
+  // the published results have not ruled on yet.
   function avatar(person) {
     if (!('userId' in person)) return null;
     const words = person.name.split(/\s+/).filter(Boolean);
@@ -136,7 +139,7 @@
       node.setAttribute('aria-hidden', 'true');
       return node;
     };
-    if (!person.logo || person.hidden) return monogram();
+    if (!person.logo || person.hidden !== false) return monogram();
     const img = el('img', undefined, 'scwr-face');
     img.src = person.logo;
     img.alt = '';
@@ -260,6 +263,8 @@
   // when they agree, this column should recede rather than repeat the name.
   function leaderCell(bracket) {
     if (!bracket.leader) return personCell(null, 'No decided matches');
+    // Before a gold is published, the leader has nobody to agree with.
+    if (bracket.provisional) return bracket.leaderWins ? personCell(bracket.leader) : personCell(null, 'No counted wins yet');
     if (!bracket.gapCount) {
       const wrap = el('div', undefined, 'scwr-identity');
       wrap.append(el('span', 'Same athlete', 'scwr-meta scwr-agree'));
@@ -270,7 +275,7 @@
   }
 
   function gapCell(bracket) {
-    if (!bracket.leader) return muted('—');
+    if (!bracket.leader || bracket.provisional) return muted('—');
     return bracket.gapCount ? el('span', `+${bracket.gapCount}`, 'scwr-num scwr-gap') : muted('0');
   }
 
@@ -873,7 +878,7 @@
         const one = SCWRModel.entryRecord(entry, state.types);
         return {
           label: bracket.name, href: SCWRSite.url.bracket(EVENT_ID, bracket.id),
-          detail: `Placed ${entry.placement} of ${bracket.size} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
+          detail: `${bracket.provisional ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
           medals: entry.placement <= 3 ? [0, 1, 2].map((i) => (entry.placement === i + 1 ? 1 : 0)) : [0, 0, 0],
         };
       });
@@ -943,13 +948,18 @@
       const cell = el('td');
       cell.colSpan = cols.length + 1;
       const empty = el('div', undefined, 'scwr-empty');
-      empty.append(el('p', `No ${VIEWS[state.view].unit[1]} match these filters.`, 'scwr-empty-title'));
+      // Before a match is decided or a result published there is nothing to
+      // rank, and no filter is to blame.
+      const idle = !model.fought && !model.walkovers && [...model.brackets.values()].every((b) => b.provisional);
+      empty.append(el('p', idle ? 'Nothing to rank yet.' : `No ${VIEWS[state.view].unit[1]} match these filters.`, 'scwr-empty-title'));
       const counted = activeBelts();
-      empty.append(el('p', state.search
-        ? `Nothing matches “${state.search}”. Clear the search, or lower the minimum age and match filters.`
-        : counted && !counted.length
-          ? 'Every belt in this event is switched off — the filter you brought from another event leaves nobody here. Turn one back on.'
-          : `Lower the minimum age${state.minimumAge ? ` below ${state.minimumAge}` : ''} or minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}${counted ? ', or count more belts' : ''}.`, 'scwr-meta'));
+      empty.append(el('p', idle
+        ? 'No match here has been decided yet, and Smoothcomp has not published any results.'
+        : state.search
+          ? `Nothing matches “${state.search}”. Clear the search, or lower the minimum age and match filters.`
+          : counted && !counted.length
+            ? 'Every belt in this event is switched off — the filter you brought from another event leaves nobody here. Turn one back on.'
+            : `Lower ${state.minimumAge ? `the minimum age below ${state.minimumAge} or ` : ''}the minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}${counted ? ', or count more belts' : ''}.`, 'scwr-meta'));
       cell.append(empty);
       tr.append(cell);
       nodes.push(tr);
@@ -1056,14 +1066,15 @@
     }
     if (model.unresolved) parts.push(`${model.unresolved} undecided ${unit(model.unresolved, 'match', 'matches')} excluded`);
     // Three very different situations, and only one leaves a record short. A
-    // division still being fought has no published results to join yet. A
-    // walkover against someone the results never list shortens nobody: the
-    // winner is credited, and the absentee has no record. A fought match that
-    // will not attach to its published bracket is the real shortfall.
+    // division still being fought has no published results yet, so its
+    // schedule stands in until it does. A walkover against someone the results
+    // never list shortens nobody: the winner is credited, and the absentee has
+    // no record. A fought match that will not attach to its published bracket
+    // is the real shortfall.
     const notes = [];
     if (model.unpublished) {
       parts.push(`${model.unpublished} ${unit(model.unpublished, 'match', 'matches')} in divisions not yet published`);
-      notes.push(`${model.unpublished} decided ${unit(model.unpublished, 'match', 'matches')} belong to divisions Smoothcomp has not published results for yet. They join the tables once it does.`);
+      notes.push(`${model.unpublished} decided ${unit(model.unpublished, 'match', 'matches')} belong to divisions Smoothcomp has not published results for yet. They already count, read off the schedule; placements and medals follow once it publishes.`);
     }
     if (model.unmatched) {
       parts.push(`${model.unmatched} fought ${unit(model.unmatched, 'match', 'matches')} unmatched`);

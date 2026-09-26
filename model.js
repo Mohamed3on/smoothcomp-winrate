@@ -45,12 +45,46 @@ const SCWRModel = (() => {
       siblings.push(bracket);
       categories.set(normalize(bracket.name), siblings);
     }
-    attachRoster(athletes, roster(participants));
-    const matches = identify(schedule, participants, athletes);
+    const users = new Map((participants?.participants ?? []).flatMap((group) => group.registrations ?? [])
+      .filter((r) => r.user_id).map((r) => [String(r.id), String(r.user_id)]));
+    const people = roster(participants);
+    // Mid-event, a division is fought before its results are published. Until
+    // it is, the schedule is its roster: everyone seated in it enters with no
+    // placement, so their matches count and nobody is awarded a medal.
+    for (const match of schedule) {
+      if (!match.sides.length || categories.has(normalize(match.cat))) continue;
+      const id = match.bracketId;
+      const bracket = brackets.get(id) ?? { id, name: match.cat, size: 0, entries: new Map(), names: new Map(), provisional: true };
+      if (!bracket.provisional) continue;
+      brackets.set(id, bracket);
+      for (const side of match.sides) {
+        const userId = users.get(side.registrationId) ?? null;
+        const key = userId ? `user:${userId}` : `registration:${side.registrationId}`;
+        if (bracket.entries.has(key)) continue;
+        const person = people.get(userId);
+        // Only the published results say who hid their profile, so until then
+        // it is unknown: Smoothcomp guards its own profile page, not a photo.
+        const athlete = athletes.get(key) ?? {
+          key, name: side.name || 'Unnamed athlete',
+          club: person?.club || side.club || '', clubId: person?.club ? person.clubId : null,
+          country: side.country ?? null, countryName: null, userId, logo: null, hidden: null, entries: [],
+        };
+        const entry = { key, placement: null, bracketId: id, wins: {}, losses: {} };
+        bracket.entries.set(key, entry);
+        bracket.size = bracket.entries.size;
+        const nameKey = identity(side.name, side.club);
+        bracket.names.set(nameKey, [...(bracket.names.get(nameKey) ?? []), key]);
+        athlete.entries.push(entry);
+        athletes.set(key, athlete);
+      }
+    }
+    attachRoster(athletes, people);
+    const matches = identify(schedule, users, athletes);
     let walkovers = 0;
     let unresolved = 0;
     let completed = 0;
-    // Decided matches the tables cannot show yet, or can show only one side of.
+    // Decided matches in divisions not yet published, then those the tables
+    // can show only one side of, or neither.
     let unpublished = 0;
     let noShows = 0;
     let unmatched = 0;
@@ -68,8 +102,9 @@ const SCWRModel = (() => {
       // only when it identifies one published result bracket.
       const categoryMatches = categories.get(normalize(match.cat)) ?? [];
       const bracket = brackets.get(String(match.bracketId)) ?? (categoryMatches.length === 1 ? categoryMatches[0] : null);
-      // Mid-event, a division is fought before its results are published.
-      if (!bracket) { unpublished++; continue; }
+      // A division named like several published ones cannot be told apart.
+      if (!bracket) { unmatched++; continue; }
+      if (bracket.provisional) unpublished++;
       let attached = 0;
       for (const side of match.sides) {
         let key = side.userId ? `user:${side.userId}` : null;
@@ -221,9 +256,7 @@ const SCWRModel = (() => {
   // whose it is, and every side of an athlete counts for that athlete's academy,
   // so the matchups and the academies table always agree. A side nobody can
   // name keeps the club it registered with and falls back to name and academy.
-  function identify(schedule, participants, athletes) {
-    const users = new Map((participants?.participants ?? []).flatMap((group) => group.registrations ?? [])
-      .filter((r) => r.user_id).map((r) => [String(r.id), String(r.user_id)]));
+  function identify(schedule, users, athletes) {
     return schedule.map((match) => ({
       ...match, sides: match.sides.map((side) => {
         const userId = users.get(side.registrationId) ?? null;
@@ -387,7 +420,8 @@ const SCWRModel = (() => {
       championExcluded: Boolean(awardedChampion && !champion),
       wins: champion?.wins ?? 0,
       leaderWins: leader?.wins ?? 0,
-      gapCount: Math.max(0, (leader?.wins ?? 0) - (champion?.wins ?? 0)),
+      // No gap to measure until a gold medal is published.
+      gapCount: bracket.provisional ? 0 : Math.max(0, (leader?.wins ?? 0) - (champion?.wins ?? 0)),
     };
   }
 

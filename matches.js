@@ -15,7 +15,7 @@ const toMatch = (m) => ({
   cat: m.group ?? '',
   finished: m.state === 'finished',
   sides: m.seats.filter((s) => s.type === 'registration').map((s) => ({
-    name: s.name, registrationId: String(s.event_registration_id), club: s.club || null,
+    name: s.name, registrationId: String(s.event_registration_id), club: s.club || null, country: s.country || null,
     won: s.isWinner ? m.wonBy : null,
   })),
 });

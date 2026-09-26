@@ -256,7 +256,7 @@ Two shapes are drawn rather than typed: the sort caret is a `clip-path` triangle
 
 ### Identity
 
-The recurring athlete signature, used identically in the tables and in the head-to-head ledger: a 26px circular avatar (or a monogram on `hover` ground), the name at Body/600, an emoji or drawn flag carrying its country as an accessible label, a 22×8px belt swatch with a rank bar, and an age as an accent pill. Names link only when Smoothcomp published a public profile id.
+The recurring athlete signature, used identically in the tables and in the head-to-head ledger: a 26px circular avatar (or a monogram on `hover` ground), the name at Body/600, an emoji or drawn flag carrying its country as an accessible label, a 22×8px belt swatch with a rank bar, and an age as an accent pill. Names link unless the published results mark the profile hidden; a photo shows only once they mark it public.
 
 ### Win-type Bar
 

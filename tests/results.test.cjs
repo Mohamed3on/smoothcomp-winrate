@@ -39,12 +39,44 @@ test('a live event counts the matches already fought', async () => {
   assert.equal(model.fought, 1220);
   assert.equal(model.walkovers, 82);
   assert.equal(model.unresolved, 113);
-  // 212 decided matches sit in divisions Smoothcomp has not published yet, and
-  // join the tables once it does; nothing in a published division goes missing.
+  // 212 decided matches sit in 30 divisions Smoothcomp has not published yet.
+  // Their schedule stands in, so they count already, placing nobody; nothing
+  // in a published division goes missing.
   assert.equal(model.unpublished, 212);
+  const unpublished = [...model.brackets.values()].filter((b) => b.provisional);
+  assert.equal(unpublished.length, 30);
+  assert.ok(unpublished.every((b) => [...b.entries.values()].every((e) => e.placement === null)));
   assert.equal(model.unmatched, 0);
   assert.equal(model.noShows, 59);
   assert.equal(final, false);
+});
+
+test('with no results published, the schedule alone ranks the event', async () => {
+  // Event 33157 had fought 143 matches before a single result was published,
+  // and the tables stood empty. The same moment, replayed by holding back the
+  // live recording's published results.
+  const page = replay('29650-live');
+  const { matches } = await page.SCWRMatches.loadEvent();
+  const full = page.SCWRModel.build(page.results, matches, page.participants);
+  const bare = page.SCWRModel.build([], matches, page.participants);
+  assert.equal(bare.unpublished, bare.fought + bare.walkovers);
+  assert.equal(bare.unmatched + bare.noShows, 0);
+  // Every athlete the results name gets the same record from the schedule but
+  // two: one never fought, and one is a no-show their published bracket leaves
+  // out, so only the schedule records the walkover against them.
+  const record = (athlete) => athlete && [...COUNTED, 'walkover'].map((type) => athlete.entries
+    .reduce((n, e) => [n[0] + (e.wins[type] ?? 0), n[1] + (e.losses[type] ?? 0)], [0, 0]).join('–')).join(' ');
+  assert.equal(full.athletes.size, 1378);
+  assert.deepEqual(plain([...full.athletes.values()].filter((a) => record(a) !== record(bare.athletes.get(a.key)))
+    .map((a) => [a.name, record(a), record(bare.athletes.get(a.key)) ?? null])), [
+    ['Athlete 46', '0–0 0–0 0–0 0–0 0–0', null],
+    ['Athlete 974', '0–0 0–0 0–0 0–0 0–1', '0–0 0–0 0–0 0–0 0–2'],
+  ]);
+  // Nobody is medalled, and nobody's profile is known to be public, before the
+  // results say so.
+  const board = page.SCWRModel.leaderboard(bare, { table: 'athletes', types: COUNTED, sort: 'wins' });
+  assert.equal(board.filter((a) => a.podiums).length, 0);
+  assert.ok([...bare.athletes.values()].every((a) => a.hidden === null));
 });
 
 test('the leaderboards rank athletes and academies on the win types counted', async () => {
