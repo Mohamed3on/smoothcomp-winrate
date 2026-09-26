@@ -107,7 +107,10 @@ test('age and belt come from the registration list, whatever the organiser calls
   const { model, SCWRModel } = await resultsPage('25901');
   const athletes = [...model.athletes.values()];
   assert.equal(athletes.filter((a) => Number.isFinite(a.age)).length, 401);
-  assert.equal(SCWRModel.leaderboard(model, { table: 'athletes', types: COUNTED, sort: 'wins', minimumAge: 18 }).length, 275);
+  const aged = (range) => SCWRModel.leaderboard(model, { table: 'athletes', types: COUNTED, sort: 'wins', ...range }).length;
+  assert.deepEqual([aged({ minimumAge: 18 }), aged({ maximumAge: 17 }), aged({ minimumAge: 18, maximumAge: 29 })], [275, 126, 162]);
+  // A range typed the wrong way round still means the ages between its ends.
+  assert.equal(aged({ minimumAge: 29, maximumAge: 18 }), 162);
   // This event grades gi divisions by "Belt" and no-gi by "Level"; every
   // spelling of one colour lands on one chip.
   assert.deepEqual(plain(SCWRModel.beltOptions(model).map((o) => [o.label, o.count])), [

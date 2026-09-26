@@ -350,10 +350,16 @@ const SCWRModel = (() => {
   }
 
   // Age comes from Smoothcomp's participant payload, never from competition-
-  // specific division names. When a minimum is active, an unknown age cannot
-  // safely be treated as eligible; with no minimum, everybody remains visible.
-  const meetsMinimumAge = (athlete, minimumAge) =>
-    minimumAge <= 0 || (Number.isFinite(athlete?.age) && athlete.age >= minimumAge);
+  // specific division names. Either end of the range can stay open (0), and a
+  // range typed the wrong way round still means the ages between its two ends.
+  const ageRange = (minimumAge, maximumAge) =>
+    (minimumAge && maximumAge && minimumAge > maximumAge ? [maximumAge, minimumAge] : [minimumAge, maximumAge]);
+  // Once either end is set, an unknown age cannot safely be treated as inside
+  // the range; with neither, everybody remains visible.
+  const inAgeRange = (athlete, minimumAge, maximumAge) => {
+    const [low, high] = ageRange(minimumAge, maximumAge);
+    return (!low && !high) || (Number.isFinite(athlete?.age) && athlete.age >= low && (!high || athlete.age <= high));
+  };
 
   // Organisers grade a division by colour ("Blue belt", "White/Grey") or by
   // level ("Beginner", "Advanced"). Colours group by the colour so every
@@ -397,8 +403,8 @@ const SCWRModel = (() => {
   // Everything the reader has said about who counts, in one predicate so the
   // tables, the brackets and the head-to-head all draw the same line. `belts` is
   // an allowlist of the keys above; without one, every grade counts.
-  const eligible = (athlete, { minimumAge = 0, belts = null } = {}) =>
-    meetsMinimumAge(athlete, minimumAge) && (!belts || belts.includes(beltKey(athlete)));
+  const eligible = (athlete, { minimumAge = 0, maximumAge = 0, belts = null } = {}) =>
+    inAgeRange(athlete, minimumAge, maximumAge) && (!belts || belts.includes(beltKey(athlete)));
 
   // Every entrant of one bracket with the record they posted in it, plus the two
   // people the brackets view is actually about: who was awarded gold, and who won
@@ -429,9 +435,10 @@ const SCWRModel = (() => {
   // which win types count, and how the reader has narrowed it down. Returns data
   // only: the page adds its own links and captions.
   function leaderboard(model, view) {
-    const { table, types, search = '', minimum = 0, minimumAge = 0, belts = null, sort, direction = -1 } = view;
+    const { table, types, search = '', minimum = 0, minimumAge = 0, maximumAge = 0, belts = null, sort, direction = -1 } = view;
+    const age = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
     const filter = {
-      minimumAge: Number.isFinite(minimumAge) ? Math.max(0, Math.floor(minimumAge)) : 0,
+      minimumAge: age(minimumAge), maximumAge: age(maximumAge),
       belts: Array.isArray(belts) ? belts : null,
     };
     const query = normalize(search);
@@ -464,5 +471,5 @@ const SCWRModel = (() => {
   }
 
   return { build, headToHead, summarize, entryRecord, leaderboard, rank,
-    placements, athleteKey, normalize, beltTone, beltOptions, eligible };
+    placements, athleteKey, normalize, beltTone, beltOptions, ageRange, eligible };
 })();

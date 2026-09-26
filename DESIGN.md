@@ -240,7 +240,7 @@ Two shapes are drawn rather than typed: the sort caret is a `clip-path` triangle
 
 - **Selects, search and number inputs:** 32px tall, 6px corners, 1px `line-strong`, `surface` ground, Small text, with the caret coloured accent.
 - **Focus:** a 2px accent outline inset by 2px, so it never shifts layout.
-- **Minimum age:** a 74px bordered box that switches its border to accent and its ground to `accent-soft` when a value is set. The label above it says "Minimum age"; nothing inside the control repeats that.
+- **Age range:** a 148px bordered box holding two borderless, centred number inputs split by a muted en dash, each reading "Any" while its end is open. It switches its border to accent and its ground to `accent-soft` once either end is set. The label above it says "Age range"; nothing inside the control repeats that.
 
 ### Chips
 

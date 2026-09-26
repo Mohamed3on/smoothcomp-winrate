@@ -6,7 +6,7 @@
   const EVENT_ID = SCWRSite.eventId();
   const counting = () => ({ types: state.types });
   const state = {
-    view: 'athletes', sort: 'wins', direction: -1, search: '', minimum: 1, minimumAge: 0,
+    view: 'athletes', sort: 'wins', direction: -1, search: '', minimum: 1, minimumAge: 0, maximumAge: 0,
     // Belts are held as the grades left *out*, not the ones kept: an allowlist
     // saved at a gi event would empty the table at a no-gi one graded by level.
     beltsOff: [],
@@ -103,7 +103,7 @@
     brackets: [
       { key: 'name', label: 'Division', align: 'start', cell: identityCell, grow: true },
       { key: 'size', label: 'Bracket size', title: 'Competitors in the published placement list, or on the schedule until the division is published.', cell: (r) => strong(r.size) },
-      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, and the record they posted in this bracket.', cell: (r) => personCell(r.champion, r.provisional ? 'Not published yet' : r.championExcluded ? 'Below minimum age' : 'Not awarded'), wide: true },
+      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, and the record they posted in this bracket.', cell: (r) => personCell(r.champion, r.provisional ? 'Not published yet' : r.championExcluded ? 'Filtered out' : 'Not awarded'), wide: true },
       { key: 'gap', label: 'Most wins', align: 'start', title: 'Whoever actually won the most matches here under the win types you are counting. Ties go to the medallist. Sorts by that leader\u2019s win count.', cell: leaderCell, wide: true },
       { key: 'gapCount', label: 'Gap', title: 'How many more wins the leader has than the gold medallist. Zero means the medal and the match wins agree.', cell: gapCell },
     ],
@@ -283,7 +283,7 @@
   // events and reloads. Search and expanded rows deliberately do not: a stored
   // search that hides everything is baffling on the next visit.
   const PREFS_KEY = 'results-prefs';
-  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'minimum', 'types', 'beltsOff', 'bracketSort',
+  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'maximumAge', 'minimum', 'types', 'beltsOff', 'bracketSort',
     'matchupOpen', 'academyA', 'academyB'];
 
   // Stored values are never trusted. A column can be renamed or dropped between
@@ -292,12 +292,13 @@
     const saved = SCWRSite.store.get(PREFS_KEY);
     if (!saved || typeof saved !== 'object') return;
     const oneOf = (value, allowed) => (allowed.includes(value) ? value : undefined);
+    const age = (value) => (Number.isFinite(value) && value >= 0 && value <= 120 ? Math.floor(value) : undefined);
     const restored = {
       view: oneOf(saved.view, Object.keys(VIEWS)),
       bracketSort: oneOf(saved.bracketSort, ['placement', 'size', 'wins', 'submissions']),
       direction: oneOf(saved.direction, [1, -1]),
-      minimumAge: Number.isFinite(saved.minimumAge) && saved.minimumAge >= 0 && saved.minimumAge <= 120
-        ? Math.floor(saved.minimumAge) : undefined,
+      minimumAge: age(saved.minimumAge),
+      maximumAge: age(saved.maximumAge),
       minimum: Number.isFinite(saved.minimum) && saved.minimum >= 0 ? Math.floor(saved.minimum) : undefined,
       types: Array.isArray(saved.types) ? WIN_TYPES.filter((t) => saved.types.includes(t)) : undefined,
       beltsOff: Array.isArray(saved.beltsOff) ? saved.beltsOff.filter((b) => typeof b === 'string') : undefined,
@@ -339,15 +340,16 @@
     <div class="scwr-tools">
       <label class="scwr-field scwr-field-grow"><span>Search</span>
         <input data-filter="search" type="search" placeholder="Name, country, academy or division" autocomplete="off"></label>
-      <label class="scwr-field scwr-field-narrow"><span>Minimum age</span>
-        <span class="scwr-age-control" data-active="false">
-          <input data-filter="minimumAge" type="number" inputmode="numeric" min="0" max="120" step="1"
-            placeholder="All" list="scwr-age-presets" title="Uses the age Smoothcomp publishes for each competitor. Leave empty to show every age.">
-        </span>
-        <datalist id="scwr-age-presets">
+      <div class="scwr-field scwr-field-narrow"><span>Age range</span>
+        ${ageControl('Uses the age Smoothcomp publishes for each competitor. Leave either end empty for no limit.')}
+        <datalist id="scwr-age-min-presets">
           <option value="0"></option><option value="16"></option><option value="18"></option>
           <option value="30"></option><option value="35"></option><option value="40"></option>
-        </datalist></label>
+        </datalist>
+        <datalist id="scwr-age-max-presets">
+          <option value="15"></option><option value="17"></option><option value="29"></option>
+          <option value="35"></option><option value="40"></option>
+        </datalist></div>
       <label class="scwr-field scwr-field-narrow" data-only="athletes academies"><span>Min. matches</span>
         <input data-filter="minimum" type="number" inputmode="numeric" min="0" step="1" value="1"
           list="scwr-minimum-presets" title="Hide anyone with fewer contested matches than this. 0 shows everyone.">
@@ -470,7 +472,7 @@
     if (!model) return;
     const ranked = SCWRModel.leaderboard(model, {
       table: 'academies', types: state.types, sort: 'wins', direction: -1,
-      minimum: 0, minimumAge: state.minimumAge, belts: activeBelts(), search: '',
+      minimum: 0, minimumAge: state.minimumAge, maximumAge: state.maximumAge, belts: activeBelts(), search: '',
     }).map((academy) => academy.name).filter((name) => name !== 'Unaffiliated');
     const seen = new Set(ranked.map(normalize));
     const extras = [];
@@ -514,9 +516,9 @@
 
   function matchupSideAllowed(side) {
     const belts = activeBelts();
-    if (!state.minimumAge && !belts) return true;
+    if (!state.minimumAge && !state.maximumAge && !belts) return true;
     const athlete = model.athletes.get(`user:${side.userId}`);
-    return Boolean(athlete) && SCWRModel.eligible(athlete, { minimumAge: state.minimumAge, belts });
+    return Boolean(athlete) && SCWRModel.eligible(athlete, { ...state, belts });
   }
 
   function matchupData() {
@@ -575,24 +577,26 @@
     return field;
   }
 
+  // The age range sits in the toolbar and again in the head-to-head panel, which
+  // hides the toolbar while it is open. Both copies answer to the same state.
+  function ageControl(title) {
+    const end = (key, label, list) => `<input data-filter="${key}" type="number" inputmode="numeric"
+      min="0" max="120" step="1" placeholder="Any" aria-label="${label}" list="${list}">`;
+    return `<span class="scwr-age-control" role="group" aria-label="Age range" title="${title}" data-active="false">
+      ${end('minimumAge', 'Minimum age', 'scwr-age-min-presets')}<i aria-hidden="true">–</i>
+      ${end('maximumAge', 'Maximum age', 'scwr-age-max-presets')}</span>`;
+  }
+
+  function paintAges() {
+    for (const control of panel.querySelectorAll('.scwr-age-control')) {
+      control.dataset.active = String(Boolean(state.minimumAge || state.maximumAge));
+      for (const input of control.querySelectorAll('input')) input.value = state[input.dataset.filter] || '';
+    }
+  }
+
   function matchupAgeFilter() {
-    const field = el('label', undefined, 'scwr-field scwr-h2h-age');
-    field.append(el('span', 'Minimum age'));
-    const control = el('span', undefined, 'scwr-age-control');
-    control.dataset.active = String(state.minimumAge > 0);
-    const input = el('input');
-    input.type = 'number';
-    input.inputMode = 'numeric';
-    input.min = '0';
-    input.max = '120';
-    input.step = '1';
-    input.placeholder = 'All';
-    input.value = state.minimumAge ? String(state.minimumAge) : '';
-    input.dataset.filter = 'minimumAge';
-    input.setAttribute('list', 'scwr-age-presets');
-    input.title = 'Only count matches where both athletes meet this age.';
-    control.append(input);
-    field.append(control);
+    const field = el('div', undefined, 'scwr-field scwr-h2h-age');
+    field.innerHTML = `<span>Age range</span>${ageControl('Only count matches where both athletes fall inside this age range.')}`;
     return field;
   }
 
@@ -816,6 +820,7 @@
       button.setAttribute('aria-pressed', String(on));
     }
     paintChips();
+    paintAges();
     lab.fill();
   }
 
@@ -956,10 +961,10 @@
       empty.append(el('p', idle
         ? 'No match here has been decided yet, and Smoothcomp has not published any results.'
         : state.search
-          ? `Nothing matches “${state.search}”. Clear the search, or lower the minimum age and match filters.`
+          ? `Nothing matches “${state.search}”. Clear the search, or loosen the age and match filters.`
           : counted && !counted.length
             ? 'Every belt in this event is switched off — the filter you brought from another event leaves nobody here. Turn one back on.'
-            : `Lower ${state.minimumAge ? `the minimum age below ${state.minimumAge} or ` : ''}the minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}${counted ? ', or count more belts' : ''}.`, 'scwr-meta'));
+            : `${state.minimumAge || state.maximumAge ? 'Widen the age range or lower' : 'Lower'} the minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}${counted ? ', or count more belts' : ''}.`, 'scwr-meta'));
       cell.append(empty);
       tr.append(cell);
       nodes.push(tr);
@@ -1026,6 +1031,15 @@
     return `${names.slice(0, 3).join(', ')}${names.length > 3 ? ` +${names.length - 3} more` : ''} only`;
   }
 
+  // The range as the filter reads it: open at either end, and in order however
+  // it was typed.
+  function ageSummary() {
+    const [low, high] = SCWRModel.ageRange(state.minimumAge, state.maximumAge);
+    if (!high) return low ? `ages ${low}+` : 'all ages';
+    if (!low) return `ages ${high} and under`;
+    return low === high ? `age ${low}` : `ages ${low}–${high}`;
+  }
+
   function render({ animate = false } = {}) {
     if (!model) return;
     const matchupOnly = state.matchupOpen;
@@ -1056,11 +1070,11 @@
       `${model.athletes.size} athletes`, `${model.brackets.size} brackets`,
       `${model.fought} fought ${unit(model.fought, 'match', 'matches')}`,
       `${model.walkovers} ${unit(model.walkovers, 'walkover')} ${countsWalkovers ? 'counted' : 'excluded'}`,
-      state.minimumAge ? `ages ${state.minimumAge}+` : 'all ages',
+      ageSummary(),
       beltSummary(),
       `updated ${new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
     ].filter(Boolean);
-    if (state.minimumAge) {
+    if (state.minimumAge || state.maximumAge) {
       const unknownAges = [...model.athletes.values()].filter((athlete) => !Number.isFinite(athlete.age)).length;
       if (unknownAges) parts.push(`${unknownAges} unknown ${unit(unknownAges, 'age')} excluded`);
     }
@@ -1263,17 +1277,17 @@
   panel.addEventListener('input', (event) => {
     const key = event.target.dataset.filter;
     if (!key) return;
-    if (key === 'minimum' || key === 'minimumAge') {
+    const age = key === 'minimumAge' || key === 'maximumAge';
+    if (age || key === 'minimum') {
       const value = Math.max(0, Math.floor(Number(event.target.value)) || 0);
-      state[key] = key === 'minimumAge' ? Math.min(120, value) : value;
-      event.target.value = key === 'minimumAge' && !state[key] ? '' : String(state[key]);
-      if (key === 'minimumAge') event.target.parentElement.dataset.active = String(state.minimumAge > 0);
+      state[key] = age ? Math.min(120, value) : value;
+      if (age) paintAges(); else event.target.value = String(state[key]);
     } else {
       state[key] = event.target.value;
     }
     state.limit = 25;
     savePrefs();
-    if (state.matchupOpen && key === 'minimumAge' && event.target.closest('.scwr-h2h-age')) {
+    if (state.matchupOpen && age && event.target.closest('.scwr-h2h-age')) {
       renderMatchupResults();
       return;
     }
@@ -1386,9 +1400,7 @@
       const control = panel.querySelector(`[data-filter="${key}"]`);
       if (control) control.value = String(value);
     }
-    const ageInput = panel.querySelector('[data-filter="minimumAge"]');
-    ageInput.value = state.minimumAge ? String(state.minimumAge) : '';
-    ageInput.parentElement.dataset.active = String(state.minimumAge > 0);
+    paintAges();
     for (const tab of panel.querySelectorAll('.scwr-tab')) {
       const on = tab.dataset.view === (state.matchupOpen ? 'matchups' : state.view);
       tab.setAttribute('aria-selected', String(on));
