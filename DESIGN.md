@@ -16,6 +16,7 @@ colors:
   silver: "#5f646c"
   bronze: "#8a4f1e"
   win-submission: "#08477f"
+  win-stoppage: "#135ba1"
   win-points: "#1d6fc4"
   win-decision: "#4f9ae0"
   win-disqualification: "#7fb2e0"
@@ -134,9 +135,9 @@ A near-neutral greyscale carrying a single blue accent, paired light and dark by
 
 ### Secondary
 
-The win-type ramp is an ordinal scale, not a palette. Five steps run from the most decisive finish to the least: **submission**, **points**, **decision**, **disqualification**, **walkover**.
+The win-type ramp is an ordinal scale, not a palette. Six steps run from the most decisive finish to the least: **submission**, **stoppage**, **points**, **decision**, **disqualification**, **walkover**.
 
-- **Submission** (`#08477f` / `#a9cff0`), **Points** (`#1d6fc4` / `#6aa8e2`), **Decision** (`#4f9ae0` / `#3f7fc4`), **Disqualification** (`#7fb2e0` / `#27547f`), **Walkover** (`#b9bec6` / `#4a4f57`).
+- **Submission** (`#08477f` / `#a9cff0`), **Stoppage** (`#135ba1` / `#8abce9`), **Points** (`#1d6fc4` / `#6aa8e2`), **Decision** (`#4f9ae0` / `#3f7fc4`), **Disqualification** (`#7fb2e0` / `#27547f`), **Walkover** (`#b9bec6` / `#4a4f57`).
 
 ### Tertiary
 
@@ -244,7 +245,7 @@ Two shapes are drawn rather than typed: the sort caret is a `clip-path` triangle
 
 ### Chips
 
-- **Win-type toggles:** pill-shaped, 32px tall, each carrying a dot in that finish type's ramp colour at 35% opacity. Pressed takes an accent border, an `accent-soft` ground, `ink` text and a full-opacity dot. The set never permits an empty allowlist.
+- **Win-type toggles:** pill-shaped, 32px tall, each carrying a dot in that finish type's ramp colour at 35% opacity. Pressed takes an accent border, an `accent-soft` ground, `ink` text and a full-opacity dot. Only the finish types the event has seen are offered, and the set never permits an empty allowlist.
 
 ### Table
 

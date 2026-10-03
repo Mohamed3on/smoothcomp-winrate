@@ -31,6 +31,7 @@
   --bronze: #8a4f1e;
   /* Ordinal ramp: darker means the match ended more decisively. */
   --win-submission: #08477f;
+  --win-stoppage: #135ba1;
   --win-points: #1d6fc4;
   --win-decision: #4f9ae0;
   --win-disqualification: #7fb2e0;
@@ -81,6 +82,7 @@
   --silver: #c3c9d2;
   --bronze: #d59a68;
   --win-submission: #a9cff0;
+  --win-stoppage: #8abce9;
   --win-points: #6aa8e2;
   --win-decision: #3f7fc4;
   --win-disqualification: #27547f;
@@ -520,6 +522,7 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 }
 .scwr-seg { display: block; min-width: 3px; border-radius: 1px; }
 .scwr-seg-submission { background: var(--win-submission); }
+.scwr-seg-stoppage { background: var(--win-stoppage); }
 .scwr-seg-points { background: var(--win-points); }
 .scwr-seg-decision { background: var(--win-decision); }
 .scwr-seg-disqualification { background: var(--win-disqualification); }

@@ -4,7 +4,7 @@
 const SCWRSite = (() => {
   // Canonical order, most decisive finish first. Other sports bring their own
   // (ippon, tko, ...) and sort after these.
-  const WIN_TYPES = ['submission', 'points', 'decision', 'disqualification', 'walkover'];
+  const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'];
 
   // Smoothcomp uses ISO alpha-2 for countries and its own codes for a handful of
   // regions. Unicode has flag glyphs for only four of those — the three British
@@ -43,7 +43,9 @@ const SCWRSite = (() => {
     // division name, "Belt" in the registration list.
     data: (event, ...rest) => [`/en/event/${event}`, ...rest].join('/'),
     bracket: (event, bracket) => `/${locale()}/event/${event}/bracket/${bracket}`,
-    match: (match) => `https://smoothcomp.com/${locale()}/getBracketMatchData/${match}`,
+    // Organiser subdomains redirect this to smoothcomp.com, so ask it directly.
+    // AJP Tour runs its own Smoothcomp, with its own match ids, on its own domain.
+    match: (match) => `${location.hostname.endsWith('smoothcomp.com') ? 'https://smoothcomp.com' : ''}/${locale()}/getBracketMatchData/${match}`,
     profile: (user) => `/${locale()}/profile/${user}`,
     club: (club) => `/${locale()}/club/${club}`,
   };

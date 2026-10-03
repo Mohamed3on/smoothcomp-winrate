@@ -19,6 +19,7 @@
   let model = null;
   let beltChoices = [];
   let eventMatches = [];
+  let eventTypes = WIN_TYPES;
   let academyNames = [];
   const matchDetails = new Map();
   const DETAIL_KEY = `match-details:${EVENT_ID}`;
@@ -61,10 +62,10 @@
   const unit = (n, one, many = `${one}s`) => (n === 1 ? one : many);
   const record = (s) => `${s.wins}–${s.losses}`;
   const WIN_LABEL = {
-    submission: ['submission', 'submissions'], points: ['points', 'points'],
+    submission: ['submission', 'submissions'], stoppage: ['stoppage', 'stoppages'], points: ['points', 'points'],
     decision: ['decision', 'decisions'], disqualification: ['DQ', 'DQs'], walkover: ['walkover', 'walkovers'],
   };
-  const WIN_ABBR = { submission: 'sub', points: 'pts', decision: 'dec', disqualification: 'DQ', walkover: 'WO' };
+  const WIN_ABBR = { submission: 'sub', stoppage: 'stop', points: 'pts', decision: 'dec', disqualification: 'DQ', walkover: 'WO' };
   const breakdown = (types) => WIN_TYPES.filter((t) => types[t])
     .map((t) => `${types[t]} ${unit(types[t], ...(WIN_LABEL[t] ?? [t, `${t}s`]))}`).join(', ');
   const shortBreakdown = (types) => WIN_TYPES.filter((t) => types[t])
@@ -283,7 +284,7 @@
   // events and reloads. Search and expanded rows deliberately do not: a stored
   // search that hides everything is baffling on the next visit.
   const PREFS_KEY = 'results-prefs';
-  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'maximumAge', 'minimum', 'types', 'beltsOff', 'bracketSort',
+  const PERSISTED = ['view', 'sort', 'direction', 'minimumAge', 'maximumAge', 'minimum', 'beltsOff', 'bracketSort',
     'matchupOpen', 'academyA', 'academyB'];
 
   // Stored values are never trusted. A column can be renamed or dropped between
@@ -300,7 +301,9 @@
       minimumAge: age(saved.minimumAge),
       maximumAge: age(saved.maximumAge),
       minimum: Number.isFinite(saved.minimum) && saved.minimum >= 0 ? Math.floor(saved.minimum) : undefined,
-      types: Array.isArray(saved.types) ? WIN_TYPES.filter((t) => saved.types.includes(t)) : undefined,
+      // Saves made before stoppages were counted list the types kept, not the ones left out.
+      types: Array.isArray(saved.typesOff) ? WIN_TYPES.filter((t) => !saved.typesOff.includes(t))
+        : Array.isArray(saved.types) ? WIN_TYPES.filter((t) => t === 'stoppage' || saved.types.includes(t)) : undefined,
       beltsOff: Array.isArray(saved.beltsOff) ? saved.beltsOff.filter((b) => typeof b === 'string') : undefined,
       matchupOpen: typeof saved.matchupOpen === 'boolean' ? saved.matchupOpen : undefined,
       academyA: typeof saved.academyA === 'string' ? saved.academyA : undefined,
@@ -313,8 +316,11 @@
     state.sort = COLUMNS[state.view].some((c) => c.key === saved.sort) ? saved.sort : DEFAULT_SORT[state.view];
   }
 
+  // Win types, like belts, are kept as the ones left out, so a type added in a
+  // later version starts counted rather than silently off.
   function savePrefs() {
-    SCWRSite.store.set(PREFS_KEY, Object.fromEntries(PERSISTED.map((k) => [k, state[k]])));
+    const typesOff = WIN_TYPES.filter((t) => !state.types.includes(t));
+    SCWRSite.store.set(PREFS_KEY, { ...Object.fromEntries(PERSISTED.map((k) => [k, state[k]])), typesOff });
   }
 
   restorePrefs();
@@ -394,14 +400,25 @@
   const more = panel.querySelector('[data-action="more"]');
   table.dataset.view = state.view;
   const chips = panel.querySelector('.scwr-type-chips');
+  const key = panel.querySelector('.scwr-key');
   const beltField = panel.querySelector('.scwr-belt-field');
-  chips.replaceChildren(...WIN_TYPES.map((type) => {
-    const chip = el('button', undefined, 'scwr-chip-toggle');
-    chip.type = 'button';
-    chip.dataset.type = type;
-    chip.append(el('i', undefined, `scwr-seg scwr-seg-${type}`), el('span', WIN_LABEL[type][1]));
-    return chip;
-  }));
+  // Like the belts, the win types offered are the ones this event has seen —
+  // every type until a match is decided. The footer key follows the chips.
+  function buildTypeChips() {
+    chips.replaceChildren(...eventTypes.map((type) => {
+      const chip = el('button', undefined, 'scwr-chip-toggle');
+      chip.type = 'button';
+      chip.dataset.type = type;
+      chip.append(el('i', undefined, `scwr-seg scwr-seg-${type}`), el('span', WIN_LABEL[type][1]));
+      return chip;
+    }));
+    key.replaceChildren(...eventTypes.map((type) => {
+      const item = el('li');
+      item.append(el('i', undefined, `scwr-seg scwr-seg-${type}`), el('span', WIN_LABEL[type][1]));
+      return item;
+    }));
+  }
+  buildTypeChips();
   function paintChips() {
     for (const chip of chips.children) {
       const on = state.types.includes(chip.dataset.type);
@@ -461,12 +478,6 @@
     const counted = beltChoices.filter((option) => !state.beltsOff.includes(option.key)).map((option) => option.key);
     return counted.length < beltChoices.length ? counted : null;
   };
-  const key = panel.querySelector('.scwr-key');
-  key.replaceChildren(...WIN_TYPES.map((type) => {
-    const item = el('li');
-    item.append(el('i', undefined, `scwr-seg scwr-seg-${type}`), el('span', WIN_LABEL[type][1]));
-    return item;
-  }));
 
   function syncAcademyNames() {
     if (!model) return;
@@ -565,7 +576,7 @@
     const group = el('div', undefined, 'scwr-chips');
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', 'Win types counted in the academy matchup');
-    for (const type of WIN_TYPES) {
+    for (const type of eventTypes) {
       const button = el('button', undefined, 'scwr-chip-toggle');
       button.type = 'button';
       button.dataset.type = type;
@@ -1153,7 +1164,7 @@
           stat(percent(athlete.rate), 'win rate'), stat(athlete.submissions, unit(athlete.submissions, 'sub')),
           stat(athlete.golds, unit(athlete.golds, 'gold')),
         );
-        inline.title = `Competition wins: ${breakdown(athlete.types) || 'none'}. Counting ${state.types.map((t) => WIN_LABEL[t][1]).join(', ')}; byes never count.`;
+        inline.title = `Competition wins: ${breakdown(athlete.types) || 'none'}. Counting ${state.types.filter((t) => eventTypes.includes(t)).map((t) => WIN_LABEL[t][1]).join(', ')}; byes never count.`;
       }
     }
     observer.observe(root, { childList: true, subtree: true });
@@ -1228,6 +1239,9 @@
       ]);
       model = SCWRModel.build(results, data.matches, participants);
       eventMatches = model.matches;
+      const seen = WIN_TYPES.filter((t) => eventMatches.some((m) => m.sides.some((s) => s.won === t)));
+      eventTypes = seen.length ? seen : WIN_TYPES;
+      buildTypeChips();
       updatedAt = data.at;
       buildBeltChips();
       rebuildSummaries();
@@ -1328,7 +1342,7 @@
     if (chip) {
       const type = chip.dataset.type;
       const next = state.types.includes(type) ? state.types.filter((t) => t !== type) : [...state.types, type];
-      if (!next.length) return; // never leave every win type off
+      if (!next.some((t) => eventTypes.includes(t))) return; // never leave every win type here off
       state.types = WIN_TYPES.filter((t) => next.includes(t));
       state.limit = 25;
       savePrefs();

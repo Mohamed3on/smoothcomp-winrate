@@ -6,7 +6,7 @@ const assert = require('node:assert/strict');
 const { replay, memoryStorage, plain } = require('./load.cjs');
 
 // What the page counts by default: every decided win type but walkovers.
-const COUNTED = ['submission', 'points', 'decision', 'disqualification'];
+const COUNTED = ['submission', 'stoppage', 'points', 'decision', 'disqualification'];
 
 async function resultsPage(name, options) {
   const page = replay(name, options);
@@ -69,8 +69,8 @@ test('with no results published, the schedule alone ranks the event', async () =
   assert.equal(full.athletes.size, 1378);
   assert.deepEqual(plain([...full.athletes.values()].filter((a) => record(a) !== record(bare.athletes.get(a.key)))
     .map((a) => [a.name, record(a), record(bare.athletes.get(a.key)) ?? null])), [
-    ['Athlete 46', '0–0 0–0 0–0 0–0 0–0', null],
-    ['Athlete 974', '0–0 0–0 0–0 0–0 0–1', '0–0 0–0 0–0 0–0 0–2'],
+    ['Athlete 46', '0–0 0–0 0–0 0–0 0–0 0–0', null],
+    ['Athlete 974', '0–0 0–0 0–0 0–0 0–0 0–1', '0–0 0–0 0–0 0–0 0–0 0–2'],
   ]);
   // Nobody is medalled, and nobody's profile is known to be public, before the
   // results say so.
