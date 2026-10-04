@@ -245,7 +245,7 @@ Two shapes are drawn rather than typed: the sort caret is a `clip-path` triangle
 
 ### Chips
 
-- **Win-type toggles:** pill-shaped, 32px tall, each carrying a dot in that finish type's ramp colour at 35% opacity. Pressed takes an accent border, an `accent-soft` ground, `ink` text and a full-opacity dot. Only the finish types the event has seen are offered, and the set never permits an empty allowlist.
+- **Win-type toggles:** pill-shaped, 32px tall, each carrying a dot in that finish type's ramp colour at 35% opacity. Pressed takes an accent border, an `accent-soft` ground, `ink` text and a full-opacity dot. Only the finish types the event has seen are offered, and the set never permits an empty allowlist. Until the event is first read the row holds pulsing placeholder pills instead of a guess; the chips then fade in left to right, 30ms apart, and the belt row fades in with them if the event has one.
 
 ### Table
 

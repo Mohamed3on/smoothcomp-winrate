@@ -402,9 +402,20 @@
   const chips = panel.querySelector('.scwr-type-chips');
   const key = panel.querySelector('.scwr-key');
   const beltField = panel.querySelector('.scwr-belt-field');
+  // Labels that only exist once the event is read fade in one after another
+  // rather than snapping into place. Reduced motion keeps the fade, not the drop.
+  function reveal(nodes) {
+    const drop = matchMedia('(prefers-reduced-motion: reduce)').matches ? {} : { transform: ['translateY(-5px)', 'none'] };
+    [...nodes].forEach((node, i) => node.animate({ opacity: [0, 1], ...drop },
+      { duration: 180, delay: i * 30, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'backwards' }));
+  }
+
   // Like the belts, the win types offered are the ones this event has seen —
-  // every type until a match is decided. The footer key follows the chips.
+  // every type until a match is decided. Until the first read, skeleton() holds
+  // their place, so no type is offered and then taken back. The footer key
+  // follows the chips.
   function buildTypeChips() {
+    const arriving = Boolean(chips.querySelector('.scwr-shimmer'));
     chips.replaceChildren(...eventTypes.map((type) => {
       const chip = el('button', undefined, 'scwr-chip-toggle');
       chip.type = 'button';
@@ -417,8 +428,8 @@
       item.append(el('i', undefined, `scwr-seg scwr-seg-${type}`), el('span', WIN_LABEL[type][1]));
       return item;
     }));
+    if (arriving) reveal(chips.children);
   }
-  buildTypeChips();
   function paintChips() {
     for (const chip of chips.children) {
       const on = state.types.includes(chip.dataset.type);
@@ -464,10 +475,12 @@
   // One event's grades, read once per load. Nothing to filter below two of them:
   // an event graded by nobody would otherwise offer a chip that does nothing.
   function buildBeltChips() {
+    const appearing = beltField.hidden;
     beltChoices = model ? SCWRModel.beltOptions(model) : [];
     beltField.hidden = beltChoices.length < 2;
     beltField.querySelector('.scwr-belt-chips')?.remove();
     if (!beltField.hidden) beltField.append(beltChipGroup('Belts counted in the standings'));
+    if (appearing && !beltField.hidden) reveal([beltField]);
     paintChips();
   }
 
@@ -1222,6 +1235,9 @@
       }
       return tr;
     }));
+    // The win types are unknown until the event is first read, so the chip row
+    // holds placeholders rather than guessing.
+    if (!model) chips.replaceChildren(...Array.from({ length: 5 }, () => el('span', undefined, 'scwr-shimmer')));
   }
 
   async function load(refresh = false) {
@@ -1250,7 +1266,7 @@
     } catch (error) {
       // Put the numbers we already had back on screen; skeleton() cleared them,
       // and the message below promises they are still here.
-      if (model) render(); else body.replaceChildren();
+      if (model) render(); else { body.replaceChildren(); chips.replaceChildren(); }
       status.textContent = `${model ? 'Showing the previous numbers. ' : ''}${error.message} Open the event's Matches page to check access, then hit Refresh.`;
     } finally {
       busy = false;

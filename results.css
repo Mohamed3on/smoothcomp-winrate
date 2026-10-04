@@ -558,6 +558,9 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 .scwr-skeleton { cursor: default; }
 .scwr-skeleton td:first-child .scwr-shimmer { width: 14px; }
 .scwr-skeleton td:nth-child(2) .scwr-shimmer { width: 68%; }
+/* Pills about as wide as the win-type chips that will replace them. */
+.scwr-type-chips > .scwr-shimmer { width: 100px; height: 32px; border-radius: 999px; }
+.scwr-type-chips > .scwr-shimmer:nth-child(even) { width: 80px; }
 
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 .scwr-foot {
