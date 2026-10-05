@@ -31,6 +31,25 @@
 }
 .scwr-career .font-size-tiny .scwr-pulse { width: 8em; }
 
+/* An unapproved athlete fades back, as Smoothcomp fades a row a search filtered
+   out, and says so at the end of the row rather than on a line of its own. The
+   card rounds itself, since the hidden line held the bottom corners, and keeps the
+   ground every row has: Smoothcomp's tint for it never paints, an rgba() of a hex. */
+#registrations .participants-desktop .profile-card.unapproved {
+  opacity: 0.55;
+  border-radius: 8px;
+  overflow: hidden;
+}
+#registrations .participants-desktop .profile-card.unapproved .participant-tr { background-color: var(--gray-2); }
+#registrations .participants-desktop .participant-tr-note-notapproved { display: none; }
+.profile-card.unapproved .scwr-career::after {
+  content: 'Not approved';
+  margin-left: auto;
+  align-self: center;
+  white-space: nowrap;
+  font-style: italic;
+}
+
 @keyframes scwr-in { from { opacity: 0; } }
 @keyframes scwr-pulse { 50% { opacity: 0.22; } }
 

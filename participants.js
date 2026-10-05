@@ -175,6 +175,9 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   if (!found) return;
   vm = found;
   place = new Map(vm.all.flatMap((g) => g.registrations.map((r, i) => [r.id, i])));
+  // Smoothcomp hides a bracket's unapproved athletes unless a search is on, and
+  // that is all `isSearching` decides. Keeping it on shows them; participants.css marks them.
+  Object.defineProperty(vm.$.ctx, 'isSearching', { get: () => true });
   // Brackets whose every career is already kept are ranked before the first draw.
   for (const g of vm.all) if (g.registrations.every((r) => !r.user_id || fresh(r.user_id))) ranked.add(g.name);
   // Every filter path — search, country, quick filter — funnels through here,

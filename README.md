@@ -22,6 +22,7 @@ grades you keep switched on — one chip per grade the event published, with the
 colour folded together. Search reaches countries as well as names, academies and divisions. Every athlete in the official list below gets their record inline.
 
 **Participants page** — unrolls the infinite scroll and shows every bracket at once, biggest first.
+Athletes Smoothcomp hides until their registration is approved show too, faded and marked "Not approved".
 As a bracket nears the screen, each athlete's career replaces the registration column, which only
 repeated the bracket title: wins, counted under the win types the results page keeps on, over how many
 came by submission and on points, then medals. The bracket ranks itself by wins, submissions, points,
