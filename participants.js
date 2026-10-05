@@ -2,8 +2,6 @@
 // payload, then renders four at a time behind infinite scroll. Show them all at
 // once, biggest bracket first, and rank each bracket by its athletes' careers.
 
-const approved = (group) => group.registrations.filter((r) => r.approved === 1).length;
-
 // A career is one request per athlete, so it is read only for brackets near the
 // screen, a whole bracket at once, and kept for a week. Wins count the way the
 // results page counts them: walkovers stay out unless switched on there.
@@ -188,7 +186,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   });
   // `participants` maps `all` in order, so sorting the source sorts the filtered
   // views too. The array is frozen; sort a copy.
-  vm.all = Object.freeze([...vm.all].sort((a, b) => approved(b) - approved(a))
+  vm.all = Object.freeze([...vm.all].sort((a, b) => b.registrations.length - a.registrations.length)
     .map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g)));
   vm.updateResults();
   queue();
