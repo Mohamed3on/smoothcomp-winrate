@@ -1,0 +1,35 @@
+name: Release
+
+# Every push to main runs the tests, then semantic-release reads the commits since
+# the last tag: a feat cuts a minor version, a fix a patch, anything else nothing.
+# A release stamps manifest.json, commits it back, and attaches pack.ts's zip.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: npm test
+
+      # Fetched per run, so the extension keeps no dependencies.
+      - run: npx -p semantic-release@25 -p @semantic-release/exec@7 -p @semantic-release/git@10 semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

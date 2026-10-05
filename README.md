@@ -30,10 +30,10 @@ week; a hidden profile has none.
 
 ## Install
 
-No build step. Clone, then load it unpacked:
+No build step. Clone, or unzip the [latest release](https://github.com/Mohamed3on/smoothcomp-winrate/releases/latest), then load it unpacked:
 
 1. `chrome://extensions` → enable **Developer mode**
-2. **Load unpacked** → pick this directory
+2. **Load unpacked** → pick the folder
 
 ## Layout
 
@@ -70,6 +70,13 @@ caching and joining code: a finished Grappling Industries event (25901), and ADC
 Worlds (29650) recorded mid-event. `tests/fixtures/` holds what
 Smoothcomp served, trimmed to the fields the extension reads, with every competitor renamed
 and renumbered.
+
+## Releases
+
+Never bump the version by hand. Every push to main runs the tests, then semantic-release
+reads the commit messages since the last tag: a `feat` cuts a minor version, a `fix` a patch.
+A release stamps the version into `manifest.json`, commits it back, and attaches a zip of the
+files the manifest loads (`pack.ts`) to a GitHub release.
 
 ## Notes
 
