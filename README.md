@@ -23,8 +23,8 @@ colour folded together. Search reaches countries as well as names, academies and
 As a bracket nears the screen, each athlete's career replaces the registration column, which only
 repeated the bracket title: wins, counted under the win types the results page keeps on, over how many
 came by submission and on points, then medals. The bracket ranks itself by wins, submissions, points,
-then age, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for a
-day; a hidden profile has none.
+then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for a
+week; a hidden profile has none.
 
 ## Install
 

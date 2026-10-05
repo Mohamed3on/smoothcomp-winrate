@@ -5,15 +5,15 @@
 const approved = (group) => group.registrations.filter((r) => r.approved === 1).length;
 
 // A career is one request per athlete, so it is read only for brackets near the
-// screen, a whole bracket at once, and kept for a day. Wins count the way the
+// screen, a whole bracket at once, and kept for a week. Wins count the way the
 // results page counts them: walkovers stay out unless switched on there.
 const CAREERS = 'careers';
-const DAY = 24 * 60 * 60 * 1000;
+const WEEK = 7 * 24 * 60 * 60 * 1000;
 const careers = SCWRSite.store.get(CAREERS, {});
 const reading = new Map();
 const typesOff = SCWRSite.store.get('results-prefs')?.typesOff;
 const counted = (type) => !(Array.isArray(typesOff) ? typesOff : ['walkover']).includes(type);
-const fresh = (user) => Date.now() - (careers[user]?.at ?? 0) < DAY;
+const fresh = (user) => Date.now() - (careers[user]?.at ?? 0) < WEEK;
 
 function readCareer(user) {
   if (!reading.has(user)) {
@@ -49,11 +49,11 @@ let vm;
 let place; // each registration's index in Smoothcomp's own order
 const ranked = new Set();
 
-// Most wins first, then most by submission, most by points, and the older
+// Most wins first, then most by submission, most by points, and the younger
 // athlete; anything still level keeps Smoothcomp's own order. A career that is
-// unread or hidden sorts after every known one.
+// unread or hidden sorts after every known one, as does an unknown age.
 function rank(group) {
-  const key = (r) => [...(tally(r.user_id) ?? [-1, -1, -1]), r.age ?? -1, -place.get(r.id)];
+  const key = (r) => [...(tally(r.user_id) ?? [-1, -1, -1]), -(r.age ?? Infinity), -place.get(r.id)];
   return group.registrations.map((r) => [r, key(r)])
     .sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0))
     .map(([r]) => r);
