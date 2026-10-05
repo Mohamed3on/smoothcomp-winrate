@@ -36,6 +36,9 @@ const SCWRSite = (() => {
   // forcing /en/ and bouncing the reader into English.
   const locale = () => location.pathname.match(/^\/([a-z]{2})(?:\/|$)/)?.[1] ?? 'en';
   const id = (kind, href) => String(href ?? location.pathname).match(`/${kind}/(\\d+)`)?.[1] ?? null;
+  // Organiser subdomains redirect match data and careers to smoothcomp.com, so
+  // ask it directly. AJP Tour runs its own Smoothcomp, with its own ids, on its own domain.
+  const home = () => (location.hostname.endsWith('smoothcomp.com') ? 'https://smoothcomp.com' : '');
 
   const url = {
     // Links follow the reader; anything the extension reads is pinned to
@@ -43,9 +46,9 @@ const SCWRSite = (() => {
     // division name, "Belt" in the registration list.
     data: (event, ...rest) => [`/en/event/${event}`, ...rest].join('/'),
     bracket: (event, bracket) => `/${locale()}/event/${event}/bracket/${bracket}`,
-    // Organiser subdomains redirect this to smoothcomp.com, so ask it directly.
-    // AJP Tour runs its own Smoothcomp, with its own match ids, on its own domain.
-    match: (match) => `${location.hostname.endsWith('smoothcomp.com') ? 'https://smoothcomp.com' : ''}/${locale()}/getBracketMatchData/${match}`,
+    match: (match) => `${home()}/${locale()}/getBracketMatchData/${match}`,
+    // An athlete's wins by method and medals, across every event they entered.
+    career: (user) => `${home()}/en/athlete/${user}/wins-and-medals`,
     profile: (user) => `/${locale()}/profile/${user}`,
     club: (club) => `/${locale()}/club/${club}`,
   };

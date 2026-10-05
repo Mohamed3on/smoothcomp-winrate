@@ -21,7 +21,10 @@
         "participants.js"
       ],
       "world": "MAIN",
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "css": [
+        "participants.css"
+      ]
     },
     {
       "matches": [

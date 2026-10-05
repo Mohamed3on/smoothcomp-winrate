@@ -20,6 +20,10 @@ grades you keep switched on — one chip per grade the event published, with the
 colour folded together. Search reaches countries as well as names, academies and divisions. Every athlete in the official list below gets their record inline.
 
 **Participants page** — unrolls the infinite scroll and shows every bracket at once, biggest first.
+As a bracket nears the screen, each athlete's career replaces the registration column, which only
+repeated the bracket title: wins, counted under the win types the results page keeps on, then wins by
+submission, by points, and golds. The bracket then ranks itself by those, then by age, and otherwise
+keeps Smoothcomp's order. Careers are read a bracket at a time and kept for a day; a hidden profile has none.
 
 ## Install
 

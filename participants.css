@@ -1,0 +1,30 @@
+/* The registration column only repeats the bracket title, so the athlete's
+   career takes its place. It is drawn into Smoothcomp's own rows, so it borrows
+   their ink and type: currentColor, Smoothcomp's sizes, Smoothcomp's `muted`. */
+#registrations .participants-desktop .participant-td-registration { display: none; }
+
+.scwr-career {
+  display: flex;
+  flex: 1 1 auto;
+  font-variant-numeric: tabular-nums;
+}
+.scwr-career > * { flex: 1 1 0; min-width: 0; animation: scwr-in 0.2s ease-out; }
+.scwr-career b { font-weight: 600; }
+
+/* Holds each figure's place while the bracket is read. */
+.scwr-career .scwr-pulse {
+  display: block;
+  width: 28px;
+  height: 0.8em;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.12;
+  animation: scwr-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes scwr-in { from { opacity: 0; } }
+@keyframes scwr-pulse { 50% { opacity: 0.24; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .scwr-career > *, .scwr-career .scwr-pulse { animation: none; }
+}
