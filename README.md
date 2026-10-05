@@ -31,7 +31,9 @@ week; a hidden profile has none.
 
 ## Install
 
-No build step. Clone, or unzip the [latest release](https://github.com/Mohamed3on/smoothcomp-winrate/releases/latest), then load it unpacked:
+From the [Chrome Web Store](https://chromewebstore.google.com/detail/foadjommplmenhenheolmdmkfmhjflpf).
+
+Or, with no build step: clone, or unzip the [latest release](https://github.com/Mohamed3on/smoothcomp-winrate/releases/latest), then load it unpacked:
 
 1. `chrome://extensions` → enable **Developer mode**
 2. **Load unpacked** → pick the folder
@@ -77,7 +79,9 @@ and renumbered.
 Never bump the version by hand. Every push to main runs the tests, then semantic-release
 reads the commit messages since the last tag: a `feat` cuts a minor version, a `fix` a patch.
 A release stamps the version into `manifest.json`, commits it back, and attaches a zip of the
-files the manifest loads (`pack.ts`) to a GitHub release.
+files the manifest loads (`pack.ts`) to a GitHub release. The Chrome Web Store workflow then
+submits that build for review (`publish-chrome-web-store.ts`); while an earlier version is
+still in review, a daily run submits it once the review clears.
 
 ## Notes
 
