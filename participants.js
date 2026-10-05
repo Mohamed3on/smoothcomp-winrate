@@ -36,13 +36,13 @@ function save() {
   SCWRSite.store.set(CAREERS, careers);
 }
 
-// Counted wins, wins by submission, wins by points and golds; null while the
-// career is unread or hidden.
+// Counted wins, wins by submission and wins by points; null while the career
+// is unread or hidden.
 function tally(user) {
   const career = fresh(user) ? careers[user] : null;
   if (!career?.wins) return null;
   const n = (type) => (counted(type) ? career.wins[type] ?? 0 : 0);
-  return [Object.keys(career.wins).reduce((sum, type) => sum + n(type), 0), n('submission'), n('points'), career.medals[0]];
+  return [Object.keys(career.wins).reduce((sum, type) => sum + n(type), 0), n('submission'), n('points')];
 }
 
 let vm;
@@ -53,7 +53,7 @@ const ranked = new Set();
 // athlete; anything still level keeps Smoothcomp's own order. A career that is
 // unread or hidden sorts after every known one.
 function rank(group) {
-  const key = (r) => [...(tally(r.user_id)?.slice(0, 3) ?? [-1, -1, -1]), r.age ?? -1, -place.get(r.id)];
+  const key = (r) => [...(tally(r.user_id) ?? [-1, -1, -1]), r.age ?? -1, -place.get(r.id)];
   return group.registrations.map((r) => [r, key(r)])
     .sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0))
     .map(([r]) => r);
@@ -83,7 +83,7 @@ function slide(rows) {
   for (const [row, top] of rows) {
     const shift = top - row.getBoundingClientRect().top;
     if (shift && row.isConnected) {
-      row.animate([{ transform: `translateY(${shift}px)` }, { transform: 'none' }], { duration: 320, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+      row.animate([{ transform: `translateY(${shift}px)` }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(0.77, 0, 0.175, 1)' });
     }
   }
 }
@@ -108,29 +108,36 @@ const watcher = new IntersectionObserver((entries) => {
 }, { rootMargin: '300px 0px' });
 
 // The registration column only repeats the bracket title, so the career takes
-// its place; participants.css hides the original.
-const COLUMNS = ['Wins', 'By submission', 'By points', 'Golds'];
+// its place; participants.css hides the original. Each column is drawn like
+// Smoothcomp's own: a figure over a muted line, as the birth year sits over the age.
+const COLUMNS = ['Wins', 'Medals'];
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+// A zero steps back to Smoothcomp's muted ink, so the eye lands on the figures that count.
+const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${figure}</div><div class="muted font-size-tiny">${line}</div></div>`;
+// The placeholder takes the shape of what replaces it, so nothing moves when it lands.
+const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-size-tiny"><i class="scwr-pulse"></i></div></div>';
 
 function draw(cell, user) {
   const t = user && tally(user);
-  const state = user === 'head' ? user : t ? t.join() : !user ? '' : fresh(user) ? 'hidden' : reading.has(user) ? 'reading' : '';
+  const medals = t && careers[user].medals;
+  const state = user === 'head' ? user : t ? `${t}|${medals}` : !user ? '' : fresh(user) ? 'hidden' : reading.has(user) ? 'reading' : '';
   if (cell.dataset.state === state) return;
   cell.dataset.state = state;
   cell.title = '';
   if (state === 'head') {
     cell.innerHTML = COLUMNS.map((label) => `<span>${label}</span>`).join('');
   } else if (t) {
-    cell.innerHTML = t.map((n, i) => `<div>${i ? n : `<b>${n}</b>`}</div>`).join('');
-    const { wins, medals } = careers[user];
-    const by = (keep) => Object.entries(wins).filter(([type]) => counted(type) === keep).map(([type, n]) => `${n} by ${type}`).join(', ');
-    cell.title = `${plural(t[0], 'career win')}: ${by(true) || 'none'}${by(false) ? `, not counting ${by(false)}` : ''}. `
-      + `Medals: ${medals[0]} gold, ${medals[1]} silver, ${medals[2]} bronze.`;
+    const [gold, silver, bronze] = medals;
+    cell.innerHTML = column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`)
+      + (gold + silver + bronze ? column(gold, `${gold} gold`, `${silver} silver · ${bronze} bronze`) : '<div class="muted">No medals</div>');
+    const by = (keep) => Object.entries(careers[user].wins).filter(([type]) => counted(type) === keep)
+      .map(([type, n]) => `${n} by ${type}`).join(', ');
+    cell.title = `${plural(t[0], 'career win')}: ${by(true) || 'none'}${by(false) ? `, not counting ${by(false)}` : ''}.`;
   } else if (state === 'hidden') {
     cell.innerHTML = '<div class="muted">Hidden profile</div>';
     cell.title = 'Smoothcomp does not share a hidden profile\'s record.';
   } else {
-    cell.innerHTML = state === 'reading' ? COLUMNS.map(() => '<div><span class="scwr-pulse"></span></div>').join('') : '';
+    cell.innerHTML = state === 'reading' ? PLACEHOLDER.repeat(COLUMNS.length) : '';
   }
 }
 

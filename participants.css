@@ -6,25 +6,35 @@
 .scwr-career {
   display: flex;
   flex: 1 1 auto;
+  gap: 16px;
   font-variant-numeric: tabular-nums;
 }
-.scwr-career > * { flex: 1 1 0; min-width: 0; animation: scwr-in 0.2s ease-out; }
+/* Fixed widths, so each figure lines up down the bracket. */
+.scwr-career > * {
+  flex: 0 0 152px;
+  min-width: 0;
+  animation: scwr-in 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.scwr-career div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scwr-career b { font-weight: 600; }
 
-/* Holds each figure's place while the bracket is read. */
+/* Sits on the line it stands in for, so the figure lands where the bar was. */
 .scwr-career .scwr-pulse {
-  display: block;
-  width: 28px;
-  height: 0.8em;
+  display: inline-block;
+  width: 2.4em;
+  height: 0.75em;
+  vertical-align: middle;
   border-radius: 3px;
   background: currentColor;
   opacity: 0.12;
   animation: scwr-pulse 1.2s ease-in-out infinite;
 }
+.scwr-career .font-size-tiny .scwr-pulse { width: 8em; }
 
 @keyframes scwr-in { from { opacity: 0; } }
-@keyframes scwr-pulse { 50% { opacity: 0.24; } }
+@keyframes scwr-pulse { 50% { opacity: 0.22; } }
 
+/* Less motion keeps the fade, which only clarifies, and stills the pulse. */
 @media (prefers-reduced-motion: reduce) {
-  .scwr-career > *, .scwr-career .scwr-pulse { animation: none; }
+  .scwr-career .scwr-pulse { animation: none; }
 }
