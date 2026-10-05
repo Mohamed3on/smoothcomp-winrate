@@ -1,4 +1,4 @@
-# Smoothcomp Win Rate
+# Mat Stats for Smoothcomp
 
 A Chrome extension that recomputes Smoothcomp's competition numbers from the event's
 own match list, and adds the views the site doesn't have.
