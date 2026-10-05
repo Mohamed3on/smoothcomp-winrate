@@ -1,7 +1,8 @@
 # Mat Stats for Smoothcomp
 
 A Chrome extension that recomputes Smoothcomp's competition numbers from the event's
-own match list, and adds the views the site doesn't have.
+own match list, and adds the views the site doesn't have. It works on Smoothcomp events and on
+AJP Tour's, which run on their own copy of Smoothcomp at ajptour.com.
 
 Smoothcomp's published win rate counts walkovers as wins, so an athlete who advanced
 on two no-shows reads the same as one who submitted two opponents. This extension
@@ -12,7 +13,8 @@ the win types you choose, and shows the result on the results page.
 
 **Results page** — a sortable competition leaderboard above the official results: athletes,
 academies, and a brackets view pairing each division's gold medallist with whoever actually
-won the most matches there. A division still waiting on its published results counts from
+won the most matches there. A Matchups tab puts any two academies head to head: the record
+between them, the points each scored, and every counted match where they met. A division still waiting on its published results counts from
 the schedule, with no placements or medals until they arrive. Rows carry the photo, flag, belt and age the registration list
 publishes and the results page drops. An age range, open at either end, uses those registration ages across
 division names while gi and no-gi stay combined, and a belt filter narrows every table to the
