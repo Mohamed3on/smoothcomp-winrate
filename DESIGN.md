@@ -251,7 +251,7 @@ Two shapes are drawn rather than typed: the sort caret is a `clip-path` triangle
 
 - **Header:** `raised` ground, sticky, each sortable heading a full-width button in Label type. The active sort turns accent and shows its caret; hovering reveals the caret at 45%.
 - **Rows:** 8px padding, a 1px `line` rule, the whole row clickable to expand. Hover takes `hover`; open takes `accent-soft` and drops its bottom rule into the detail row beneath it.
-- **Expanded detail:** an `accent-soft` panel indented to the name column, listing bracket placements as pip-plus-text rows.
+- **Expanded detail:** an `accent-soft` panel indented to the name column, listing bracket placements as pip-plus-text rows, largest bracket first.
 - **Rank:** muted Small, promoted to bold `ink` for the top three.
 - **Empty and loading:** an empty state centres a Title over a ≤46ch explanation; loading rows are `hover`-coloured shimmer bars that pulse.
 

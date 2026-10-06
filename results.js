@@ -902,7 +902,10 @@
         detail: `${record(a)} · ${percent(a.rate)} · ${breakdown(a.types) || 'no contested wins'}`,
         medals: a.medals,
       }))
-      : row.entries.map((entry) => {
+      // Largest bracket first, the one the Bracket size column counts. The
+      // results list every kids division before the adults', so a junior who
+      // also fought up would otherwise lead with the smaller one.
+      : [...row.entries].sort((a, b) => model.brackets.get(b.bracketId).size - model.brackets.get(a.bracketId).size).map((entry) => {
         const bracket = model.brackets.get(entry.bracketId);
         const one = SCWRModel.entryRecord(entry, state.types);
         return {
