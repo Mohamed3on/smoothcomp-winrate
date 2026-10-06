@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mat Stats for Smoothcomp",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Walkover-free win rates, athlete and academy leaderboards, head-to-heads, and every bracket ranked by its athletes' careers",
   "icons": {
     "16": "icons/icon16.png",
