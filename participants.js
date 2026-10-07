@@ -3,14 +3,15 @@
 // once, biggest bracket first, and rank each bracket by its athletes' careers.
 
 // A career is one request per athlete, so it is read only for brackets near the
-// screen, a whole bracket at once, and kept for a week. Wins count the way the
-// results page counts them: walkovers stay out unless switched on there.
+// screen, a whole bracket at once, and kept for a week. Walkovers stay out unless
+// switched on in the results page; every other win counts, since this page shows
+// no switch that could explain one missing.
 const CAREERS = 'careers';
 const WEEK = 7 * 24 * 60 * 60 * 1000;
 const careers = SCWRSite.store.get(CAREERS, {});
 const reading = new Map();
 const typesOff = SCWRSite.store.get('results-prefs')?.typesOff;
-const counted = (type) => !(Array.isArray(typesOff) ? typesOff : ['walkover']).includes(type);
+const counted = (type) => type !== 'walkover' || (Array.isArray(typesOff) && !typesOff.includes(type));
 const fresh = (user) => Date.now() - (careers[user]?.at ?? 0) < WEEK;
 
 function readCareer(user) {
