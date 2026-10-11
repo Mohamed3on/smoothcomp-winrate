@@ -168,6 +168,96 @@ function queue() {
   requestAnimationFrame(() => { queued = false; paint(); });
 }
 
+// Over the list, the biggest brackets the signed-in athlete could enter and would
+// top-seed. Their gender and birth date come from their settings and their belt
+// from their profile, kept a week; their weight is theirs to give, kept per site.
+// Who is signed in is known once the list mounts: Cloudflare's Rocket Loader runs
+// the page's inline scripts, `window.userId` among them, after this one.
+let me;
+const esc = (text) => text.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+let panel;
+let picking = 0;
+
+async function profile() {
+  const kept = SCWRSite.store.get('profile');
+  if (kept?.user === me && Date.now() - kept.at < WEEK) return kept;
+  const get = (url) => fetch(url, { credentials: 'include' }).then((r) => (r.ok ? r : Promise.reject(r.status)));
+  const [settings, skills] = await Promise.all([
+    get(SCWRSite.url.settings(me)).then((r) => r.text()),
+    get(SCWRSite.url.skills(me)).then((r) => r.json()),
+  ]);
+  const field = (label) => settings.match(new RegExp(`label="${label}"[^>]*?value="([^"]*)"`))?.[1];
+  const found = {
+    user: me,
+    at: Date.now(),
+    gender: field('Gender')?.[0],
+    birth: field('Birthdate'),
+    belt: skills.data?.find((skill) => /jiu|bjj/i.test(skill.name))?.belt?.toLowerCase(),
+  };
+  if (!found.gender || !found.birth) throw new Error('unreadable settings');
+  SCWRSite.store.set('profile', found);
+  return found;
+}
+
+function age(birth) {
+  const born = new Date(birth);
+  const now = new Date();
+  return now.getFullYear() - born.getFullYear() - (now < new Date(now.getFullYear(), born.getMonth(), born.getDate()) ? 1 : 0);
+}
+
+// Six careers in flight at most, however many brackets are eligible.
+async function pool(users) {
+  const waiting = [...users];
+  await Promise.all(Array.from({ length: 6 }, async () => { while (waiting.length) await readCareer(waiting.shift()); }));
+}
+
+function mount() {
+  panel = document.createElement('div');
+  panel.className = 'container container-fluid-large scwr-picks';
+  panel.innerHTML = `<div class="scwr-picks-head"><h6>Brackets you'd top-seed</h6><span class="muted"></span>`
+    + '<label><input type="number" min="20" max="250" step="0.1" placeholder="Weight"> kg</label></div><div></div>';
+  document.querySelector('#registrations').before(panel);
+  const input = panel.querySelector('input');
+  input.value = SCWRSite.store.get('weight') ?? '';
+  input.addEventListener('change', () => { SCWRSite.store.set('weight', +input.value || null); pick(); });
+  panel.lastChild.addEventListener('click', (event) => {
+    const name = event.target.closest('[data-name]')?.dataset.name;
+    const group = [...document.querySelectorAll('#registrations .participant-group')].find((g) => heading(g) === name);
+    group?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  });
+}
+
+async function pick() {
+  const run = ++picking;
+  const say = (html) => { if (run === picking) panel.lastChild.innerHTML = html; };
+  const weight = SCWRSite.store.get('weight');
+  if (!weight) return say('');
+  say('<p class="muted">Reading careers…</p>');
+  let you;
+  try {
+    you = await profile();
+  } catch {
+    return say('<p class="muted">Smoothcomp would not share your profile.</p>');
+  }
+  if (!you.belt) return say('<p class="muted">Your Smoothcomp profile has no BJJ belt.</p>');
+  const athlete = { id: me, gender: you.gender, belt: you.belt, age: age(you.birth), weight };
+  const groups = SCWRPicks.eligible(vm.all, new Map((vm.categories ?? []).map((c) => [c.id, c])), athlete);
+  const users = new Set([me, ...groups.flatMap((g) => g.registrations.map((r) => r.user_id && String(r.user_id)))]);
+  await pool([...users].filter((user) => user && !fresh(user)));
+  save();
+  athlete.tally = tally(me);
+  if (!athlete.tally) return say('<p class="muted">Smoothcomp would not share your record.</p>');
+  if (run === picking) panel.querySelector('.scwr-picks-head .muted').textContent = plural(athlete.tally[0], 'win');
+  const { top, closest } = SCWRPicks.picks(groups, athlete, tally);
+  const row = (s, lead) => `<button type="button" class="scwr-pick" data-name="${esc(s.group.name)}">`
+    + `<span title="${esc(s.group.name)}">${esc(s.group.name)}</span><span>${plural(s.size, 'athlete')}</span>`
+    + `<span class="muted">${[lead, s.hidden && `${s.hidden} hidden`, s.entered && 'entered'].filter(Boolean).join(' · ')}</span></button>`;
+  const gap = closest && closest.rival - athlete.tally[0];
+  say(top.length ? top.map((s) => row(s, s.rival !== null && `next best ${plural(s.rival, 'win')}`)).join('')
+    : `<p class="muted">No eligible bracket you'd top-seed${closest ? ' — closest:' : '.'}</p>`
+      + (closest ? row(closest, gap ? `${plural(gap, 'win')} short` : 'level on wins') : ''));
+}
+
 // The list is fetched after mount, so wait for it to land — a large entry list on
 // a slow connection takes a while, but not forever.
 SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000 }).then((found) => {
@@ -191,4 +281,9 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     .map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g)));
   vm.updateResults();
   queue();
+  me = window.userId && String(window.userId);
+  if (me) {
+    mount();
+    pick();
+  }
 });

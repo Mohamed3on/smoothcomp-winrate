@@ -29,6 +29,13 @@ came by submission and on points, then medals. The bracket ranks itself by wins,
 then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for a
 week; a hidden profile has none.
 
+Signed in, a panel over the list names the three biggest brackets you could enter and would top-seed by that same
+order, with the athlete you'd displace and how many profiles stay hidden. Gender, age and belt come from your
+Smoothcomp profile and the weight from the box beside it; you could enter your own weight class in either
+discipline, every age group you're old enough for, and every absolute. Brackets are matched on the organiser's
+own labels, and one whose label says nothing readable counts only if you entered under it. With nothing to top,
+the panel names the bracket you fall the fewest wins short of.
+
 ## Install
 
 From the [Chrome Web Store](https://chromewebstore.google.com/detail/foadjommplmenhenheolmdmkfmhjflpf).
@@ -46,11 +53,12 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `matches.js` | Reads every match off the event's schedule, one request per mat |
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
+| `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
 | `participants.js` | The participants page |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
 `site.js` loads first on every page; the rest share globals through page scope in manifest
-order. `model.js` is pure — no DOM, no network, no storage — which is what makes it testable.
+order. `model.js` and `picks.js` are pure — no DOM, no network, no storage — which is what makes them testable.
 
 Chrome will not load an SVG icon, so `icons/icon.svg` is the source and the PNGs are rendered
 from it. After editing the SVG:
@@ -70,7 +78,8 @@ npm test
 
 No dependencies. The tests replay two real events through the extension's own loading,
 caching and joining code: a finished Grappling Industries event (25901), and ADCC Amateur
-Worlds (29650) recorded mid-event. `tests/fixtures/` holds what
+Worlds (29650) recorded mid-event. A third, Grappling Industries Berlin (25902) mid-registration,
+holds the participants page's bracket picks to one athlete's real answer. `tests/fixtures/` holds what
 Smoothcomp served, trimmed to the fields the extension reads, with every competitor renamed
 and renumbered.
 

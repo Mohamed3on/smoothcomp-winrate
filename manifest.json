@@ -18,6 +18,7 @@
       ],
       "js": [
         "site.js",
+        "picks.js",
         "participants.js"
       ],
       "world": "MAIN",
