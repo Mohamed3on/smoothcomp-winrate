@@ -52,10 +52,24 @@
 
 /* The brackets the athlete would top-seed sit over the list in Smoothcomp's own
    idiom: a muted uppercase heading like its quick filters, and rows grounded
-   like its chips, in borrowed ink so either theme wears them. */
+   like its chips, in borrowed ink so either theme wears them. The one colour is
+   the extension's accent, read for the theme the page wears, and here it means
+   you: your record, and the brackets you have already entered. */
 .container.scwr-picks { margin-bottom: 32px; font-variant-numeric: tabular-nums; }
+.scwr-picks {
+  --accent: #1565c0;
+  --accent-soft: rgba(21, 101, 192, 0.09);
+  --accent-line: rgba(21, 101, 192, 0.32);
+}
+.scwr-picks[data-scwr-theme='dark'] {
+  --accent: #79b3ea;
+  --accent-soft: rgba(121, 179, 234, 0.13);
+  --accent-line: rgba(121, 179, 234, 0.4);
+}
+.scwr-picks ::selection { background: var(--accent-soft); }
 .scwr-picks-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .scwr-picks-head h6 { margin: 0 auto 0 0; text-transform: uppercase; opacity: 0.5; }
+.scwr-picks-wins { color: var(--accent); font-weight: 600; }
 .scwr-picks-head label { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: inherit; }
 .scwr-picks-head input {
   width: 6em;
@@ -65,8 +79,10 @@
   border-radius: 4px;
   background: transparent;
   color: inherit;
+  caret-color: var(--accent);
   text-align: right;
 }
+.scwr-picks-head input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 .scwr-picks p { margin: 0 0 8px; }
 .scwr-pick {
   display: grid;
@@ -77,18 +93,31 @@
   min-height: 40px;
   margin-bottom: 4px;
   padding: 0 12px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 4px;
-  background: rgba(128, 128, 128, 0.1);
+  background-color: rgba(128, 128, 128, 0.1);
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
 .scwr-pick > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scwr-pick:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+/* The name gives way before its label does. */
+.scwr-pick > :first-child { display: flex; align-items: center; gap: 10px; }
+.scwr-pick > :first-child > :first-child { overflow: hidden; text-overflow: ellipsis; }
+.scwr-pick.scwr-entered { border-color: var(--accent-line); background-color: var(--accent-soft); }
+.scwr-entered-label {
+  flex: none;
+  color: var(--accent);
+  font-size: 0.75em;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.scwr-pick:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 @media (hover: hover) {
-  .scwr-pick:hover { background: rgba(128, 128, 128, 0.18); }
+  /* A wash over whichever ground the row wears, entered or not. */
+  .scwr-pick:hover { background-image: linear-gradient(rgba(128, 128, 128, 0.08), rgba(128, 128, 128, 0.08)); }
 }
 /* A pick scrolls its bracket to the top, clear of an organiser's sticky header. */
 #registrations .participant-group { scroll-margin-top: 132px; }

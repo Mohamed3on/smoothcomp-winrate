@@ -39,18 +39,6 @@
     return node;
   };
 
-  // The panel inherits the host page's colours, so read the real backdrop once and
-  // pick the ramp that will actually sit on it rather than guessing from the OS.
-  function detectTheme() {
-    for (let node = root; node; node = node.parentElement) {
-      const bg = getComputedStyle(node).backgroundColor;
-      const [r, g, b, a = 1] = (bg.match(/[\d.]+/g) ?? []).map(Number);
-      if (!a || r === undefined) continue;
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? 'dark' : 'light';
-    }
-    return 'light';
-  }
-
   const DEFAULT_SORT = { athletes: 'wins', academies: 'wins', brackets: 'size' };
   const VIEWS = {
     athletes: { label: 'Athletes', unit: ['athlete', 'athletes'] },
@@ -326,7 +314,7 @@
   restorePrefs();
 
   const panel = el('section', undefined, 'scwr-results');
-  panel.dataset.scwrTheme = detectTheme();
+  panel.dataset.scwrTheme = SCWRSite.theme(root);
   panel.setAttribute('aria-labelledby', 'scwr-title');
   panel.innerHTML = `
     <header class="scwr-head">

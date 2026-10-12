@@ -214,9 +214,11 @@ async function pool(users) {
 function mount() {
   panel = document.createElement('div');
   panel.className = 'container container-fluid-large scwr-picks';
-  panel.innerHTML = `<div class="scwr-picks-head"><h6>Brackets you'd top-seed</h6><span class="muted"></span>`
+  panel.innerHTML = `<div class="scwr-picks-head"><h6>Brackets you'd top-seed</h6><span class="scwr-picks-wins"></span>`
     + '<label><input type="number" min="20" max="250" step="0.1" placeholder="Weight"> kg</label></div><div></div>';
-  document.querySelector('#registrations').before(panel);
+  const list = document.querySelector('#registrations');
+  panel.dataset.scwrTheme = SCWRSite.theme(list);
+  list.before(panel);
   const input = panel.querySelector('input');
   input.value = SCWRSite.store.get('weight') ?? '';
   input.addEventListener('change', () => { SCWRSite.store.set('weight', +input.value || null); pick(); });
@@ -247,11 +249,13 @@ async function pick() {
   save();
   athlete.tally = tally(me);
   if (!athlete.tally) return say('<p class="muted">Smoothcomp would not share your record.</p>');
-  if (run === picking) panel.querySelector('.scwr-picks-head .muted').textContent = plural(athlete.tally[0], 'win');
+  if (run === picking) panel.querySelector('.scwr-picks-wins').textContent = plural(athlete.tally[0], 'win');
   const { top, closest } = SCWRPicks.picks(groups, athlete, tally);
-  const row = (s, lead) => `<button type="button" class="scwr-pick" data-name="${esc(s.group.name)}">`
-    + `<span title="${esc(s.group.name)}">${esc(s.group.name)}</span><span>${plural(s.size, 'athlete')}</span>`
-    + `<span class="muted">${[lead, s.hidden && `${s.hidden} hidden`, s.entered && 'entered'].filter(Boolean).join(' · ')}</span></button>`;
+  // A bracket already entered wears the accent and says so beside its name.
+  const row = (s, lead) => `<button type="button" class="scwr-pick${s.entered ? ' scwr-entered' : ''}" data-name="${esc(s.group.name)}">`
+    + `<span><span title="${esc(s.group.name)}">${esc(s.group.name)}</span>${s.entered ? '<span class="scwr-entered-label">Entered</span>' : ''}</span>`
+    + `<span>${plural(s.size, 'athlete')}</span>`
+    + `<span class="muted">${[lead, s.hidden && `${s.hidden} hidden`].filter(Boolean).join(' · ')}</span></button>`;
   const gap = closest && closest.rival - athlete.tally[0];
   say(top.length ? top.map((s) => row(s, s.rival !== null && `next best ${plural(s.rival, 'win')}`)).join('')
     : `<p class="muted">No eligible bracket you'd top-seed${closest ? ' — closest:' : '.'}</p>`

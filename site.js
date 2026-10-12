@@ -84,6 +84,18 @@ const SCWRSite = (() => {
     },
   };
 
+  // A panel wears the page's colours, so read the real backdrop behind it and
+  // pick the theme that will actually sit on it rather than guessing from the OS.
+  // Light is the fallback, so an unknown host still renders correctly.
+  const theme = (from) => {
+    for (let el = from; el; el = el.parentElement) {
+      const [r, g, b, a = 1] = (getComputedStyle(el).backgroundColor.match(/[\d.]+/g) ?? []).map(Number);
+      if (!a || r === undefined) continue;
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128 ? 'dark' : 'light';
+    }
+    return 'light';
+  };
+
   // Smoothcomp renders with Vue and mounts after the first paint, so the only way
   // in is to poll for the component and then follow the method we care about.
   const node = (target) => (typeof target === 'string' ? document.querySelector(target) : target);
@@ -112,5 +124,5 @@ const SCWRSite = (() => {
     },
   };
 
-  return { WIN_TYPES, flag, locale, url, store, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href) };
+  return { WIN_TYPES, flag, locale, url, store, theme, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href) };
 })();

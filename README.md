@@ -30,7 +30,7 @@ then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are re
 week; a hidden profile has none.
 
 Signed in, a panel over the list names the three biggest brackets you could enter and would top-seed by that same
-order, with the athlete you'd displace and how many profiles stay hidden. Gender, age and belt come from your
+order, with the athlete you'd displace and how many profiles stay hidden, and marks the ones you've entered. Gender, age and belt come from your
 Smoothcomp profile and the weight from the box beside it; you could enter your own weight class in either
 discipline, every age group you're old enough for, and every absolute. Brackets are matched on the organiser's
 own labels, and one whose label says nothing readable counts only if you entered under it. With nothing to top,
