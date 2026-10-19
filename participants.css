@@ -3,6 +3,25 @@
    their ink and type: currentColor, Smoothcomp's sizes, Smoothcomp's `muted`. */
 #registrations .participants-desktop .participant-td-registration { display: none; }
 
+/* The athletes view keeps the column, since there it lists every division the
+   athlete entered: on a line of its own under the name, as long as they run. */
+.scwr-view { float: right; width: auto; margin-left: 16px; }
+#registrations.scwr-athletes .participant-tr-main { flex-wrap: wrap; height: auto; }
+#registrations.scwr-athletes .participant-tr-main > .participant-td-registration {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  order: 1;
+  margin-top: -12px;
+  padding: 0 8px 8px 80px;
+  font-size: 13px;
+  line-height: 20px;
+  opacity: 0.4;
+}
+#registrations.scwr-athletes .participant-td-registration > div { flex: 0 1 auto; margin-right: 12px; }
+#registrations.scwr-athletes .participant-td-registration > div:not(:last-child) > div::after { content: '·'; margin-left: 12px; }
+
 .scwr-career {
   display: flex;
   flex: 1 1 auto;

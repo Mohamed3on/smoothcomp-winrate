@@ -29,6 +29,10 @@ came by submission and on points, then medals. The bracket ranks itself by wins,
 then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for a
 week; a hidden profile has none.
 
+A menu beside the page title swaps the brackets for one list of every athlete, one row each, ranked by career wins,
+submission wins or wins on points, with every division they entered under their name. Search and the country filter
+still narrow it. Opening it reads every career not yet kept, six at a time, and the list ranks once the last one lands.
+
 Signed in, a panel over the list names the three biggest brackets you could enter and would top-seed by that same
 order, with the athlete you'd displace and how many profiles stay hidden, and marks the ones you've entered. Gender, age and belt come from your
 Smoothcomp profile and the weight from the box beside it; you could enter your own weight class in either

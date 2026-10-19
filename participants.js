@@ -49,10 +49,14 @@ let place; // each registration's index in Smoothcomp's own order
 const ranked = new Set();
 
 // Most wins first, then most by submission, most by points, and the younger
-// athlete; anything still level keeps Smoothcomp's own order. A career that is
-// unread or hidden sorts after every known one, as does an unknown age.
-function rank(group) {
-  const key = (r) => [...(tally(r.user_id) ?? [-1, -1, -1]), -(r.age ?? Infinity), -place.get(r.id)];
+// athlete; anything still level keeps Smoothcomp's own order. The athletes view
+// can lead with submissions or points instead. A career that is unread or hidden
+// sorts after every known one, as does an unknown age.
+function rank(group, lead = 0) {
+  const key = (r) => {
+    const t = tally(r.user_id) ?? [-1, -1, -1];
+    return [t[lead], ...t, -(r.age ?? Infinity), -place.get(r.id)];
+  };
   return group.registrations.map((r) => [r, key(r)])
     .sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0))
     .map(([r]) => r);
@@ -103,8 +107,61 @@ async function read(name) {
 }
 
 const watcher = new IntersectionObserver((entries) => {
-  for (const entry of entries) if (entry.isIntersecting) read(heading(entry.target));
+  for (const entry of entries) if (entry.isIntersecting && order === null) read(heading(entry.target));
 }, { rootMargin: '300px 0px' });
+
+// Every athlete in one list, one row each, ranked across brackets by career wins,
+// or by wins by submission or on points. A row is the athlete's first registration
+// left by the filters, with every division they entered as its registration.
+let order = null; // null lists brackets; otherwise the tally figure athletes rank by
+
+function athletes() {
+  const entries = Map.groupBy(vm.all.flatMap((g) => g.registrations.map((r) => [r, g.name])), ([r]) => r.user_id ?? r.id);
+  const rows = new Map();
+  for (const r of vm.participants.flatMap((g) => g.registrations)) {
+    const key = r.user_id ?? r.id;
+    if (r.filtered || rows.has(key)) continue;
+    const mine = entries.get(key);
+    rows.set(key, { ...r, approved: +mine.some(([e]) => e.approved === 1), categories: mine.map(([, name], i) => ({ category_value_id: i, value: name })) });
+  }
+  const registrations = [...rows.values()];
+  const name = plural(rows.size, 'athlete');
+  return draining
+    ? { id: 'scwr-athletes', name: `${name}, reading careers…`, registrations }
+    : { id: 'scwr-athletes', name, registrations: rank({ registrations }, order) };
+}
+
+function show() {
+  const rows = new Map([...document.querySelectorAll('#registrations .profile-card')].map((row) => [row, row.getBoundingClientRect().top]));
+  const group = athletes();
+  vm.visible = group.registrations.length ? [Object.freeze([group])] : [];
+  vm.$nextTick(() => { slide(rows); queue(); });
+}
+
+// Opening it reads every career it still lacks, six at a time. Until the last one
+// lands, the heading says so and the rows keep the page's own order, waiting on
+// their careers as a bracket's do; then the list ranks.
+const pending = new Set();
+let draining = null;
+function listAthletes() {
+  for (const r of vm.participants.flatMap((g) => g.registrations)) {
+    if (r.user_id && !r.filtered && !fresh(r.user_id)) pending.add(String(r.user_id));
+  }
+  if (pending.size) {
+    draining ??= Promise.all(Array.from({ length: 6 }, async () => {
+      for (const user of pending) {
+        pending.delete(user);
+        await readCareer(user);
+        queue();
+      }
+    })).then(() => {
+      draining = null;
+      save();
+      if (order !== null) show();
+    });
+  }
+  show();
+}
 
 // The registration column only repeats the bracket title, so the career takes
 // its place; participants.css hides the original. Each column is drawn like
@@ -119,7 +176,7 @@ const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-
 function draw(cell, user) {
   const t = user && tally(user);
   const medals = t && careers[user].medals;
-  const state = user === 'head' ? user : t ? `${t}|${medals}` : !user ? '' : fresh(user) ? 'hidden' : reading.has(user) ? 'reading' : '';
+  const state = user === 'head' ? user : t ? `${t}|${medals}` : !user ? '' : fresh(user) ? 'hidden' : reading.has(user) || pending.has(user) ? 'reading' : '';
   if (cell.dataset.state === state) return;
   cell.dataset.state = state;
   cell.title = '';
@@ -276,7 +333,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   // Every filter path — search, country, quick filter — funnels through here,
   // and each one rebuilds `visible` from the first chunk alone.
   SCWRSite.vm.after(vm, 'updateResults', () => {
-    vm.visible = vm.chunks.slice();
+    if (order === null) vm.visible = vm.chunks.slice(); else listAthletes();
     vm.nextChunk = vm.chunks.length; // leaves the scroll handler nothing to do
   });
   // `participants` maps `all` in order, so sorting the source sorts the filtered
@@ -285,6 +342,21 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     .map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g)));
   vm.updateResults();
   queue();
+  // Beside the page title, which list to show: the brackets, or every athlete.
+  const list = document.querySelector('#registrations');
+  const view = document.createElement('select');
+  view.className = 'sc-form-control scwr-view';
+  view.setAttribute('aria-label', 'List');
+  view.innerHTML = '<option value="">Brackets, biggest first</option><option value="0">Athletes, most wins</option>'
+    + '<option value="1">Athletes, most submission wins</option><option value="2">Athletes, most wins on points</option>';
+  const title = list.parentElement.querySelector('h1');
+  if (title) title.after(view); else list.before(view);
+  view.addEventListener('change', () => {
+    order = view.value ? +view.value : null;
+    if (order === null) pending.clear();
+    list.classList.toggle('scwr-athletes', order !== null);
+    vm.updateResults();
+  });
   me = window.userId && String(window.userId);
   if (me) {
     mount();
