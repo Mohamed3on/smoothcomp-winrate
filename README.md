@@ -30,8 +30,10 @@ then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are re
 week; a hidden profile has none.
 
 A menu beside the page title swaps the brackets for one list of every athlete, one row each, ranked by career wins,
-submission wins or wins on points, with every division they entered under their name. Search and the country filter
-still narrow it. Opening it reads every career not yet kept, twelve at a time, and the list ranks once the last one lands.
+submission wins or wins on points, with every division they entered under their name; or for every academy, ranked by
+its athletes' career wins added up, with the athletes behind them. An age range beside the menu narrows either list, as
+do search and the country filter. Opening one reads every career not yet kept, twelve at a time, and the list ranks once
+the last one lands.
 
 Signed in, a panel over the list names the three biggest brackets you could enter and would top-seed by that same
 order, with the athlete you'd displace and how many profiles stay hidden, and marks the ones you've entered. Gender, age and belt come from your

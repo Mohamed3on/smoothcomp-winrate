@@ -5,11 +5,12 @@
 /* Smoothcomp sets each column label 4px left of the figures under it. */
 #registrations .participants-table-head > .participant-td:not(.participant-td-athlete) { padding-left: 4px; }
 
-/* The athletes view keeps the column, since there it lists every division the
-   athlete entered: on a line of its own under a hairline, so the photo still
-   fills the row above it, and the names run as long as they need. */
-#registrations.scwr-athletes .participant-tr-main { flex-wrap: wrap; height: auto; }
-#registrations.scwr-athletes .participant-tr-main > .participant-td-registration {
+/* The athlete and academy lists keep the column, since there it lists every
+   division an athlete entered, or the athletes behind an academy: on a line of
+   its own under a hairline, so the photo still fills the row above it, and the
+   names run as long as they need. */
+#registrations.scwr-ranked .participant-tr-main { flex-wrap: wrap; height: auto; }
+#registrations.scwr-ranked .participant-tr-main > .participant-td-registration {
   display: flex;
   flex: 1 0 100%;
   flex-wrap: wrap;
@@ -20,8 +21,20 @@
   font-size: 13px;
   line-height: 20px;
 }
-#registrations.scwr-athletes .participant-td-registration > div { flex: 0 1 auto; margin-right: 12px; opacity: 0.4; }
-#registrations.scwr-athletes .participant-td-registration > div:not(:last-child) > div::after { content: '·'; margin-left: 12px; }
+#registrations.scwr-ranked .participant-td-registration > div { flex: 0 1 auto; margin-right: 12px; opacity: 0.4; }
+#registrations.scwr-ranked .participant-td-registration > div:not(:last-child) > div::after { content: '·'; margin-left: 12px; }
+/* An academy has no photo; Smoothcomp's own academy icon stands on the photo's tile. */
+.scwr-crest {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  background-color: var(--gray-3, rgba(128, 128, 128, 0.2));
+  font-size: 24px;
+}
+.scwr-crest > span { opacity: 0.4; }
 
 .scwr-career {
   display: flex;
@@ -77,13 +90,15 @@
    you: your record, and the brackets you have already entered. */
 .container.scwr-picks { margin-bottom: 32px; font-variant-numeric: tabular-nums; }
 .scwr-picks,
-.scwr-view {
+.scwr-view,
+.scwr-ages {
   --accent: #1565c0;
   --accent-soft: rgba(21, 101, 192, 0.09);
   --accent-line: rgba(21, 101, 192, 0.32);
 }
 .scwr-picks[data-scwr-theme='dark'],
-.scwr-view[data-scwr-theme='dark'] {
+.scwr-view[data-scwr-theme='dark'],
+.scwr-ages[data-scwr-theme='dark'] {
   --accent: #79b3ea;
   --accent-soft: rgba(121, 179, 234, 0.13);
   --accent-line: rgba(121, 179, 234, 0.4);
@@ -216,6 +231,38 @@
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.75 7.25l2.75 2.75 5.75-6' fill='none' stroke='%23000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .scwr-view hr { margin: 4px 8px; border: 0; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+
+/* The age range rides beside the menu in the same pill: two ends reading "Any"
+   until set, and the accent's ground once either is. */
+.scwr-ages {
+  float: right;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 42px;
+  margin-left: 16px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+  font-size: 17px;
+}
+.scwr-ages[hidden] { display: none; }
+.scwr-ages > span { opacity: 0.5; }
+.scwr-ages > span:first-child { margin-right: 8px; }
+.scwr-ages input {
+  width: 2.5em;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  caret-color: var(--accent);
+  text-align: center;
+}
+.scwr-ages input::placeholder { color: inherit; opacity: 0.4; }
+.scwr-ages input::-webkit-inner-spin-button { display: none; }
+.scwr-ages:has(input:not(:placeholder-shown)) { background-color: var(--accent-soft); }
+.scwr-ages:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @keyframes scwr-in { from { opacity: 0; } }
 @keyframes scwr-pulse { 50% { opacity: 0.22; } }

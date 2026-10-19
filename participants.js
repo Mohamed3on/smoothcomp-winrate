@@ -110,44 +110,103 @@ const watcher = new IntersectionObserver((entries) => {
   for (const entry of entries) if (entry.isIntersecting && order === null) read(heading(entry.target));
 }, { rootMargin: '300px 0px' });
 
-// Every athlete in one list, one row each, ranked across brackets by career wins,
-// or by wins by submission or on points. A row is the athlete's first registration
-// left by the filters, with every division they entered as its registration.
-let order = null; // null lists brackets; otherwise the tally figure athletes rank by
+// Two lists in place of the brackets, over every athlete the filters and the age
+// range leave. Athletes, one row each, ranked across brackets by career wins, or
+// by wins by submission or on points: a row is the athlete's first registration,
+// with every division they entered as its registration. Academies, ranked by the
+// wins of their athletes' careers added up.
+let order = null; // null lists brackets; 'academies' ranks academies; a figure of LEADS ranks athletes
+const LEADS = ['wins', 'submission', 'points'];
 let view; // the menu that picks it
+let youngest = 0;
+let oldest = Infinity;
+const inAge = (r) => (!youngest && oldest === Infinity) || (Number.isFinite(r.age) && r.age >= youngest && r.age <= oldest);
+
+// Each athlete once, as their first registration the filters leave.
+function people() {
+  const rows = new Map();
+  for (const r of vm.participants.flatMap((g) => g.registrations)) {
+    if (!r.filtered && inAge(r) && !rows.has(r.user_id ?? r.id)) rows.set(r.user_id ?? r.id, r);
+  }
+  return [...rows.values()];
+}
 
 function athletes() {
   const entries = Map.groupBy(vm.all.flatMap((g) => g.registrations.map((r) => [r, g.name])), ([r]) => r.user_id ?? r.id);
-  const rows = new Map();
-  for (const r of vm.participants.flatMap((g) => g.registrations)) {
-    const key = r.user_id ?? r.id;
-    if (r.filtered || rows.has(key)) continue;
-    const mine = entries.get(key);
-    rows.set(key, { ...r, approved: +mine.some(([e]) => e.approved === 1), categories: mine.map(([, name], i) => ({ category_value_id: i, value: name })) });
-  }
-  const registrations = [...rows.values()];
-  const name = plural(rows.size, 'athlete');
+  const registrations = people().map((r) => {
+    const mine = entries.get(r.user_id ?? r.id);
+    return { ...r, approved: +mine.some(([e]) => e.approved === 1), categories: mine.map(([, name], i) => ({ category_value_id: i, value: name })) };
+  });
+  const name = plural(registrations.length, 'athlete');
   return draining
     ? { id: 'scwr-athletes', name: `${name}, reading careers…`, registrations }
-    : { id: 'scwr-athletes', name, registrations: rank({ registrations }, order) };
+    : { id: 'scwr-athletes', name, registrations: rank({ registrations }, LEADS.indexOf(order)) };
 }
 
+// Each academy with its athletes' careers added up: counted wins, by submission
+// and on points, and medals. A hidden career adds nothing.
+function academies() {
+  const list = [...Map.groupBy(people(), (r) => r.club_id || r.clubName).values()].map((rows) => {
+    const known = rows.filter((r) => tally(r.user_id));
+    const sum = (figures) => known.reduce((total, r) => total.map((n, i) => n + figures(r)[i]), [0, 0, 0]);
+    return { rows, known, tally: sum((r) => tally(r.user_id)), medals: sum((r) => careers[r.user_id].medals) };
+  });
+  return draining ? list : list.sort((a, b) => b.tally.reduce((order, n, i) => order || n - a.tally[i], 0) || a.rows[0].clubName.localeCompare(b.rows[0].clubName));
+}
+
+// Smoothcomp draws the athletes; the extension draws the academies, in Smoothcomp's
+// own row markup so its styles apply. The academy icon stands for a photo, then
+// come the name and most common country, the athletes, the most common
+// affiliation, the careers added up, and the athletes who carry them, most wins first.
+let box; // where the academies are drawn, under Smoothcomp's own list
+const common = (rows, key) => [...Map.groupBy(rows.filter((r) => r[key]), (r) => r[key]).values()].sort((a, b) => b.length - a.length)[0]?.[0];
+
+function academy({ rows, known, tally: t, medals }) {
+  const home = common(rows, 'cn');
+  const team = common(rows, 'affiliation_id');
+  const hidden = rows.filter((r) => r.user_id && fresh(r.user_id)).length - known.length;
+  const roster = rank({ registrations: known }).slice(0, 10).map((r) => `<div><div>${esc(`${r.firstname} ${r.lastname}`)} ${tally(r.user_id)[0]}</div></div>`).join('')
+    + (known.length > 10 ? `<div><div>${known.length - 10} more</div></div>` : '');
+  return '<div class="profile-card"><div class="participant-tr participant-tr-main flex-center"><div class="participant-td participant-td-athlete">'
+    + '<div class="profile-image-wrapper scwr-crest"><span class="icon-academy"></span></div><div class="profile-card-name font-size-medium truncate">'
+    + `<a class="truncate block" href="${rows[0].club_url}"><span>${esc(rows[0].clubName)}</span></a>`
+    + (home ? `<div class="profile-country truncate flex-center" style="height: auto"><span class="flag-icon margin-right-xs-4 flag-icon-${home.cn.toLowerCase()}"></span>`
+      + `<div class="truncate muted country-name"><span class="font-size-tiny">${esc(home.country)}</span></div></div>` : '')
+    + `</div></div><div class="participant-td participant-td-birth"><div>${rows.length}</div>${hidden ? `<div class="muted font-size-tiny">${hidden} hidden</div>` : ''}</div>`
+    + `<div class="participant-td participant-td-club">${team ? `<a class="truncate block" href="${team.affiliation_url}">${esc(team.affiliationName)}</a>` : ''}</div>`
+    + `<div class="participant-td scwr-career">${known.length ? figures(t, medals) : draining ? PLACEHOLDER.repeat(COLUMNS.length) : '<div class="muted">Hidden profiles</div>'}</div>`
+    + `<div class="participant-td participant-td-registration">${roster}</div></div></div>`;
+}
+
+function drawAcademies() {
+  const list = academies();
+  const name = plural(list.length, 'academy', 'academies');
+  box.innerHTML = list.length ? `<div class="margin-bottom-xs-64"><div class="heading-container flex-center"><h2 class="group-name margin-xs-0">${draining ? `${name}, reading careers…` : name}</h2></div>`
+    + '<div class="participants-table-head participant-tr muted margin-bottom-xs-8 participants-desktop"><span class="participant-td participant-td-athlete padding-left-xs-0 margin-right-xs-4">Academy</span>'
+    + '<span class="participant-td participant-td-birth">Athletes</span><span class="participant-td participant-td-club">Affiliation</span>'
+    + `<span class="participant-td scwr-career">${COLUMNS.map((label) => `<span>${label}</span>`).join('')}</span></div>`
+    + `<div class="profile-cards participants-desktop">${list.map(academy).join('')}</div></div>` : '';
+}
+
+// Academies are drawn with everything else on screen; Smoothcomp's list stands empty.
 function show() {
+  if (order === 'academies') {
+    vm.visible = [];
+    return queue();
+  }
   const rows = new Map([...document.querySelectorAll('#registrations .profile-card')].map((row) => [row, row.getBoundingClientRect().top]));
   const group = athletes();
   vm.visible = group.registrations.length ? [Object.freeze([group])] : [];
   vm.$nextTick(() => { slide(rows); queue(); });
 }
 
-// Opening it reads every career it still lacks, twelve at a time. Until the last
-// one lands, the heading says so and the rows keep the page's own order, waiting
-// on their careers as a bracket's do; then the list ranks.
+// Opening either reads every career it still lacks, twelve at a time. Until the
+// last one lands, the heading says so and the rows keep the page's own order,
+// filling in as a bracket's do; then the list ranks.
 const pending = new Set();
 let draining = null;
-function listAthletes() {
-  for (const r of vm.participants.flatMap((g) => g.registrations)) {
-    if (r.user_id && !r.filtered && !fresh(r.user_id)) pending.add(String(r.user_id));
-  }
+function ranking() {
+  for (const r of people()) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
   if (pending.size) {
     draining ??= Promise.all(Array.from({ length: 12 }, async () => {
       for (const user of pending) {
@@ -168,9 +227,11 @@ function listAthletes() {
 // its place; participants.css hides the original. Each column is drawn like
 // Smoothcomp's own: a figure over a muted line, as the birth year sits over the age.
 const COLUMNS = ['Wins', 'Medals'];
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n, word, words = `${word}s`) => `${n} ${n === 1 ? word : words}`;
 // A zero steps back to Smoothcomp's muted ink, so the eye lands on the figures that count.
 const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${figure}</div><div class="muted font-size-tiny">${line}</div></div>`;
+const figures = (t, [gold, silver, bronze]) => column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`)
+  + (gold + silver + bronze ? column(gold, `${gold} gold`, `${silver} silver · ${bronze} bronze`) : '<div class="muted">No medals</div>');
 // The placeholder takes the shape of what replaces it, so nothing moves when it lands.
 const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-size-tiny"><i class="scwr-pulse"></i></div></div>';
 
@@ -184,10 +245,8 @@ function draw(cell, user) {
   if (state === 'head') {
     cell.innerHTML = COLUMNS.map((label) => `<span>${label}</span>`).join('');
   } else if (t) {
-    const [gold, silver, bronze] = medals;
-    cell.innerHTML = column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`)
-      + (gold + silver + bronze ? column(gold, `${gold} gold`, `${silver} silver · ${bronze} bronze`) : '<div class="muted">No medals</div>');
-    const by = (keep) => Object.entries(careers[user].wins).filter(([type]) => counted(type) === keep)
+    cell.innerHTML = figures(t, medals);
+    const by =(keep) => Object.entries(careers[user].wins).filter(([type]) => counted(type) === keep)
       .map(([type, n]) => `${n} by ${type}`).join(', ');
     cell.title = `${plural(t[0], 'career win')}: ${by(true) || 'none'}${by(false) ? `, not counting ${by(false)}` : ''}.`;
   } else if (state === 'hidden') {
@@ -215,6 +274,7 @@ function paint() {
         : SCWRSite.profileId(row.querySelector('a[href*="/profile/"]')?.getAttribute('href')));
     }
   }
+  if (order === 'academies') drawAcademies(); else if (box.firstChild) box.replaceChildren();
   painter.observe(document.querySelector('#registrations'), { childList: true, subtree: true });
 }
 
@@ -342,7 +402,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   // Every filter path — search, country, quick filter — funnels through here,
   // and each one rebuilds `visible` from the first chunk alone.
   SCWRSite.vm.after(vm, 'updateResults', () => {
-    if (order === null) vm.visible = vm.chunks.slice(); else listAthletes();
+    if (order === null) vm.visible = vm.chunks.slice(); else ranking();
     vm.nextChunk = vm.chunks.length; // leaves the scroll handler nothing to do
   });
   // `participants` maps `all` in order, so sorting the source sorts the filtered
@@ -351,21 +411,44 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     .map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g)));
   vm.updateResults();
   queue();
-  // Beside the page title, which list to show: the brackets, or every athlete.
+  // Beside the page title, which list to show: the brackets, every athlete, or
+  // every academy; and for the last two, an age range, open at either end.
   const list = document.querySelector('#registrations');
   view = document.createElement('select');
   view.className = 'scwr-view';
   view.dataset.scwrTheme = SCWRSite.theme(list);
   view.setAttribute('aria-label', 'List');
-  view.innerHTML = '<option value="">Brackets, biggest first</option><hr><option value="0">Athletes, most wins</option>'
-    + '<option value="1">Athletes, most submission wins</option><option value="2">Athletes, most wins on points</option>';
+  view.innerHTML = '<option value="">Brackets, biggest first</option><hr><option value="wins">Athletes, most wins</option>'
+    + '<option value="submission">Athletes, most submission wins</option><option value="points">Athletes, most wins on points</option>'
+    + '<hr><option value="academies">Academies, most wins</option>';
+  const ages = document.createElement('div');
+  ages.className = 'scwr-ages';
+  ages.dataset.scwrTheme = view.dataset.scwrTheme;
+  ages.hidden = true;
+  ages.setAttribute('role', 'group');
+  ages.setAttribute('aria-label', 'Age');
+  ages.innerHTML = '<span>Age</span><input type="number" min="0" max="120" placeholder="Any" aria-label="From">'
+    + '<span>–</span><input type="number" min="0" max="120" placeholder="Any" aria-label="To">';
   const title = list.parentElement.querySelector('h1');
-  if (title) title.after(view); else list.before(view);
+  if (title) title.after(view, ages); else list.before(view, ages);
+  box = document.createElement('div');
+  box.className = 'container container-fluid-large';
+  list.append(box);
   view.addEventListener('change', () => {
-    order = view.value ? +view.value : null;
+    order = view.value || null;
     if (order === null) pending.clear();
-    list.classList.toggle('scwr-athletes', order !== null);
+    list.classList.toggle('scwr-ranked', order !== null);
+    ages.hidden = order === null;
     vm.updateResults();
+  });
+  // Typed either way round, the range reads low to high; it applies once typing pauses.
+  let typing;
+  ages.addEventListener('input', () => {
+    const [from, to] = [...ages.querySelectorAll('input')].map((input) => (input.value === '' ? null : Math.max(0, +input.value)));
+    youngest = Math.min(from ?? 0, to ?? Infinity);
+    oldest = Math.max(from ?? 0, to ?? Infinity);
+    clearTimeout(typing);
+    typing = setTimeout(() => order !== null && ranking(), 400);
   });
   me = window.userId && String(window.userId);
   if (me) {
