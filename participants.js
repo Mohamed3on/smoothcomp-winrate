@@ -169,11 +169,11 @@ function academy({ rows, known, tally: t, medals }) {
     + (known.length > 10 ? `<div><div>${known.length - 10} more</div></div>` : '');
   return '<div class="profile-card"><div class="participant-tr participant-tr-main flex-center"><div class="participant-td participant-td-athlete">'
     + '<div class="profile-image-wrapper scwr-crest"><span class="icon-academy"></span></div><div class="profile-card-name font-size-medium truncate">'
-    + `<a class="truncate block" href="${rows[0].club_url}"><span>${esc(rows[0].clubName)}</span></a>`
-    + (home ? `<div class="profile-country truncate flex-center" style="height: auto"><span class="flag-icon margin-right-xs-4 flag-icon-${home.cn.toLowerCase()}"></span>`
+    + `<a class="truncate block" href="${esc(rows[0].club_url)}"><span>${esc(rows[0].clubName)}</span></a>`
+    + (home ? `<div class="profile-country truncate flex-center" style="height: auto"><span class="flag-icon margin-right-xs-4 flag-icon-${esc(home.cn.toLowerCase())}"></span>`
       + `<div class="truncate muted country-name"><span class="font-size-tiny">${esc(home.country)}</span></div></div>` : '')
     + `</div></div><div class="participant-td participant-td-birth"><div>${rows.length}</div>${hidden ? `<div class="muted font-size-tiny">${hidden} hidden</div>` : ''}</div>`
-    + `<div class="participant-td participant-td-club">${team ? `<a class="truncate block" href="${team.affiliation_url}">${esc(team.affiliationName)}</a>` : ''}</div>`
+    + `<div class="participant-td participant-td-club">${team ? `<a class="truncate block" href="${esc(team.affiliation_url)}">${esc(team.affiliationName)}</a>` : ''}</div>`
     + `<div class="participant-td scwr-career">${known.length ? figures(t, medals) : draining ? PLACEHOLDER.repeat(COLUMNS.length) : '<div class="muted">Hidden profiles</div>'}</div>`
     + `<div class="participant-td participant-td-registration">${roster}</div></div></div>`;
 }
