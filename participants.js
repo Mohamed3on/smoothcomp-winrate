@@ -114,6 +114,7 @@ const watcher = new IntersectionObserver((entries) => {
 // or by wins by submission or on points. A row is the athlete's first registration
 // left by the filters, with every division they entered as its registration.
 let order = null; // null lists brackets; otherwise the tally figure athletes rank by
+let view; // the menu that picks it
 
 function athletes() {
   const entries = Map.groupBy(vm.all.flatMap((g) => g.registrations.map((r) => [r, g.name])), ([r]) => r.user_id ?? r.id);
@@ -138,9 +139,9 @@ function show() {
   vm.$nextTick(() => { slide(rows); queue(); });
 }
 
-// Opening it reads every career it still lacks, six at a time. Until the last one
-// lands, the heading says so and the rows keep the page's own order, waiting on
-// their careers as a bracket's do; then the list ranks.
+// Opening it reads every career it still lacks, twelve at a time. Until the last
+// one lands, the heading says so and the rows keep the page's own order, waiting
+// on their careers as a bracket's do; then the list ranks.
 const pending = new Set();
 let draining = null;
 function listAthletes() {
@@ -148,7 +149,7 @@ function listAthletes() {
     if (r.user_id && !r.filtered && !fresh(r.user_id)) pending.add(String(r.user_id));
   }
   if (pending.size) {
-    draining ??= Promise.all(Array.from({ length: 6 }, async () => {
+    draining ??= Promise.all(Array.from({ length: 12 }, async () => {
       for (const user of pending) {
         pending.delete(user);
         await readCareer(user);
@@ -272,17 +273,25 @@ function mount() {
   panel = document.createElement('div');
   panel.className = 'container container-fluid-large scwr-picks';
   panel.innerHTML = `<div class="scwr-picks-head"><h6>Brackets you'd top-seed</h6><span class="scwr-picks-wins"></span>`
-    + '<label><input type="number" min="20" max="250" step="0.1" placeholder="Weight"> kg</label></div><div></div>';
+    + '<label><input type="number" min="20" max="250" step="0.1" placeholder="Weight"><span class="muted">kg</span></label></div><div></div>';
   const list = document.querySelector('#registrations');
   panel.dataset.scwrTheme = SCWRSite.theme(list);
   list.before(panel);
   const input = panel.querySelector('input');
   input.value = SCWRSite.store.get('weight') ?? '';
   input.addEventListener('change', () => { SCWRSite.store.set('weight', +input.value || null); pick(); });
+  // From the athletes view, a pick goes back to the brackets before scrolling to its own.
   panel.lastChild.addEventListener('click', (event) => {
     const name = event.target.closest('[data-name]')?.dataset.name;
-    const group = [...document.querySelectorAll('#registrations .participant-group')].find((g) => heading(g) === name);
-    group?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    if (!name) return;
+    if (order !== null) {
+      view.value = '';
+      view.dispatchEvent(new Event('change'));
+    }
+    vm.$nextTick(() => {
+      const group = [...document.querySelectorAll('#registrations .participant-group')].find((g) => heading(g) === name);
+      group?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
   });
 }
 
@@ -344,10 +353,11 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   queue();
   // Beside the page title, which list to show: the brackets, or every athlete.
   const list = document.querySelector('#registrations');
-  const view = document.createElement('select');
-  view.className = 'sc-form-control scwr-view';
+  view = document.createElement('select');
+  view.className = 'scwr-view';
+  view.dataset.scwrTheme = SCWRSite.theme(list);
   view.setAttribute('aria-label', 'List');
-  view.innerHTML = '<option value="">Brackets, biggest first</option><option value="0">Athletes, most wins</option>'
+  view.innerHTML = '<option value="">Brackets, biggest first</option><hr><option value="0">Athletes, most wins</option>'
     + '<option value="1">Athletes, most submission wins</option><option value="2">Athletes, most wins on points</option>';
   const title = list.parentElement.querySelector('h1');
   if (title) title.after(view); else list.before(view);

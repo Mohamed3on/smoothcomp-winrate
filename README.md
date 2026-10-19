@@ -31,7 +31,7 @@ week; a hidden profile has none.
 
 A menu beside the page title swaps the brackets for one list of every athlete, one row each, ranked by career wins,
 submission wins or wins on points, with every division they entered under their name. Search and the country filter
-still narrow it. Opening it reads every career not yet kept, six at a time, and the list ranks once the last one lands.
+still narrow it. Opening it reads every career not yet kept, twelve at a time, and the list ranks once the last one lands.
 
 Signed in, a panel over the list names the three biggest brackets you could enter and would top-seed by that same
 order, with the athlete you'd displace and how many profiles stay hidden, and marks the ones you've entered. Gender, age and belt come from your

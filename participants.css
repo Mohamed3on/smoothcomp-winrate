@@ -2,10 +2,12 @@
    career takes its place. It is drawn into Smoothcomp's own rows, so it borrows
    their ink and type: currentColor, Smoothcomp's sizes, Smoothcomp's `muted`. */
 #registrations .participants-desktop .participant-td-registration { display: none; }
+/* Smoothcomp sets each column label 4px left of the figures under it. */
+#registrations .participants-table-head > .participant-td:not(.participant-td-athlete) { padding-left: 4px; }
 
 /* The athletes view keeps the column, since there it lists every division the
-   athlete entered: on a line of its own under the name, as long as they run. */
-.scwr-view { float: right; width: auto; margin-left: 16px; }
+   athlete entered: on a line of its own under a hairline, so the photo still
+   fills the row above it, and the names run as long as they need. */
 #registrations.scwr-athletes .participant-tr-main { flex-wrap: wrap; height: auto; }
 #registrations.scwr-athletes .participant-tr-main > .participant-td-registration {
   display: flex;
@@ -13,13 +15,12 @@
   flex-wrap: wrap;
   justify-content: flex-start;
   order: 1;
-  margin-top: -12px;
-  padding: 0 8px 8px 80px;
+  padding: 6px 8px 8px 80px;
+  border-top: 1px solid color-mix(in srgb, currentColor 8%, transparent);
   font-size: 13px;
   line-height: 20px;
-  opacity: 0.4;
 }
-#registrations.scwr-athletes .participant-td-registration > div { flex: 0 1 auto; margin-right: 12px; }
+#registrations.scwr-athletes .participant-td-registration > div { flex: 0 1 auto; margin-right: 12px; opacity: 0.4; }
 #registrations.scwr-athletes .participant-td-registration > div:not(:last-child) > div::after { content: '·'; margin-left: 12px; }
 
 .scwr-career {
@@ -75,12 +76,14 @@
    the extension's accent, read for the theme the page wears, and here it means
    you: your record, and the brackets you have already entered. */
 .container.scwr-picks { margin-bottom: 32px; font-variant-numeric: tabular-nums; }
-.scwr-picks {
+.scwr-picks,
+.scwr-view {
   --accent: #1565c0;
   --accent-soft: rgba(21, 101, 192, 0.09);
   --accent-line: rgba(21, 101, 192, 0.32);
 }
-.scwr-picks[data-scwr-theme='dark'] {
+.scwr-picks[data-scwr-theme='dark'],
+.scwr-view[data-scwr-theme='dark'] {
   --accent: #79b3ea;
   --accent-soft: rgba(121, 179, 234, 0.13);
   --accent-line: rgba(121, 179, 234, 0.4);
@@ -89,19 +92,33 @@
 .scwr-picks-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .scwr-picks-head h6 { margin: 0 auto 0 0; text-transform: uppercase; opacity: 0.5; }
 .scwr-picks-wins { color: var(--accent); font-weight: 600; }
-.scwr-picks-head label { display: flex; align-items: center; gap: 6px; margin: 0; font-weight: inherit; }
-.scwr-picks-head input {
-  width: 6em;
-  height: 28px;
-  padding: 0 6px;
-  border: 1px solid rgba(128, 128, 128, 0.35);
+/* The weight is a field of Smoothcomp's own kind, filled in borrowed ink, with
+   its unit inside it. */
+.scwr-picks-head label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin: 0;
+  padding: 0 12px;
   border-radius: 4px;
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+  font-weight: inherit;
+  cursor: text;
+}
+.scwr-picks-head label:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+.scwr-picks-head input {
+  width: 3.5em;
+  padding: 0;
+  border: 0;
+  outline: 0;
   background: transparent;
   color: inherit;
   caret-color: var(--accent);
   text-align: right;
 }
-.scwr-picks-head input:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.scwr-picks-head input::placeholder { color: inherit; opacity: 0.4; }
+.scwr-picks-head input::-webkit-inner-spin-button { display: none; }
 .scwr-picks p { margin: 0 0 8px; }
 .scwr-pick {
   display: grid;
@@ -141,10 +158,70 @@
 /* A pick scrolls its bracket to the top, clear of an organiser's sticky header. */
 #registrations .participant-group { scroll-margin-top: 132px; }
 
+/* The list menu sits beside the page title in the shape and size of Smoothcomp's
+   own header button, a pill of borrowed ink with a drawn caret. Its options open
+   in a panel of the page's raised grey, the current one checked in the accent. */
+.scwr-view,
+.scwr-view::picker(select) { appearance: base-select; }
+.scwr-view {
+  float: right;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 42px;
+  margin-left: 16px;
+  padding: 0 18px 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+.scwr-view[data-scwr-theme='dark'] { color-scheme: dark; }
+.scwr-view:hover,
+.scwr-view:open { background-color: color-mix(in srgb, currentColor 15%, transparent); }
+.scwr-view:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.scwr-view::picker-icon {
+  content: '';
+  width: 9px;
+  height: 5px;
+  background: currentColor;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  opacity: 0.6;
+  transition: rotate 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.scwr-view:open::picker-icon { rotate: 180deg; }
+.scwr-view::picker(select) {
+  position-area: block-end span-inline-start;
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 10px;
+  background: var(--gray-2, Canvas);
+  color: inherit;
+  font-size: 15px;
+}
+.scwr-view option { gap: 24px; padding: 8px 12px; border-radius: 6px; }
+.scwr-view option:hover,
+.scwr-view option:focus-visible { background-color: color-mix(in srgb, currentColor 8%, transparent); outline: 0; }
+.scwr-view option::checkmark {
+  content: '';
+  order: 1;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  background: var(--accent);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M2.75 7.25l2.75 2.75 5.75-6' fill='none' stroke='%23000' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.scwr-view hr { margin: 4px 8px; border: 0; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+
 @keyframes scwr-in { from { opacity: 0; } }
 @keyframes scwr-pulse { 50% { opacity: 0.22; } }
 
 /* Less motion keeps the fade, which only clarifies, and stills the pulse. */
 @media (prefers-reduced-motion: reduce) {
   .scwr-career .scwr-pulse { animation: none; }
+  .scwr-view::picker-icon { transition: none; }
 }
