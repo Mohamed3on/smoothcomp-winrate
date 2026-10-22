@@ -91,14 +91,13 @@ function strengths() {
   }));
 }
 
-// Biggest bracket first, or the most stacked by either measure; anything level
-// keeps Smoothcomp's own order.
-let stack = null; // null, 'stacked' (most wins) or 'average' (most wins per athlete)
+// Biggest bracket first, or the most stacked: most wins, then most per athlete;
+// anything level keeps Smoothcomp's own order.
+let stack = false;
 function arrange(groups) {
   const strength = stack && strengths();
   return groups.map((g) => {
-    const [wins, each] = strength ? strength.get(g.name) : [];
-    return [g, [...(stack === 'average' ? [each, wins] : stack ? [wins, each] : []), g.registrations.length, -first.get(g.name)]];
+    return [g, [...(strength ? strength.get(g.name) : []), g.registrations.length, -first.get(g.name)]];
   }).sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0)).map(([g]) => g);
 }
 
@@ -519,7 +518,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   view.dataset.scwrTheme = SCWRSite.theme(list);
   view.setAttribute('aria-label', 'List');
   view.innerHTML = '<option value="">Brackets, biggest first</option><option value="stacked">Brackets, most wins</option>'
-    + '<option value="average">Brackets, most wins per athlete</option><hr><option value="wins">Athletes, most wins</option>'
+    + '<hr><option value="wins">Athletes, most wins</option>'
     + '<option value="submission">Athletes, most submission wins</option><option value="points">Athletes, most wins on points</option>'
     + '<hr><option value="academies">Academies, most wins</option>';
   const ages = document.createElement('div');
@@ -553,7 +552,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     if (d) { event.preventDefault(); open(d); }
   });
   view.addEventListener('change', () => {
-    stack = ['stacked', 'average'].includes(view.value) ? view.value : null;
+    stack = view.value === 'stacked';
     order = stack ? null : view.value || null;
     if (order === null) pending.clear();
     list.classList.toggle('scwr-ranked', order !== null);
