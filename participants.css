@@ -349,3 +349,6 @@
   .scwr-view::picker-icon { transition: none; }
   .scwr-bracket:popover-open { animation-name: scwr-in; }
 }
+
+/* A stacked bracket order shows its measure at the heading's far end. */
+.scwr-stack { margin-left: auto; padding-left: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }

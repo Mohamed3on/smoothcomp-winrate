@@ -46,6 +46,7 @@ function tally(user) {
 
 let vm;
 let place; // each registration's index in Smoothcomp's own order
+let first; // each bracket's index in Smoothcomp's own order
 const ranked = new Set();
 
 // Most wins first, then most by submission, most by points, and the younger
@@ -78,6 +79,41 @@ function rerank(names) {
   vm.all = Object.freeze(vm.all.map(swap));
   vm.visible = vm.visible.map((chunk) => (chunk.some((g) => names.has(g.name)) ? chunk.map(swap) : chunk));
   vm.$nextTick(() => { slide(rows); queue(); });
+}
+
+// How stacked each bracket is: its athletes' counted career wins added up, and
+// per athlete whose career is known. Brackets sharing a name count together.
+function strengths() {
+  return new Map([...Map.groupBy(vm.all, (g) => g.name)].map(([name, groups]) => {
+    const known = groups.flatMap((g) => g.registrations).map((r) => r.user_id && tally(r.user_id)).filter(Boolean);
+    const wins = known.reduce((sum, t) => sum + t[0], 0);
+    return [name, [wins, known.length && wins / known.length]];
+  }));
+}
+
+// Biggest bracket first, or the most stacked by either measure; anything level
+// keeps Smoothcomp's own order.
+let stack = null; // null, 'stacked' (most wins) or 'average' (most wins per athlete)
+function arrange(groups) {
+  const strength = stack && strengths();
+  return groups.map((g) => {
+    const [wins, each] = strength ? strength.get(g.name) : [];
+    return [g, [...(stack === 'average' ? [each, wins] : stack ? [wins, each] : []), g.registrations.length, -first.get(g.name)]];
+  }).sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0)).map(([g]) => g);
+}
+
+// A stacked order needs every career in the event, read as the athletes view
+// reads them; the brackets reorder once the last one lands.
+function stacking() {
+  for (const g of vm.all) for (const r of g.registrations) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
+  drain();
+  if (draining) queue(); else restack();
+}
+
+function restack() {
+  for (const g of vm.all) ranked.add(g.name);
+  vm.all = Object.freeze(arrange(vm.all.map((g) => ({ ...g, registrations: rank(g) }))));
+  vm.updateResults();
 }
 
 // A row that changes place slides there, unless the reader asked for less motion.
@@ -246,6 +282,11 @@ const pending = new Set();
 let draining = null;
 function ranking() {
   for (const r of people()) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
+  drain();
+  show();
+}
+
+function drain() {
   if (pending.size) {
     draining ??= Promise.all(Array.from({ length: 12 }, async () => {
       for (const user of pending) {
@@ -256,10 +297,9 @@ function ranking() {
     })).then(() => {
       draining = null;
       save();
-      if (order !== null) show();
+      if (order !== null) show(); else if (stack) restack();
     });
   }
-  show();
 }
 
 // The registration column only repeats the bracket title, so the career takes
@@ -298,8 +338,22 @@ function draw(cell, user) {
 
 function paint() {
   painter.disconnect();
+  const strength = stack && !draining && strengths();
   for (const group of document.querySelectorAll('#registrations .participant-group')) {
     watcher.observe(group);
+    // A stacked order says what it ranks by beside each bracket's name.
+    const container = group.querySelector(':scope > .heading-container');
+    let label = container?.querySelector('.scwr-stack');
+    if (stack && container) {
+      if (!label) {
+        label = document.createElement('span');
+        label.className = 'muted scwr-stack';
+        container.append(label);
+      }
+      const [wins, each] = strength ? strength.get(heading(group)) : [];
+      const text = strength ? `${plural(wins, 'win')} · ${+each.toFixed(1)} per athlete` : 'Reading careers…';
+      if (label.textContent !== text) label.textContent = text;
+    } else label?.remove();
     for (const row of group.querySelectorAll('.participants-table-head, .participants-desktop .participant-tr-main')) {
       const slot = row.querySelector(':scope > .participant-td-registration');
       if (!slot) continue;
@@ -440,6 +494,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   if (!found) return;
   vm = found;
   place = new Map(vm.all.flatMap((g) => g.registrations.map((r, i) => [r.id, i])));
+  first = new Map(vm.all.map((g, i) => [g.name, i]).reverse());
   // Smoothcomp hides a bracket's unapproved athletes unless a search is on, and
   // that is all `isSearching` decides. Keeping it on shows them; participants.css marks them.
   Object.defineProperty(vm.$.ctx, 'isSearching', { get: () => true });
@@ -453,8 +508,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   });
   // `participants` maps `all` in order, so sorting the source sorts the filtered
   // views too. The array is frozen; sort a copy.
-  vm.all = Object.freeze([...vm.all].sort((a, b) => b.registrations.length - a.registrations.length)
-    .map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g)));
+  vm.all = Object.freeze(arrange(vm.all.map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g))));
   vm.updateResults();
   queue();
   // Beside the page title, which list to show: the brackets, every athlete, or
@@ -464,7 +518,8 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   view.className = 'scwr-view';
   view.dataset.scwrTheme = SCWRSite.theme(list);
   view.setAttribute('aria-label', 'List');
-  view.innerHTML = '<option value="">Brackets, biggest first</option><hr><option value="wins">Athletes, most wins</option>'
+  view.innerHTML = '<option value="">Brackets, biggest first</option><option value="stacked">Brackets, most wins</option>'
+    + '<option value="average">Brackets, most wins per athlete</option><hr><option value="wins">Athletes, most wins</option>'
     + '<option value="submission">Athletes, most submission wins</option><option value="points">Athletes, most wins on points</option>'
     + '<hr><option value="academies">Academies, most wins</option>';
   const ages = document.createElement('div');
@@ -498,10 +553,13 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     if (d) { event.preventDefault(); open(d); }
   });
   view.addEventListener('change', () => {
-    order = view.value || null;
+    stack = ['stacked', 'average'].includes(view.value) ? view.value : null;
+    order = stack ? null : view.value || null;
     if (order === null) pending.clear();
     list.classList.toggle('scwr-ranked', order !== null);
     ages.hidden = order === null;
+    if (stack) return stacking();
+    vm.all = Object.freeze(arrange(vm.all));
     vm.updateResults();
   });
   // Typed either way round, the range reads low to high; it applies once typing
