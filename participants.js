@@ -551,7 +551,9 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     const d = (event.key === 'Enter' || event.key === ' ') && division(event.target);
     if (d) { event.preventDefault(); open(d); }
   });
+  // The list chosen is kept per site, as the age range is.
   view.addEventListener('change', () => {
+    SCWRSite.store.set('view', view.value);
     stack = view.value === 'stacked';
     order = stack ? null : view.value || null;
     if (order === null) pending.clear();
@@ -575,6 +577,8 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   });
   SCWRSite.store.get('ages', []).forEach((end, i) => { ends[i].value = end ?? ''; });
   ages.dispatchEvent(new Event('input'));
+  view.value = SCWRSite.store.get('view') ?? '';
+  if (view.value) view.dispatchEvent(new Event('change'));
   me = window.userId && String(window.userId);
   if (me) {
     mount();
