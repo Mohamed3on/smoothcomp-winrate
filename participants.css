@@ -23,6 +23,79 @@
 }
 #registrations.scwr-ranked .participant-td-registration > div { flex: 0 1 auto; margin-right: 12px; opacity: 0.4; }
 #registrations.scwr-ranked .participant-td-registration > div:not(:last-child) > div::after { content: '·'; margin-left: 12px; }
+/* Each division opens its bracket: it steps forward on hover, and stays forward
+   while its bracket is open. */
+#registrations.scwr-ranked .participant-td-registration > [role='button'] {
+  border-radius: 4px;
+  cursor: pointer;
+  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+#registrations.scwr-ranked .participant-td-registration > [role='button']:hover,
+#registrations.scwr-ranked .participant-td-registration > [aria-expanded='true'] { opacity: 0.85; }
+#registrations.scwr-ranked .participant-td-registration > [role='button']:focus-visible {
+  opacity: 0.85;
+  outline: 2px solid color-mix(in srgb, currentColor 50%, transparent);
+  outline-offset: 2px;
+}
+
+/* The bracket hangs under its division as Smoothcomp's own dropdowns do: a panel
+   one grey above the rows, on a soft shadow, in borrowed ink, its rows laid like
+   the list's own — place, athlete over academy, wins over how. */
+.scwr-bracket {
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  inset: auto;
+  width: 440px;
+  max-height: min(480px, 70vh);
+  margin: 8px 0;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 10px;
+  background: var(--gray-3, Canvas);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  color: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, currentColor 25%, transparent) transparent;
+}
+.scwr-bracket[data-scwr-theme='dark'] { color-scheme: dark; }
+.scwr-bracket header { padding: 10px 12px 8px; }
+.scwr-bracket strong { display: block; margin-bottom: 2px; font-size: 15px; font-weight: 600; line-height: 20px; text-wrap: balance; }
+.scwr-bracket p { margin: 0; }
+.scwr-bracket ol { margin: 0; padding: 0; list-style: none; }
+.scwr-bracket li {
+  display: grid;
+  grid-template-columns: 2ch minmax(0, 1fr) 9em;
+  gap: 12px;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 6px;
+}
+.scwr-bracket li > :first-child { text-align: right; }
+.scwr-bracket li > span { display: flex; flex-direction: column; min-width: 0; }
+.scwr-bracket li > span > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scwr-bracket li > span:last-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scwr-bracket li > span:last-child > .font-size-tiny { display: block; }
+.scwr-bracket b { font-weight: 600; }
+/* The athlete the bracket was opened from, in the accent's ground and weight. */
+.scwr-bracket li.scwr-this { background-color: var(--accent-soft); }
+.scwr-bracket li.scwr-this > span:nth-child(2) > :first-child { font-weight: 600; }
+.scwr-bracket li[data-unapproved] { opacity: 0.55; }
+.scwr-bracket .scwr-pulse {
+  display: inline-block;
+  width: 3em;
+  height: 0.75em;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.12;
+  animation: scwr-pulse 1.2s ease-in-out infinite;
+}
+.scwr-bracket:popover-open { animation: scwr-drop 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes scwr-drop { from { opacity: 0; translate: 0 -4px; } }
+
 /* An academy has no photo; Smoothcomp's own academy icon stands on the photo's tile. */
 .scwr-crest {
   display: flex;
@@ -91,14 +164,16 @@
 .container.scwr-picks { margin-bottom: 32px; font-variant-numeric: tabular-nums; }
 .scwr-picks,
 .scwr-view,
-.scwr-ages {
+.scwr-ages,
+.scwr-bracket {
   --accent: #1565c0;
   --accent-soft: rgba(21, 101, 192, 0.09);
   --accent-line: rgba(21, 101, 192, 0.32);
 }
 .scwr-picks[data-scwr-theme='dark'],
 .scwr-view[data-scwr-theme='dark'],
-.scwr-ages[data-scwr-theme='dark'] {
+.scwr-ages[data-scwr-theme='dark'],
+.scwr-bracket[data-scwr-theme='dark'] {
   --accent: #79b3ea;
   --accent-soft: rgba(121, 179, 234, 0.13);
   --accent-line: rgba(121, 179, 234, 0.4);
@@ -269,6 +344,8 @@
 
 /* Less motion keeps the fade, which only clarifies, and stills the pulse. */
 @media (prefers-reduced-motion: reduce) {
-  .scwr-career .scwr-pulse { animation: none; }
+  .scwr-career .scwr-pulse,
+  .scwr-bracket .scwr-pulse { animation: none; }
   .scwr-view::picker-icon { transition: none; }
+  .scwr-bracket:popover-open { animation-name: scwr-in; }
 }

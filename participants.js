@@ -143,6 +143,45 @@ function athletes() {
     : { id: 'scwr-athletes', name, registrations: rank({ registrations }, LEADS.indexOf(order)) };
 }
 
+// A division under an athlete opens its bracket over the list: everyone in it,
+// ranked as the brackets view ranks them, the athlete it was opened from marked,
+// and Smoothcomp's own bracket once it is drawn. Careers the list did not need,
+// say an age the range left out, are read while it is open.
+let sheet; // the bracket, a popover
+let shown; // the division it was opened from
+
+function bracket(division) {
+  const name = division.textContent.trim();
+  const user = SCWRSite.profileId(division.closest('.profile-card')?.querySelector('a[href*="/profile/"]')?.getAttribute('href'));
+  const groups = vm.all.filter((g) => g.name.trim() === name);
+  const rows = rank({ registrations: groups.flatMap((g) => g.registrations) });
+  const drawn = groups.find((g) => g.bracket_id)?.bracket_id;
+  const career = (r) => {
+    const t = r.user_id && tally(r.user_id);
+    if (t) return `<span><b>${t[0]}</b> ${t[0] === 1 ? 'win' : 'wins'}<span class="muted font-size-tiny">${plural(t[1], 'sub')} · ${t[2]} pts</span></span>`;
+    return `<span class="muted">${!r.user_id ? '' : fresh(r.user_id) ? 'Hidden' : '<i class="scwr-pulse"></i>'}</span>`;
+  };
+  sheet.innerHTML = `<header><strong>${esc(name)}</strong><p class="muted">${plural(rows.length, 'athlete')}`
+    + (drawn ? ` · <a href="${SCWRSite.url.bracket(SCWRSite.eventId(), drawn)}" target="_blank">Open bracket</a>` : '')
+    + '</p></header><ol>' + rows.map((r, i) => `<li${String(r.user_id) === user ? ' class="scwr-this"' : ''}${r.approved === 1 ? '' : ' title="Not approved" data-unapproved'}>`
+      + `<span class="muted">${i + 1}</span><span>${r.user_id ? `<a href="${SCWRSite.url.profile(r.user_id)}">` : '<span>'}${esc(`${r.firstname} ${r.lastname}`)}${r.user_id ? '</a>' : '</span>'}`
+      + `<span class="muted font-size-tiny">${esc(r.clubName ?? '')}</span></span>${career(r)}</li>`).join('') + '</ol>';
+  return rows.map((r) => r.user_id && String(r.user_id)).filter((u) => u && !fresh(u));
+}
+
+function open(division) {
+  const again = shown === division;
+  if (sheet.matches(':popover-open')) sheet.hidePopover();
+  shown?.removeAttribute('aria-expanded');
+  shown = null;
+  if (again) return;
+  shown = division;
+  division.setAttribute('aria-expanded', 'true');
+  const missing = bracket(division);
+  sheet.showPopover({ source: division });
+  if (missing.length) Promise.all(missing.map(readCareer)).then(() => { save(); if (shown === division) bracket(division); });
+}
+
 // Each academy with its athletes' careers added up: counted wins, by submission
 // and on points, and medals. A hidden career adds nothing.
 function academies() {
@@ -272,6 +311,13 @@ function paint() {
       }
       draw(cell, row.classList.contains('participants-table-head') ? 'head'
         : SCWRSite.profileId(row.querySelector('a[href*="/profile/"]')?.getAttribute('href')));
+    }
+  }
+  if (LEADS.includes(order)) {
+    for (const division of document.querySelectorAll('#registrations .participant-td-registration > div:not([role])')) {
+      division.setAttribute('role', 'button');
+      division.setAttribute('aria-haspopup', 'dialog');
+      division.tabIndex = 0;
     }
   }
   if (order === 'academies') drawAcademies(); else if (box.firstChild) box.replaceChildren();
@@ -434,6 +480,23 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   box = document.createElement('div');
   box.className = 'container container-fluid-large';
   list.append(box);
+  sheet = document.createElement('div');
+  sheet.className = 'scwr-bracket';
+  sheet.dataset.scwrTheme = view.dataset.scwrTheme;
+  sheet.popover = 'auto';
+  sheet.setAttribute('role', 'dialog');
+  list.after(sheet);
+  sheet.addEventListener('toggle', (event) => {
+    if (event.newState === 'open') return;
+    shown?.removeAttribute('aria-expanded');
+    shown = null;
+  });
+  const division = (target) => LEADS.includes(order) && target.closest?.('.participant-td-registration > [role="button"]');
+  list.addEventListener('click', (event) => { const d = division(event.target); if (d) open(d); });
+  list.addEventListener('keydown', (event) => {
+    const d = (event.key === 'Enter' || event.key === ' ') && division(event.target);
+    if (d) { event.preventDefault(); open(d); }
+  });
   view.addEventListener('change', () => {
     order = view.value || null;
     if (order === null) pending.clear();
