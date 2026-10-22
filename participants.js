@@ -504,15 +504,20 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     ages.hidden = order === null;
     vm.updateResults();
   });
-  // Typed either way round, the range reads low to high; it applies once typing pauses.
+  // Typed either way round, the range reads low to high; it applies once typing
+  // pauses, and is kept per site, as the weight is.
   let typing;
+  const ends = [...ages.querySelectorAll('input')];
   ages.addEventListener('input', () => {
-    const [from, to] = [...ages.querySelectorAll('input')].map((input) => (input.value === '' ? null : Math.max(0, +input.value)));
+    const [from, to] = ends.map((input) => (input.value === '' ? null : Math.max(0, +input.value)));
     youngest = Math.min(from ?? 0, to ?? Infinity);
     oldest = Math.max(from ?? 0, to ?? Infinity);
+    SCWRSite.store.set('ages', [from, to]);
     clearTimeout(typing);
     typing = setTimeout(() => order !== null && ranking(), 400);
   });
+  SCWRSite.store.get('ages', []).forEach((end, i) => { ends[i].value = end ?? ''; });
+  ages.dispatchEvent(new Event('input'));
   me = window.userId && String(window.userId);
   if (me) {
     mount();
