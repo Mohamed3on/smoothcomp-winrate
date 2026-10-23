@@ -51,7 +51,7 @@ const ranked = new Set();
 
 // Most wins first, then most by submission, most by points, and the younger
 // athlete; anything still level keeps Smoothcomp's own order. The athletes view
-// can lead with submissions or points instead. A career that is unread or hidden
+// can lead with submissions instead. A career that is unread or hidden
 // sorts after every known one, as does an unknown age.
 function rank(group, lead = 0) {
   const key = (r) => {
@@ -83,8 +83,8 @@ function rerank(names) {
 
 // How stacked each bracket is: its athletes' counted career wins added up, and
 // per athlete whose career is known. Brackets sharing a name count together.
-function strengths() {
-  return new Map([...Map.groupBy(vm.all, (g) => g.name)].map(([name, groups]) => {
+function strengths(groups = vm.all) {
+  return new Map([...Map.groupBy(groups, (g) => g.name)].map(([name, groups]) => {
     const known = groups.flatMap((g) => g.registrations).map((r) => r.user_id && tally(r.user_id)).filter(Boolean);
     const wins = known.reduce((sum, t) => sum + t[0], 0);
     return [name, [wins, known.length && wins / known.length]];
@@ -95,7 +95,7 @@ function strengths() {
 // anything level keeps Smoothcomp's own order.
 let stack = false;
 function arrange(groups) {
-  const strength = stack && strengths();
+  const strength = stack && strengths(groups);
   return groups.map((g) => {
     return [g, [...(strength ? strength.get(g.name) : []), g.registrations.length, -first.get(g.name)]];
   }).sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0)).map(([g]) => g);
@@ -107,6 +107,17 @@ function stacking() {
   for (const g of vm.all) for (const r of g.registrations) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
   drain();
   if (draining) queue(); else restack();
+}
+
+// Unapproved athletes are shown, faded, unless the page is switched to approved
+// only; then they leave the data, so every count, ranking and pick leaves them out
+// too, and a bracket left empty goes.
+let source; // every bracket as the payload has it
+let approvedOnly = SCWRSite.store.get('approved-only', false);
+function admit() {
+  const groups = source.map((g) => ({ ...g, registrations: g.registrations.filter((r) => !approvedOnly || r.approved === 1) }))
+    .filter((g) => g.registrations.length || !approvedOnly);
+  vm.all = Object.freeze(arrange(groups.map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g))));
 }
 
 function restack() {
@@ -147,11 +158,11 @@ const watcher = new IntersectionObserver((entries) => {
 
 // Two lists in place of the brackets, over every athlete the filters and the age
 // range leave. Athletes, one row each, ranked across brackets by career wins, or
-// by wins by submission or on points: a row is the athlete's first registration,
+// by wins by submission: a row is the athlete's first registration,
 // with every division they entered as its registration. Academies, ranked by the
 // wins of their athletes' careers added up.
 let order = null; // null lists brackets; 'academies' ranks academies; a figure of LEADS ranks athletes
-const LEADS = ['wins', 'submission', 'points'];
+const LEADS = ['wins', 'submission'];
 let view; // the menu that picks it
 let youngest = 0;
 let oldest = Infinity;
@@ -507,7 +518,8 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   });
   // `participants` maps `all` in order, so sorting the source sorts the filtered
   // views too. The array is frozen; sort a copy.
-  vm.all = Object.freeze(arrange(vm.all.map((g) => (ranked.has(g.name) ? { ...g, registrations: rank(g) } : g))));
+  source = vm.all;
+  admit();
   vm.updateResults();
   queue();
   // Beside the page title, which list to show: the brackets, every athlete, or
@@ -519,7 +531,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   view.setAttribute('aria-label', 'List');
   view.innerHTML = '<option value="">Brackets, biggest first</option><option value="stacked">Brackets, most wins</option>'
     + '<hr><option value="wins">Athletes, most wins</option>'
-    + '<option value="submission">Athletes, most submission wins</option><option value="points">Athletes, most wins on points</option>'
+    + '<option value="submission">Athletes, most submission wins</option>'
     + '<hr><option value="academies">Academies, most wins</option>';
   const ages = document.createElement('div');
   ages.className = 'scwr-ages';
@@ -529,8 +541,12 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   ages.setAttribute('aria-label', 'Age');
   ages.innerHTML = '<span>Age</span><input type="number" min="0" max="120" placeholder="Any" aria-label="From">'
     + '<span>–</span><input type="number" min="0" max="120" placeholder="Any" aria-label="To">';
+  const approved = document.createElement('label');
+  approved.className = 'scwr-approved';
+  approved.dataset.scwrTheme = view.dataset.scwrTheme;
+  approved.innerHTML = '<input type="checkbox">Approved only';
   const title = list.parentElement.querySelector('h1');
-  if (title) title.after(view, ages); else list.before(view, ages);
+  if (title) title.after(view, ages, approved); else list.before(view, ages, approved);
   box = document.createElement('div');
   box.className = 'container container-fluid-large';
   list.append(box);
@@ -563,6 +579,20 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     vm.all = Object.freeze(arrange(vm.all));
     vm.updateResults();
   });
+  // Kept per site. Athletes shown again need their careers, so the brackets on
+  // screen are seen afresh and read what they lack.
+  const only = approved.querySelector('input');
+  only.checked = approvedOnly;
+  only.addEventListener('change', () => {
+    approvedOnly = only.checked;
+    SCWRSite.store.set('approved-only', approvedOnly);
+    admit();
+    vm.updateResults();
+    watcher.disconnect();
+    queue();
+    if (stack) stacking();
+    if (me) pick();
+  });
   // Typed either way round, the range reads low to high; it applies once typing
   // pauses, and is kept per site, as the weight is.
   let typing;
@@ -578,6 +608,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   SCWRSite.store.get('ages', []).forEach((end, i) => { ends[i].value = end ?? ''; });
   ages.dispatchEvent(new Event('input'));
   view.value = SCWRSite.store.get('view') ?? '';
+  if (view.selectedIndex < 0) view.value = '';
   if (view.value) view.dispatchEvent(new Event('change'));
   me = window.userId && String(window.userId);
   if (me) {
