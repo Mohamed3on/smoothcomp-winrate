@@ -884,7 +884,9 @@
     const cell = el('td');
     cell.colSpan = span;
     const grid = el('div', undefined, 'scwr-detail-grid');
-    const counted = (entries) => entries.flatMap((e) => e.bouts).filter((b) => state.types.includes(b.type));
+    // Every decided match, then whatever is still to come, soonest first.
+    const listed = (entries) => [...entries.flatMap((e) => e.bouts),
+      ...entries.flatMap((e) => e.upcoming).sort((a, b) => String(a.start).localeCompare(String(b.start)))];
     const entryItem = (entry, label, href) => {
       const bracket = model.brackets.get(entry.bracketId);
       const one = SCWRModel.entryRecord(entry, state.types);
@@ -892,7 +894,7 @@
         label, href,
         detail: `${!entry.placement ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}${bracket.provisional ? ', not published yet' : ''}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
         medals: entry.placement <= 3 ? [0, 1, 2].map((i) => (entry.placement === i + 1 ? 1 : 0)) : [0, 0, 0],
-        bouts: counted([entry]),
+        bouts: listed([entry]),
       };
     };
     const list = state.view === 'brackets'
@@ -905,7 +907,7 @@
         label: a.name, href: profileHref(a),
         detail: `${record(a)} · ${percent(a.rate)} · ${breakdown(a.types) || 'no contested wins'}`,
         medals: a.medals,
-        bouts: counted(a.entries),
+        bouts: listed(a.entries),
       }))
       // Largest bracket first, the one the Bracket size column counts. The
       // results list every kids division before the adults', so a junior who
@@ -914,6 +916,8 @@
         const bracket = model.brackets.get(entry.bracketId);
         return entryItem(entry, bracket.name, SCWRSite.url.bracket(EVENT_ID, bracket.id));
       });
+    const who = ({ name, club }) => `${name || 'Unnamed athlete'}${club ? ` (${club})` : ''}`;
+    const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     for (const item of list) {
       const line = el('div', undefined, 'scwr-detail-row');
       const label = item.href ? el('a', item.label, 'scwr-name') : el('span', item.label, 'scwr-name');
@@ -922,10 +926,18 @@
       if (place > -1) line.append(el('i', undefined, `scwr-pip scwr-medal-${place}`));
       line.append(label, el('span', item.detail, 'scwr-meta'));
       for (const bout of item.bouts ?? []) {
-        const { name, club } = bout.opponent;
         const text = el('span', undefined, 'scwr-meta scwr-bout');
-        text.append(el('strong', bout.won ? 'W' : 'L'), el('i', undefined, `scwr-seg scwr-seg-${bout.type}`),
-          `${WIN_LABEL[bout.type]?.[0] ?? bout.type} · ${bout.won ? 'beat' : 'lost to'} ${name || 'Unnamed athlete'}${club ? ` (${club})` : ''}`);
+        if (bout.type) {
+          text.append(el('strong', bout.won ? 'W' : 'L'), el('i', undefined, `scwr-seg scwr-seg-${bout.type}`),
+            `${WIN_LABEL[bout.type]?.[0] ?? bout.type} · ${bout.won ? 'beat' : 'lost to'} ${who(bout.opponent)}`);
+          text.classList.toggle('scwr-uncounted', !state.types.includes(bout.type));
+        } else {
+          const where = bout.running ? `on ${bout.mat ?? 'the mat'} now` : [bout.mat, bout.start && `~${time(bout.start)}`].filter(Boolean).join(', ');
+          const against = bout.opponent ? `vs ${who(bout.opponent)}` : bout.waiting && `opponent: ${bout.waiting}`;
+          text.classList.add('scwr-upcoming');
+          text.classList.toggle('scwr-running', bout.running);
+          text.append(el('strong'), el('i', undefined, 'scwr-seg'), [bout.stage, where, against].filter(Boolean).join(' · '));
+        }
         line.append(text);
       }
       grid.append(line);

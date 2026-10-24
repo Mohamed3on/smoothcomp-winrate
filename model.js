@@ -25,7 +25,7 @@ const SCWRModel = (() => {
       for (const p of placements(result)) {
         const key = athleteKey(p, id);
         if (bracket.entries.has(key)) continue;
-        const entry = { key, placement: Number(p.placement), bracketId: id, wins: {}, losses: {}, bouts: [] };
+        const entry = { key, placement: Number(p.placement), bracketId: id, wins: {}, losses: {}, bouts: [], upcoming: [] };
         bracket.entries.set(key, entry);
         const nameKey = identity(p.target?.fullname, p.club?.name);
         const sameName = bracket.names.get(nameKey) ?? [];
@@ -75,7 +75,7 @@ const SCWRModel = (() => {
           club: person?.club || side.club || '', clubId: person?.club ? person.clubId : null,
           country: side.country ?? null, countryName: null, userId, logo: null, hidden: null, entries: [],
         };
-        const entry = { key, placement: null, bracketId: id, wins: {}, losses: {}, bouts: [] };
+        const entry = { key, placement: null, bracketId: id, wins: {}, losses: {}, bouts: [], upcoming: [] };
         bracket.entries.set(key, entry);
         bracket.size = bracket.entries.size;
         const nameKey = identity(side.name, side.club);
@@ -98,31 +98,42 @@ const SCWRModel = (() => {
     let unpublished = 0;
     let noShows = 0;
     let unmatched = 0;
+    // A side is its user's entry in the bracket, or else the one entrant there
+    // with its name and academy.
+    const entryOf = (bracket, side) => {
+      if (side.userId) return bracket.entries.get(`user:${side.userId}`);
+      const candidates = bracket.names.get(identity(side.name, side.club)) ?? [];
+      return candidates.length === 1 ? bracket.entries.get(candidates[0]) : undefined;
+    };
     for (const match of matches) {
-      const winners = match.sides.filter((s) => s.won);
-      if (winners.length !== 1 || match.sides.length !== 2) {
-        unresolved++;
-        continue;
-      }
-      completed++;
-      const isWalkover = winners[0].won === 'walkover';
-      if (isWalkover) walkovers++;
       // Round-robin pools can link to a different bracket ID than the final
       // published placement list. Join those pools by the exact division name,
       // only when it identifies one published result bracket.
       const categoryMatches = categories.get(normalize(match.cat)) ?? [];
       const bracket = brackets.get(String(match.bracketId)) ?? (categoryMatches.length === 1 ? categoryMatches[0] : null);
+      const winners = match.sides.filter((s) => s.won);
+      if (winners.length !== 1 || match.sides.length !== 2) {
+        unresolved++;
+        // Still to be fought: everyone seated has it ahead of them, counted nowhere yet.
+        if (!match.finished && bracket) {
+          for (const side of match.sides) {
+            entryOf(bracket, side)?.upcoming.push({
+              id: match.id, stage: match.stage, mat: match.mat, start: match.start, running: match.running,
+              opponent: match.sides.find((s) => s !== side) ?? null, waiting: match.waiting[0] ?? null,
+            });
+          }
+        }
+        continue;
+      }
+      completed++;
+      const isWalkover = winners[0].won === 'walkover';
+      if (isWalkover) walkovers++;
       // A division named like several published ones cannot be told apart.
       if (!bracket) { unmatched++; continue; }
       if (bracket.provisional) unpublished++;
       let attached = 0;
       for (const side of match.sides) {
-        let key = side.userId ? `user:${side.userId}` : null;
-        if (!key) {
-          const candidates = bracket.names.get(identity(side.name, side.club)) ?? [];
-          if (candidates.length === 1) key = candidates[0];
-        }
-        const entry = bracket.entries.get(key);
+        const entry = entryOf(bracket, side);
         if (!entry) continue;
         attached++;
         const bucket = side === winners[0] ? entry.wins : entry.losses;

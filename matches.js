@@ -10,12 +10,17 @@ const { eventId, url, store } = SCWRSite;
 // waiting on another result ("Loser from 1-91") is not a side. A side names its
 // registration, not its user: only the registration list knows that. The stage
 // is where the match sits in its bracket: "Final", "Bronze match", "Match 3/10".
+// A seat still waiting is kept by what it waits for: "Winner from 1-108".
 const toMatch = (m) => ({
   id: String(m.id),
   bracketId: String(m.bracket_id),
   cat: m.group ?? '',
   stage: m.name ?? '',
   finished: m.state === 'finished',
+  running: m.state === 'running',
+  mat: m.mat_name || null,
+  start: m.estimated_start || null,
+  waiting: m.seats.filter((s) => s.type !== 'registration').map((s) => s.name),
   sides: m.seats.filter((s) => s.type === 'registration').map((s) => ({
     name: s.name, registrationId: String(s.event_registration_id), club: s.club || null, country: s.country || null,
     won: s.isWinner ? m.wonBy : null,

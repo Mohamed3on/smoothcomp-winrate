@@ -100,6 +100,19 @@ test('an unpublished division fought in pools is one bracket, medalled by its fi
   assert.equal(model.unmatched, 0);
 });
 
+test('a match still to come is listed under everyone seated in it, and counted nowhere', async () => {
+  const { model } = await resultsPage('32979-live');
+  const open = model.matches.filter((m) => !m.finished);
+  const upcoming = [...model.brackets.values()].flatMap((b) => [...b.entries.values()]).flatMap((e) => e.upcoming);
+  assert.equal(upcoming.length, open.reduce((n, m) => n + m.sides.length, 0));
+  assert.equal(upcoming.filter((u) => u.running).length, 12);
+  assert.ok(upcoming.every((u) => !u.type));
+  // A seat still waiting on another result names what it waits for.
+  const athlete = [...model.athletes.values()].find((a) => a.name === 'Athlete 55');
+  assert.deepEqual(plain(athlete.entries.flatMap((e) => e.upcoming).map((u) => [u.stage, u.opponent, u.waiting])),
+    [['Semifinals', null, 'From Group B - #2']]);
+});
+
 test('the leaderboards rank athletes and academies on the win types counted', async () => {
   const { model, SCWRModel } = await resultsPage('25901');
   const board = (table, types) => SCWRModel.leaderboard(model, { table, types, sort: 'wins' });
