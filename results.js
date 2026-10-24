@@ -900,6 +900,7 @@
           label: bracket.name, href: SCWRSite.url.bracket(EVENT_ID, bracket.id),
           detail: `${bracket.provisional ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
           medals: entry.placement <= 3 ? [0, 1, 2].map((i) => (entry.placement === i + 1 ? 1 : 0)) : [0, 0, 0],
+          bouts: entry.bouts.filter((b) => state.types.includes(b.type)),
         };
       });
     for (const item of list) {
@@ -909,6 +910,13 @@
       const place = item.medals.findIndex((n) => n);
       if (place > -1) line.append(el('i', undefined, `scwr-pip scwr-medal-${place}`));
       line.append(label, el('span', item.detail, 'scwr-meta'));
+      for (const bout of item.bouts ?? []) {
+        const { name, club } = bout.opponent;
+        const text = el('span', undefined, 'scwr-meta scwr-bout');
+        text.append(el('strong', bout.won ? 'W' : 'L'), el('i', undefined, `scwr-seg scwr-seg-${bout.type}`),
+          `${WIN_LABEL[bout.type]?.[0] ?? bout.type} · ${bout.won ? 'beat' : 'lost to'} ${name || 'Unnamed athlete'}${club ? ` (${club})` : ''}`);
+        line.append(text);
+      }
       grid.append(line);
     }
     if (state.view === 'academies' && row.roster.length > 12) {

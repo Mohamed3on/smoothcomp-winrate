@@ -539,6 +539,9 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 .scwr-detail-grid { display: grid; gap: var(--s-2); }
 .scwr-detail-row { display: grid; grid-template-columns: 9px minmax(0, 1fr); align-items: baseline; gap: var(--s-1) var(--s-2); }
 .scwr-detail-row > .scwr-name, .scwr-detail-row > .scwr-meta { grid-column: 2; }
+.scwr-bout { display: flex; align-items: center; gap: var(--s-2); }
+.scwr-bout > strong { width: 1ch; color: var(--fg-2); }
+.scwr-bout > .scwr-seg { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .scwr-pip { width: 7px; height: 7px; border-radius: 50%; align-self: center; }
 .scwr-pip.scwr-medal-0 { background: var(--gold); }
 .scwr-pip.scwr-medal-1 { background: var(--silver); }

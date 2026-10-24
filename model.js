@@ -22,7 +22,7 @@ const SCWRModel = (() => {
       for (const p of placements(result)) {
         const key = athleteKey(p, id);
         if (bracket.entries.has(key)) continue;
-        const entry = { key, placement: Number(p.placement), bracketId: id, wins: {}, losses: {} };
+        const entry = { key, placement: Number(p.placement), bracketId: id, wins: {}, losses: {}, bouts: [] };
         bracket.entries.set(key, entry);
         const nameKey = identity(p.target?.fullname, p.club?.name);
         const sameName = bracket.names.get(nameKey) ?? [];
@@ -69,7 +69,7 @@ const SCWRModel = (() => {
           club: person?.club || side.club || '', clubId: person?.club ? person.clubId : null,
           country: side.country ?? null, countryName: null, userId, logo: null, hidden: null, entries: [],
         };
-        const entry = { key, placement: null, bracketId: id, wins: {}, losses: {} };
+        const entry = { key, placement: null, bracketId: id, wins: {}, losses: {}, bouts: [] };
         bracket.entries.set(key, entry);
         bracket.size = bracket.entries.size;
         const nameKey = identity(side.name, side.club);
@@ -117,6 +117,7 @@ const SCWRModel = (() => {
         attached++;
         const bucket = side === winners[0] ? entry.wins : entry.losses;
         bucket[winners[0].won] = (bucket[winners[0].won] ?? 0) + 1;
+        entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, opponent: match.sides.find((s) => s !== side) });
       }
       if (attached < 2) {
         if (isWalkover) noShows++;
