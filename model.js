@@ -330,8 +330,9 @@ const SCWRModel = (() => {
   };
 
   // Descending by default: every metric here reads "more is better". Ties fall
-  // through a fixed chain — more wins, then a higher win rate, then more golds,
-  // then a longer record, then name — so a re-sort never reshuffles rows that
+  // through a fixed chain — more wins, then a higher win rate, then more decisive
+  // wins (submissions first, in WIN_TYPES order), then more golds, then a longer
+  // record, then name — so a re-sort never reshuffles rows that
   // genuinely tie. The record length is what separates two winless athletes:
   // 0–6 is a more convincing 0% than 0–2, so it ranks first either way.
   function rank(rows, sort, direction = -1) {
@@ -344,6 +345,7 @@ const SCWRModel = (() => {
       if (metric === 'name') return direction * a.name.localeCompare(b.name);
       const primary = (value(a) - value(b)) * direction;
       return primary || b.wins - a.wins || (b.rate ?? -1) - (a.rate ?? -1) ||
+        SCWRSite.WIN_TYPES.reduce((order, t) => order || (b.types[t] ?? 0) - (a.types[t] ?? 0), 0) ||
         b.golds - a.golds || (b.biggestGold ?? 0) - (a.biggestGold ?? 0) ||
         b.total - a.total || a.name.localeCompare(b.name);
     });
