@@ -92,7 +92,7 @@
     brackets: [
       { key: 'name', label: 'Division', align: 'start', cell: identityCell, grow: true },
       { key: 'size', label: 'Bracket size', title: 'Competitors in the published placement list, or on the schedule until the division is published.', cell: (r) => strong(r.size) },
-      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, and the record they posted in this bracket.', cell: (r) => personCell(r.champion, r.provisional ? 'Not published yet' : r.championExcluded ? 'Filtered out' : 'Not awarded'), wide: true },
+      { key: 'wins', label: 'Gold medal', align: 'start', title: 'Who the published results awarded gold, or until they are published, who won the final, and the record they posted in this bracket.', cell: (r) => personCell(r.champion, r.awaitingGold ? 'Not published yet' : r.championExcluded ? 'Filtered out' : 'Not awarded'), wide: true },
       { key: 'gap', label: 'Most wins', align: 'start', title: 'Whoever actually won the most matches here under the win types you are counting. Ties go to the medallist. Sorts by that leader\u2019s win count.', cell: leaderCell, wide: true },
       { key: 'gapCount', label: 'Gap', title: 'How many more wins the leader has than the gold medallist. Zero means the medal and the match wins agree.', cell: gapCell },
     ],
@@ -252,8 +252,8 @@
   // when they agree, this column should recede rather than repeat the name.
   function leaderCell(bracket) {
     if (!bracket.leader) return personCell(null, 'No decided matches');
-    // Before a gold is published, the leader has nobody to agree with.
-    if (bracket.provisional) return bracket.leaderWins ? personCell(bracket.leader) : personCell(null, 'No counted wins yet');
+    // Before a gold is awarded, the leader has nobody to agree with.
+    if (bracket.awaitingGold) return bracket.leaderWins ? personCell(bracket.leader) : personCell(null, 'No counted wins yet');
     if (!bracket.gapCount) {
       const wrap = el('div', undefined, 'scwr-identity');
       wrap.append(el('span', 'Same athlete', 'scwr-meta scwr-agree'));
@@ -264,7 +264,7 @@
   }
 
   function gapCell(bracket) {
-    if (!bracket.leader || bracket.provisional) return muted('—');
+    if (!bracket.leader || bracket.awaitingGold) return muted('—');
     return bracket.gapCount ? el('span', `+${bracket.gapCount}`, 'scwr-num scwr-gap') : muted('0');
   }
 
@@ -890,7 +890,7 @@
       const one = SCWRModel.entryRecord(entry, state.types);
       return {
         label, href,
-        detail: `${bracket.provisional ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
+        detail: `${!entry.placement ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}${bracket.provisional ? ', not published yet' : ''}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
         medals: entry.placement <= 3 ? [0, 1, 2].map((i) => (entry.placement === i + 1 ? 1 : 0)) : [0, 0, 0],
         bouts: counted([entry]),
       };
@@ -1113,7 +1113,7 @@
     const notes = [];
     if (model.unpublished) {
       parts.push(`${model.unpublished} ${unit(model.unpublished, 'match', 'matches')} in divisions not yet published`);
-      notes.push(`${model.unpublished} decided ${unit(model.unpublished, 'match', 'matches')} belong to divisions Smoothcomp has not published results for yet. They already count, read off the schedule; placements and medals follow once it publishes.`);
+      notes.push(`${model.unpublished} decided ${unit(model.unpublished, 'match', 'matches')} belong to divisions Smoothcomp has not published results for yet. They already count, read off the schedule, and a decided final and bronze match award the medals; the rest of the placements follow once it publishes.`);
     }
     if (model.unmatched) {
       parts.push(`${model.unmatched} fought ${unit(model.unmatched, 'match', 'matches')} unmatched`);

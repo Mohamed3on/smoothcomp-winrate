@@ -8,11 +8,13 @@ const { eventId, url, store } = SCWRSite;
 // One scheduled match in the shape every consumer reads. The win type is
 // Smoothcomp's own code, so nothing is read out of prose, and a seat still
 // waiting on another result ("Loser from 1-91") is not a side. A side names its
-// registration, not its user: only the registration list knows that.
+// registration, not its user: only the registration list knows that. The stage
+// is where the match sits in its bracket: "Final", "Bronze match", "Match 3/10".
 const toMatch = (m) => ({
   id: String(m.id),
   bracketId: String(m.bracket_id),
   cat: m.group ?? '',
+  stage: m.name ?? '',
   finished: m.state === 'finished',
   sides: m.seats.filter((s) => s.type === 'registration').map((s) => ({
     name: s.name, registrationId: String(s.event_registration_id), club: s.club || null, country: s.country || null,

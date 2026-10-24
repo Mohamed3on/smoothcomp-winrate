@@ -72,11 +72,32 @@ test('with no results published, the schedule alone ranks the event', async () =
     ['Athlete 46', '0–0 0–0 0–0 0–0 0–0 0–0', null],
     ['Athlete 974', '0–0 0–0 0–0 0–0 0–0 0–1', '0–0 0–0 0–0 0–0 0–0 0–2'],
   ]);
-  // Nobody is medalled, and nobody's profile is known to be public, before the
-  // results say so.
+  // This recording predates match stages, so no final medals anybody, and
+  // nobody's profile is known to be public before the results say so.
   const board = page.SCWRModel.leaderboard(bare, { table: 'athletes', types: COUNTED, sort: 'wins' });
   assert.equal(board.filter((a) => a.podiums).length, 0);
   assert.ok([...bare.athletes.values()].every((a) => a.hidden === null));
+});
+
+test('an unpublished division fought in pools is one bracket, medalled by its final', async () => {
+  const { model, SCWRModel } = await resultsPage('32979-live');
+  // Two round-robin pools and a playoff, each its own bracket on the schedule,
+  // one division in the results once they are published.
+  const name = 'Male No-Gi (over 16 y.o.) / Blue / Adult / -77,00 kg';
+  const division = [...model.brackets.values()].filter((b) => b.name === name);
+  assert.deepEqual(plain(division.map((b) => [b.id, b.provisional, b.size])), [['2204353', true, 9]]);
+  const entries = [...division[0].entries.values()];
+  assert.equal(entries.reduce((n, e) => n + Object.values(e.wins).reduce((a, b) => a + b, 0), 0), 20);
+  // Its final and bronze match are decided, so the medals are known; the rest
+  // of the placements wait for the results.
+  assert.deepEqual(plain(entries.filter((e) => e.placement).sort((a, b) => a.placement - b.placement)
+    .map((e) => [model.athletes.get(e.key).name, e.placement])), [['Athlete 211', 1], ['Athlete 110', 2], ['Athlete 226', 3]]);
+  const rows = SCWRModel.leaderboard(model, { table: 'brackets', types: COUNTED, sort: 'size' }).filter((r) => r.provisional);
+  const row = rows.find((r) => r.name === name);
+  assert.deepEqual([row.champion.name, row.leader.name, row.gapCount], ['Athlete 211', 'Athlete 110', 2]);
+  // A division whose final is still to come has no gold to measure against.
+  assert.deepEqual([rows.length, rows.filter((r) => r.awaitingGold).length], [12, 10]);
+  assert.equal(model.unmatched, 0);
 });
 
 test('the leaderboards rank athletes and academies on the win types counted', async () => {

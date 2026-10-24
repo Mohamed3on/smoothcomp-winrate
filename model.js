@@ -6,6 +6,9 @@ const SCWRModel = (() => {
   const athleteKey = (p, bracketId) => p.target?.user_id
     ? `user:${p.target.user_id}` : `placement:${bracketId}:${p.id}`;
   const identity = (name, club) => `${normalize(name)}\0${normalize(club)}`;
+  // Until a division's results are published, its playoff awards the medals:
+  // the final's winner and loser, then whoever wins the bronze match.
+  const PODIUM = { Final: [1, 2], 'Bronze match': [3] };
 
   // One event, joined: the published results, the schedule's matches, and the
   // registration list, which says whose each scheduled side is and carries the
@@ -50,13 +53,16 @@ const SCWRModel = (() => {
     const people = roster(participants);
     // Mid-event, a division is fought before its results are published. Until
     // it is, the schedule is its roster: everyone seated in it enters with no
-    // placement, so their matches count and nobody is awarded a medal.
+    // placement, so their matches count. Pools and the playoff after them are
+    // one division, as its results will be, filed under the bracket of its final.
+    const finals = new Map(schedule.filter((m) => m.stage === 'Final').map((m) => [normalize(m.cat), m.bracketId]));
+    const pending = new Map();
     for (const match of schedule) {
-      if (!match.sides.length || categories.has(normalize(match.cat))) continue;
-      const id = match.bracketId;
-      const bracket = brackets.get(id) ?? { id, name: match.cat, size: 0, entries: new Map(), names: new Map(), provisional: true };
-      if (!bracket.provisional) continue;
-      brackets.set(id, bracket);
+      const name = normalize(match.cat);
+      if (!match.sides.length || categories.has(name) || brackets.has(match.bracketId)) continue;
+      const bracket = pending.get(name) ?? { id: finals.get(name) ?? match.bracketId, name: match.cat, size: 0, entries: new Map(), names: new Map(), provisional: true };
+      pending.set(name, bracket);
+      const id = bracket.id;
       for (const side of match.sides) {
         const userId = users.get(side.registrationId) ?? null;
         const key = userId ? `user:${userId}` : `registration:${side.registrationId}`;
@@ -77,6 +83,10 @@ const SCWRModel = (() => {
         athlete.entries.push(entry);
         athletes.set(key, athlete);
       }
+    }
+    for (const [name, bracket] of pending) {
+      brackets.set(bracket.id, bracket);
+      categories.set(name, [bracket]);
     }
     attachRoster(athletes, people);
     const matches = identify(schedule, users, athletes);
@@ -117,6 +127,8 @@ const SCWRModel = (() => {
         attached++;
         const bucket = side === winners[0] ? entry.wins : entry.losses;
         bucket[winners[0].won] = (bucket[winners[0].won] ?? 0) + 1;
+        const place = bracket.provisional && PODIUM[match.stage]?.[side === winners[0] ? 0 : 1];
+        if (place) entry.placement = place;
         entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, opponent: match.sides.find((s) => s !== side) });
       }
       if (attached < 2) {
@@ -424,13 +436,14 @@ const SCWRModel = (() => {
     const champion = entrants.find((p) => p.placement === 1) ?? null;
     const leader = entrants.slice().sort((x, y) =>
       y.wins - x.wins || x.losses - y.losses || x.placement - y.placement)[0] ?? null;
+    // No gap to measure until a gold medal is published or a final decided.
+    const awaitingGold = Boolean(bracket.provisional && !awardedChampion);
     return {
-      ...bracket, key: bracket.id, champion, leader,
+      ...bracket, key: bracket.id, champion, leader, awaitingGold,
       championExcluded: Boolean(awardedChampion && !champion),
       wins: champion?.wins ?? 0,
       leaderWins: leader?.wins ?? 0,
-      // No gap to measure until a gold medal is published.
-      gapCount: bracket.provisional ? 0 : Math.max(0, (leader?.wins ?? 0) - (champion?.wins ?? 0)),
+      gapCount: awaitingGold ? 0 : Math.max(0, (leader?.wins ?? 0) - (champion?.wins ?? 0)),
     };
   }
 

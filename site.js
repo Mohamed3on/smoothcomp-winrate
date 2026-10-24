@@ -58,7 +58,7 @@ const SCWRSite = (() => {
 
   // One version stamp, one expiry rule, one place that survives a full disk.
   // Preferences use get/set and never expire; match data uses read/write and does.
-  const VERSION = 6;
+  const VERSION = 7;
   const FINAL_TTL = 12 * 60 * 60 * 1000;
   const LIVE_TTL = 5 * 60 * 1000;
   const store = {
