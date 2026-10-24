@@ -75,7 +75,7 @@
   const COLUMNS = {
     athletes: [
       { key: 'name', label: 'Athlete', align: 'start', cell: identityCell, grow: true },
-      { key: 'wins', label: 'W–L', title: 'Match record. Byes never count; walkovers follow the toggle.', cell: (r) => strong(record(r)) },
+      { key: 'wins', label: 'W–L', title: 'Match record. Byes never count; walkovers follow the toggle.', cell: recordCell },
       { key: 'rate', label: 'Win %', title: 'Wins ÷ matches contested.', cell: (r) => strong(percent(r.rate)) },
       { key: 'finish', label: 'How they won', align: 'start', title: 'Every win, ordered from the most decisive finish to the least.', cell: barCell, wide: true },
       { key: 'conceded', label: 'How they lost', align: 'start', title: 'Every loss, ordered from the most decisive finish to the least. Sorts by the share that ended in a submission, so the hardest to finish come first.', cell: lossBarCell, wide: true, reverse: true },
@@ -84,7 +84,7 @@
     ],
     academies: [
       { key: 'name', label: 'Academy', align: 'start', cell: identityCell, grow: true },
-      { key: 'wins', label: 'W–L', title: 'Combined record of every athlete from this academy.', cell: (r) => strong(record(r)) },
+      { key: 'wins', label: 'W–L', title: 'Combined record of every athlete from this academy.', cell: recordCell },
       { key: 'rate', label: 'Win %', title: 'Wins ÷ matches contested.', cell: (r) => strong(percent(r.rate)) },
       { key: 'finish', label: 'How they won', align: 'start', title: 'Every win, ordered from the most decisive finish to the least.', cell: barCell, wide: true },
       { key: 'conceded', label: 'How they lost', align: 'start', title: 'Every loss this academy took, ordered from the most decisive finish to the least. Sorts by the share that ended in a submission, so the hardest to finish come first.', cell: lossBarCell, wide: true, reverse: true },
@@ -103,6 +103,15 @@
 
   const strong = (value) => el('span', String(value), 'scwr-num');
   const muted = (value) => el('span', String(value), 'scwr-num scwr-num-muted');
+
+  // Wins and losses each take their colour so a column of records scans at a
+  // glance; a zero recedes instead.
+  function recordCell(r) {
+    const node = el('span', undefined, 'scwr-num');
+    node.append(el('span', String(r.wins), r.wins ? 'scwr-won' : 'scwr-num-muted'), '–',
+      el('span', String(r.losses), r.losses ? 'scwr-lost' : 'scwr-num-muted'));
+    return node;
+  }
 
   function medalCell(row, index) {
     const n = row.medals?.[index] ?? 0;
@@ -947,7 +956,7 @@
       for (const bout of item.bouts ?? []) {
         const text = el('span', undefined, 'scwr-meta scwr-bout');
         if (bout.type) {
-          text.append(el('strong', bout.won ? 'W' : 'L'), el('i', undefined, `scwr-seg scwr-seg-${bout.type}`),
+          text.append(el('strong', bout.won ? 'W' : 'L', bout.won ? 'scwr-won' : 'scwr-lost'), el('i', undefined, `scwr-seg scwr-seg-${bout.type}`),
             `${WIN_LABEL[bout.type]?.[0] ?? bout.type} · ${bout.won ? 'beat' : 'lost to'} ${who(bout.opponent)}`);
           text.classList.toggle('scwr-uncounted', !state.types.includes(bout.type));
         } else {

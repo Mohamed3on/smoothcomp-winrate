@@ -15,6 +15,8 @@ colors:
   gold: "#8a6100"
   silver: "#5f646c"
   bronze: "#8a4f1e"
+  won: "#136338"
+  lost: "#ad2620"
   win-submission: "#08477f"
   win-stoppage: "#135ba1"
   win-points: "#1d6fc4"
@@ -142,6 +144,7 @@ The win-type ramp is an ordinal scale, not a palette. Six steps run from the mos
 ### Tertiary
 
 - **Gold** (`#8a6100` / `#e3b757`), **Silver** (`#5f646c` / `#c3c9d2`), **Bronze** (`#8a4f1e` / `#d59a68`): podium counts only, in the medal columns and the expanded row's pips. They never appear as UI colour.
+- **Won** (`#136338` / `#5fd08a`) and **Lost** (`#ad2620` / `#ff8a80`): a match's outcome only — the two halves of a `W–L` figure, and the `W` and `L` badges (the letter on a 14% tint of its own colour) in the expanded row's match list. A zero takes `muted-ink` instead, so an unbeaten record shows no red at all.
 - **Belt colours** (white `#f4f5f6` through black `#17191c` with a red `#b53b42` rank bar): borrowed from the sport, not from this palette. They are fixed in both themes, because a purple belt is purple regardless of the page it is drawn on.
 
 ### Neutral
@@ -161,7 +164,7 @@ The win-type ramp is an ordinal scale, not a palette. Six steps run from the mos
 
 **The Borrowed Ink Rule.** Code injected into markup Smoothcomp drew paints in `currentColor` and `rgba(128,128,128,α)`, never in panel tokens. A cell added to somebody else's row inherits that row's ink, or it announces itself as foreign.
 
-**The Encoded Colour Rule.** Colour carries meaning or it is not applied. Accent means chosen, leading or focused; the ramp means finish type; medal colours mean podium. There is no decorative colour in this system.
+**The Encoded Colour Rule.** Colour carries meaning or it is not applied. Accent means chosen, leading or focused; the ramp means finish type; won and lost mean a match's outcome; medal colours mean podium. There is no decorative colour in this system.
 
 ## Typography
 
@@ -251,7 +254,7 @@ Two shapes are drawn rather than typed: the sort caret is a `clip-path` triangle
 
 - **Header:** `raised` ground, sticky, each sortable heading a full-width button in Label type. The active sort turns accent and shows its caret; hovering reveals the caret at 45%.
 - **Rows:** 8px padding, a 1px `line` rule, the whole row clickable to expand. Hover takes `hover`; open takes `accent-soft` and drops its bottom rule into the detail row beneath it.
-- **Expanded detail:** an `accent-soft` panel indented to the name column, listing bracket placements as pip-plus-text rows, largest bracket first.
+- **Expanded detail:** an `accent-soft` panel indented to the name column, listing bracket placements as pip-plus-text rows, largest bracket first, each followed by its matches behind a `W` or `L` badge.
 - **Rank:** muted Small, promoted to bold `ink` for the top three.
 - **Empty and loading:** an empty state centres a Title over a ≤46ch explanation; loading rows are `hover`-coloured shimmer bars that pulse.
 

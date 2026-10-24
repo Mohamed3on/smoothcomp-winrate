@@ -29,6 +29,8 @@
   --gold: #8a6100;
   --silver: #5f646c;
   --bronze: #8a4f1e;
+  --won: #136338;
+  --lost: #ad2620;
   /* Ordinal ramp: darker means the match ended more decisively. */
   --win-submission: #08477f;
   --win-stoppage: #135ba1;
@@ -81,6 +83,8 @@
   --gold: #e3b757;
   --silver: #c3c9d2;
   --bronze: #d59a68;
+  --won: #5fd08a;
+  --lost: #ff8a80;
   --win-submission: #a9cff0;
   --win-stoppage: #8abce9;
   --win-points: #6aa8e2;
@@ -429,6 +433,8 @@
 .scwr-medal-0:not(.scwr-num-muted) { color: var(--gold); }
 .scwr-medal-1:not(.scwr-num-muted) { color: var(--silver); }
 .scwr-medal-2:not(.scwr-num-muted) { color: var(--bronze); }
+.scwr-won { color: var(--won); }
+.scwr-lost { color: var(--lost); }
 
 .scwr-identity { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
 .scwr-identity-text { display: grid; gap: var(--s-0); min-width: 0; }
@@ -547,7 +553,8 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 .scwr-detail-row { display: grid; grid-template-columns: 9px minmax(0, 1fr); align-items: baseline; gap: var(--s-1) var(--s-2); }
 .scwr-detail-row > :is(.scwr-name, .scwr-named, .scwr-meta) { grid-column: 2; }
 .scwr-bout { display: flex; align-items: center; gap: var(--s-2); }
-.scwr-bout > strong { width: 1ch; color: var(--fg-2); }
+.scwr-bout > strong { flex: none; width: 16px; text-align: center; }
+.scwr-bout > :is(.scwr-won, .scwr-lost) { border-radius: var(--radius-sm); background: color-mix(in srgb, currentColor 14%, transparent); }
 .scwr-bout > .scwr-seg { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 /* On the list, out of the count: a win type switched off, or a match still to come. */
 .scwr-bout.scwr-uncounted { opacity: 0.55; }
