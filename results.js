@@ -885,7 +885,22 @@
     cell.colSpan = span;
     const grid = el('div', undefined, 'scwr-detail-grid');
     const counted = (entries) => entries.flatMap((e) => e.bouts).filter((b) => state.types.includes(b.type));
-    const list = state.view === 'academies'
+    const entryItem = (entry, label, href) => {
+      const bracket = model.brackets.get(entry.bracketId);
+      const one = SCWRModel.entryRecord(entry, state.types);
+      return {
+        label, href,
+        detail: `${bracket.provisional ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
+        medals: entry.placement <= 3 ? [0, 1, 2].map((i) => (entry.placement === i + 1 ? 1 : 0)) : [0, 0, 0],
+        bouts: counted([entry]),
+      };
+    };
+    const list = state.view === 'brackets'
+      ? [...row.entries.values()].sort((a, b) => (a.placement ?? Infinity) - (b.placement ?? Infinity)).map((entry) => {
+        const athlete = model.athletes.get(entry.key);
+        return entryItem(entry, athlete.name, profileHref(athlete));
+      })
+      : state.view === 'academies'
       ? SCWRModel.rank(row.roster, 'wins').slice(0, 12).map((a) => ({
         label: a.name, href: profileHref(a),
         detail: `${record(a)} · ${percent(a.rate)} · ${breakdown(a.types) || 'no contested wins'}`,
@@ -897,13 +912,7 @@
       // also fought up would otherwise lead with the smaller one.
       : [...row.entries].sort((a, b) => model.brackets.get(b.bracketId).size - model.brackets.get(a.bracketId).size).map((entry) => {
         const bracket = model.brackets.get(entry.bracketId);
-        const one = SCWRModel.entryRecord(entry, state.types);
-        return {
-          label: bracket.name, href: SCWRSite.url.bracket(EVENT_ID, bracket.id),
-          detail: `${bracket.provisional ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
-          medals: entry.placement <= 3 ? [0, 1, 2].map((i) => (entry.placement === i + 1 ? 1 : 0)) : [0, 0, 0],
-          bouts: counted([entry]),
-        };
+        return entryItem(entry, bracket.name, SCWRSite.url.bracket(EVENT_ID, bracket.id));
       });
     for (const item of list) {
       const line = el('div', undefined, 'scwr-detail-row');
@@ -943,17 +952,13 @@
       tr.dataset.key = row.key;
       if (index < 3 && state.direction === -1) tr.classList.add('scwr-top');
       const rank = el('td', undefined, 'scwr-rank');
-      if (state.view === 'brackets') {
-        rank.textContent = String(index + 1);
-      } else {
-        const open = state.open.has(row.key);
-        const toggle = el('button', String(index + 1), 'scwr-expand');
-        toggle.type = 'button';
-        toggle.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${row.name}`);
-        toggle.setAttribute('aria-expanded', String(open));
-        toggle.setAttribute('aria-controls', `scwr-detail-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`);
-        rank.append(toggle);
-      }
+      const open = state.open.has(row.key);
+      const toggle = el('button', String(index + 1), 'scwr-expand');
+      toggle.type = 'button';
+      toggle.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${row.name}`);
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-controls', `scwr-detail-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`);
+      rank.append(toggle);
       tr.append(rank);
       for (const col of cols) {
         const td = el('td', undefined, `scwr-col scwr-col-${col.key}`);
@@ -964,14 +969,9 @@
         td.append(col.cell(row, ctx));
         tr.append(td);
       }
-      if (state.view !== 'brackets') {
-        const open = state.open.has(row.key);
-        tr.classList.toggle('scwr-open', open);
-        nodes.push(tr);
-        if (open) nodes.push(detailRow(row, cols.length + 1));
-      } else {
-        nodes.push(tr);
-      }
+      tr.classList.toggle('scwr-open', open);
+      nodes.push(tr);
+      if (open) nodes.push(detailRow(row, cols.length + 1));
     });
     if (!visible.length) {
       const tr = el('tr', undefined, 'scwr-empty-row');
@@ -1399,7 +1399,7 @@
     if (action === 'more') { state.limit += 25; return render(); }
 
     const row = event.target.closest('.scwr-row');
-    if (row && !event.target.closest('a') && state.view !== 'brackets') {
+    if (row && !event.target.closest('a')) {
       state.open.has(row.dataset.key) ? state.open.delete(row.dataset.key) : state.open.add(row.dataset.key);
       render();
     }
