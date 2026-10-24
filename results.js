@@ -49,6 +49,9 @@
   const percent = (rate) => (rate === null || rate === undefined ? '—' : `${Math.round(rate * 100)}%`);
   const unit = (n, one, many = `${one}s`) => (n === 1 ? one : many);
   const record = (s) => `${s.wins}–${s.losses}`;
+  const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Matches still to come, the one on the mat first and then by estimated start.
+  const soonest = (a, b) => b.running - a.running || String(a.start).localeCompare(String(b.start));
   const WIN_LABEL = {
     submission: ['submission', 'submissions'], stoppage: ['stoppage', 'stoppages'], points: ['points', 'points'],
     decision: ['decision', 'decisions'], disqualification: ['DQ', 'DQs'], walkover: ['walkover', 'walkovers'],
@@ -138,12 +141,26 @@
     return img;
   }
 
-  const nameLine = (name, flag) => {
-    if (!flag) return name;
+  const nameLine = (name, ...after) => {
+    after = after.filter(Boolean);
+    if (!after.length) return name;
     const line = el('span', undefined, 'scwr-named');
-    line.append(name, flag);
+    line.append(name, ...after);
     return line;
   };
+
+  // Marks whoever still has a match to fight: on the mat now, or when the
+  // soonest one is due. Someone whose matches are all decided carries nothing,
+  // so mid-event the few still fighting stand out from everyone who is done.
+  const nextOf = (upcoming) => upcoming?.slice().sort(soonest)[0];
+  function nextMarker(upcoming) {
+    const next = nextOf(upcoming);
+    if (!next) return null;
+    const node = el('span', undefined, next.running ? 'scwr-next scwr-next-live' : 'scwr-next');
+    node.append(el('i'), next.running ? `On ${next.mat ?? 'the mat'}` : next.start ? `Next ~${time(next.start)}` : 'Next match');
+    node.title = `${upcoming.length} ${unit(upcoming.length, 'match', 'matches')} still to fight`;
+    return node;
+  }
 
   function beltSwatch(person) {
     const tone = beltTone(person?.belt);
@@ -187,6 +204,10 @@
   function identityCell(row) {
     const wrap = el('div', undefined, 'scwr-identity');
     const face = avatar(row);
+    const next = nextOf(row.upcoming);
+    // The avatar column lines up down the table, so a ring there is the scan
+    // target; the marker by the name says when.
+    if (face && next) face.dataset.next = next.running ? 'live' : 'due';
     if (face) wrap.append(face);
     const text = el('div', undefined, 'scwr-identity-text');
     const name = row.href ? el('a', row.name, 'scwr-name') : el('span', row.name, 'scwr-name');
@@ -195,7 +216,7 @@
     // 18 competitors here compete for regions Unicode has no flag for; the name
     // still carries the country so nothing is lost to a missing glyph.
     if (!flag && row.countryName) name.title = row.countryName;
-    text.append(nameLine(name, flag));
+    text.append(nameLine(name, flag, nextMarker(row.upcoming)));
     if (row.meta) {
       const meta = el('span', row.meta, 'scwr-meta');
       meta.title = row.meta;
@@ -885,8 +906,7 @@
     cell.colSpan = span;
     const grid = el('div', undefined, 'scwr-detail-grid');
     // Every decided match, then whatever is still to come, soonest first.
-    const listed = (entries) => [...entries.flatMap((e) => e.bouts),
-      ...entries.flatMap((e) => e.upcoming).sort((a, b) => String(a.start).localeCompare(String(b.start)))];
+    const listed = (entries) => [...entries.flatMap((e) => e.bouts), ...entries.flatMap((e) => e.upcoming).sort(soonest)];
     const entryItem = (entry, label, href) => {
       const bracket = model.brackets.get(entry.bracketId);
       const one = SCWRModel.entryRecord(entry, state.types);
@@ -917,14 +937,13 @@
         return entryItem(entry, bracket.name, SCWRSite.url.bracket(EVENT_ID, bracket.id));
       });
     const who = ({ name, club }) => `${name || 'Unnamed athlete'}${club ? ` (${club})` : ''}`;
-    const time = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     for (const item of list) {
       const line = el('div', undefined, 'scwr-detail-row');
       const label = item.href ? el('a', item.label, 'scwr-name') : el('span', item.label, 'scwr-name');
       if (item.href) label.href = item.href;
       const place = item.medals.findIndex((n) => n);
       if (place > -1) line.append(el('i', undefined, `scwr-pip scwr-medal-${place}`));
-      line.append(label, el('span', item.detail, 'scwr-meta'));
+      line.append(nameLine(label, nextMarker(item.bouts.filter((b) => !b.type))), el('span', item.detail, 'scwr-meta'));
       for (const bout of item.bouts ?? []) {
         const text = el('span', undefined, 'scwr-meta scwr-bout');
         if (bout.type) {
@@ -1042,6 +1061,7 @@
     }),
     athletes: (s) => Object.assign(s, {
       href: profileHref(s),
+      upcoming: s.entries.flatMap((e) => e.upcoming),
       meta: [s.club || 'Unaffiliated', beltTone(s.belt) ? null : s.belt,
         `${s.divisions} ${unit(s.divisions, 'division')}`].filter(Boolean).join(' \u00b7 '),
     }),

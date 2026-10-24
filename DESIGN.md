@@ -259,6 +259,8 @@ Two shapes are drawn rather than typed: the sort caret is a `clip-path` triangle
 
 The recurring athlete signature, used identically in the tables and in the head-to-head ledger: a 26px circular avatar (or a monogram on `hover` ground), the name at Body/600, an emoji or drawn flag carrying its country as an accessible label, a 22×8px belt swatch with a rank bar, and an age as an accent pill. Names link unless the published results mark the profile hidden; a photo shows only once they mark it public.
 
+**Still to fight.** An athlete with a match still to come wears a ring on the avatar, because the avatar column is the one thing that lines up down a table, and a Label marker after the name gives the reading: `NEXT ~16:19` beside a hollow ring in `secondary-ink`, or `ON MAT 2` beside a filled `accent` dot that pulses while the match is on. The ring and dot are the same ones the expanded row draws before a match still to come. An athlete whose matches are all decided carries nothing, so mid-event the few still fighting stand out and a finished event is quiet.
+
 ### Win-type Bar
 
 A 6px clipped track whose segments are flex-grown by count in the fixed ramp order, with a one-line legend beneath it. The same colours in the same order appear in the filter chips, the ledger's finish markers and the footer key, so the vocabulary is learned once.
