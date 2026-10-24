@@ -884,11 +884,13 @@
     const cell = el('td');
     cell.colSpan = span;
     const grid = el('div', undefined, 'scwr-detail-grid');
+    const counted = (entries) => entries.flatMap((e) => e.bouts).filter((b) => state.types.includes(b.type));
     const list = state.view === 'academies'
       ? SCWRModel.rank(row.roster, 'wins').slice(0, 12).map((a) => ({
         label: a.name, href: profileHref(a),
         detail: `${record(a)} · ${percent(a.rate)} · ${breakdown(a.types) || 'no contested wins'}`,
         medals: a.medals,
+        bouts: counted(a.entries),
       }))
       // Largest bracket first, the one the Bracket size column counts. The
       // results list every kids division before the adults', so a junior who
@@ -900,7 +902,7 @@
           label: bracket.name, href: SCWRSite.url.bracket(EVENT_ID, bracket.id),
           detail: `${bracket.provisional ? 'Not published yet' : `Placed ${entry.placement} of ${bracket.size}`} · ${record(one)} · ${breakdown(one.types) || 'no contested wins'}`,
           medals: entry.placement <= 3 ? [0, 1, 2].map((i) => (entry.placement === i + 1 ? 1 : 0)) : [0, 0, 0],
-          bouts: entry.bouts.filter((b) => state.types.includes(b.type)),
+          bouts: counted([entry]),
         };
       });
     for (const item of list) {
