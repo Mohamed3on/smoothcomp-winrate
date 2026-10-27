@@ -73,6 +73,7 @@ test('the panel lists the biggest brackets the athlete would top-seed', () => {
     ['No Gi Adult / Male / Beginner (White) / Adult / -185 lbs', 16, 5, 2, true],
     ['Gi Adult / Male / White / Master (30+) / -185 lbs', 9, 5, 1, true],
     ['No Gi Adult / Male / Beginner (White) / Master (30+) / -185 lbs', 6, 4, 1, false],
+    ['Gi Adult / Male / White / Adult / -185 lbs', 5, 6, 1, false],
   ]);
   assert.equal(closest, null);
 });

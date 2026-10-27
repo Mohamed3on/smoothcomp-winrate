@@ -77,8 +77,8 @@ const SCWRPicks = (() => {
 
   // How `me` would stand in each bracket against its strongest other athlete, by
   // the page's own order: wins, then submissions, then points, then the younger.
-  // A career `tally` can't read ranks last there too. The three biggest brackets
-  // `me` would top, or, with none, the one `me` falls the fewest wins short of.
+  // A career `tally` can't read ranks last there too. Every bracket
+  // `me` would top, biggest first, or, with none, the one `me` falls the fewest wins short of.
   function picks(groups, me, tally) {
     const key = (t, age) => [...(t ?? [-1, -1, -1]), -(age ?? Infinity)];
     const ahead = (a, b) => a.reduce((order, x, i) => order || x - b[i], 0) > 0;
@@ -96,7 +96,7 @@ const SCWRPicks = (() => {
         top: !rival || ahead(mine, rival),
       };
     });
-    const top = standings.filter((s) => s.top).sort((a, b) => b.size - a.size).slice(0, 3);
+    const top = standings.filter((s) => s.top).sort((a, b) => b.size - a.size);
     const closest = top.length ? null : standings.sort((a, b) => a.rival - b.rival || b.size - a.size)[0] ?? null;
     return { top, closest };
   }
