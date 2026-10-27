@@ -229,6 +229,10 @@ const SCWRModel = (() => {
     const medals = [1, 2, 3].map((place) => entries.filter((e) => e.placement === place).length);
     const size = (e) => model.brackets.get(e.bracketId).size;
     const goldSizes = entries.filter((e) => e.placement === 1).map(size);
+    // A podium counts for the field it finished ahead of, so third of 30 outweighs
+    // first of 8: placing is harder the more people want the same three spots.
+    const medalScore = entries.filter((e) => e.placement >= 1 && e.placement <= 3)
+      .reduce((n, e) => n + size(e) - e.placement, 0);
     return {
       ...derive(athlete, entries.reduce((n, e) => n + counts(e.wins), 0),
         entries.reduce((n, e) => n + counts(e.losses), 0),
@@ -236,6 +240,7 @@ const SCWRModel = (() => {
       entries,
       divisions: entries.length,
       biggestGold: Math.max(0, ...goldSizes),
+      medalScore,
       biggestBracket: Math.max(0, ...entries.map(size)),
     };
   }
@@ -326,7 +331,7 @@ const SCWRModel = (() => {
       const key = normalize(row.club) || '\0unaffiliated';
       const club = map.get(key) ?? {
         key, name: row.club || 'Unaffiliated', club: '', clubId: null, roster: [],
-        wins: 0, losses: 0, types: {}, lossTypes: {}, medals: [0, 0, 0], divisions: 0, biggestGold: 0,
+        wins: 0, losses: 0, types: {}, lossTypes: {}, medals: [0, 0, 0], divisions: 0, biggestGold: 0, medalScore: 0,
       };
       club.roster.push(row);
       club.clubId ??= row.clubId ?? null;
@@ -334,6 +339,7 @@ const SCWRModel = (() => {
       club.losses += row.losses;
       club.divisions += row.divisions;
       club.biggestGold = Math.max(club.biggestGold, row.biggestGold);
+      club.medalScore += row.medalScore;
       row.medals.forEach((n, i) => { club.medals[i] += n; });
       for (const [type, n] of Object.entries(row.types)) club.types[type] = (club.types[type] ?? 0) + n;
       for (const [type, n] of Object.entries(row.lossTypes)) club.lossTypes[type] = (club.lossTypes[type] ?? 0) + n;
@@ -354,8 +360,9 @@ const SCWRModel = (() => {
   };
 
   // Descending by default: every metric here reads "more is better". Ties fall
-  // through a fixed chain — more wins, then a higher win rate, then more decisive
-  // wins (submissions first, in WIN_TYPES order), then more golds, then a longer
+  // through a fixed chain — more wins, then a higher win rate, then podiums
+  // weighted by the field they finished ahead of, then more decisive wins
+  // (submissions first, in WIN_TYPES order), then more golds, then a longer
   // record, then name — so a re-sort never reshuffles rows that
   // genuinely tie. The record length is what separates two winless athletes:
   // 0–6 is a more convincing 0% than 0–2, so it ranks first either way.
@@ -369,6 +376,7 @@ const SCWRModel = (() => {
       if (metric === 'name') return direction * a.name.localeCompare(b.name);
       const primary = (value(a) - value(b)) * direction;
       return primary || b.wins - a.wins || (b.rate ?? -1) - (a.rate ?? -1) ||
+        (b.medalScore ?? 0) - (a.medalScore ?? 0) ||
         SCWRSite.WIN_TYPES.reduce((order, t) => order || (b.types[t] ?? 0) - (a.types[t] ?? 0), 0) ||
         b.golds - a.golds || (b.biggestGold ?? 0) - (a.biggestGold ?? 0) ||
         b.total - a.total || a.name.localeCompare(b.name);

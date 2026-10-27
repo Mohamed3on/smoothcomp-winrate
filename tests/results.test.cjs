@@ -116,9 +116,10 @@ test('a match still to come is listed under everyone seated in it, and counted n
 test('the leaderboards rank athletes and academies on the win types counted', async () => {
   const { model, SCWRModel } = await resultsPage('25901');
   const board = (table, types) => SCWRModel.leaderboard(model, { table, types, sort: 'wins' });
-  // Ties on wins fall to golds: both 9–0 and both 9–2 athletes order by medals.
+  // Ties on wins fall to podiums weighted by field size: silver of 12 and bronze
+  // of 26 outrank gold of 9 and silver of 8.
   assert.deepEqual(plain(board('athletes', COUNTED).slice(0, 5).map((a) => [a.name, a.wins, a.losses, a.golds])), [
-    ['Athlete 94', 13, 2, 3], ['Athlete 120', 9, 0, 2], ['Athlete 139', 9, 0, 1], ['Athlete 160', 9, 2, 1], ['Athlete 140', 9, 2, 0],
+    ['Athlete 94', 13, 2, 3], ['Athlete 120', 9, 0, 2], ['Athlete 139', 9, 0, 1], ['Athlete 140', 9, 2, 0], ['Athlete 160', 9, 2, 1],
   ]);
   assert.deepEqual(plain(board('academies', COUNTED).slice(0, 2).map((a) => [a.name, a.wins, a.losses])), [
     ['PSLPB CICERO COSTHA', 84, 49], ['Fightzone Berlin', 58, 49],
