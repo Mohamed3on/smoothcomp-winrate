@@ -261,16 +261,24 @@ let glide = null; // where each academy stood before the list ranked again
 const FEW = 9;
 const club = (card) => card.dataset.academy;
 
-// An athlete's belt is the one belt their registration's belt or level names;
-// "All belts" or "Purple/Brown/Black" name no single belt, so they show none.
+// An athlete's belt is the first one belt any of their registrations' belt or
+// level names: "All belts" or a no-gi "Purple/Brown/Black" name no single belt, so
+// the gi division beside it decides, and an athlete with only those shows none.
 const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
 let beltOf;
 function belt(r) {
-  beltOf ??= new Map((vm.categories ?? []).filter((c) => /belt|level|rank|grade/i.test(c.category_name)).map((c) => {
-    const named = BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(c.name.replace(/gray/i, 'grey')));
-    return [c.id, named.length === 1 ? named[0] : null];
-  }));
-  return r.categories?.map((c) => beltOf.get(c.category_value_id)).find(Boolean);
+  if (!beltOf) {
+    const values = new Map((vm.categories ?? []).filter((c) => /belt|level|rank|grade/i.test(c.category_name)).map((c) => {
+      const named = BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(c.name.replace(/gray/i, 'grey')));
+      return [c.id, named.length === 1 ? named[0] : null];
+    }));
+    beltOf = new Map();
+    for (const e of source.flatMap((g) => g.registrations)) {
+      const key = e.user_id ?? e.id;
+      if (!beltOf.get(key)) beltOf.set(key, e.categories?.map((c) => values.get(c.category_value_id)).find(Boolean));
+    }
+  }
+  return beltOf.get(r.user_id ?? r.id);
 }
 
 // Each athlete: wins, then their photo or initials, wearing a filled dot once
