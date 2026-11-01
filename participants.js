@@ -240,37 +240,56 @@ function academies() {
 }
 
 // Smoothcomp draws the athletes; the extension draws the academies, in Smoothcomp's
-// own row markup so its styles apply. The academy icon stands for a photo, then
-// come the name and most common country, the athletes, the most common
-// affiliation, the careers added up, and the athletes who carry them, most wins first.
+// own row markup so its styles apply. The photo's tile holds the academy's place
+// once the list ranks, then come the name and most common country, the athletes,
+// the most common affiliation, the careers added up, and under them every athlete,
+// most wins first: a grid of wins beside names, the first few until shown in full.
 let box; // where the academies are drawn, under Smoothcomp's own list
 const common = (rows, key) => [...Map.groupBy(rows.filter((r) => r[key]), (r) => r[key]).values()].sort((a, b) => b.length - a.length)[0]?.[0];
+const expanded = new Set(); // academies whose every athlete is shown
+const FEW = 9;
 
-function academy({ rows, known, tally: t, medals }) {
+function member(r) {
+  const t = r.user_id && tally(r.user_id);
+  const hidden = r.user_id && !t && fresh(r.user_id);
+  const wins = t ? `<b${t[0] ? '' : ' class="muted"'}>${t[0]}</b>` : `<b class="muted">${hidden ? '–' : ''}</b>`;
+  const tag = r.user_id ? 'a' : 'span';
+  const name = esc(`${r.firstname} ${r.lastname}`);
+  return `<${tag}${r.user_id ? ` href="${SCWRSite.url.profile(r.user_id)}"` : ''}${String(r.user_id) === me ? ' class="scwr-you"' : ''}`
+    + ` title="${[name, t ? plural(t[0], 'career win') : hidden && 'hidden profile'].filter(Boolean).join(', ')}">${wins}<span>${name}</span></${tag}>`;
+}
+
+function academy({ rows, known, tally: t, medals }, i) {
   const home = common(rows, 'cn');
   const team = common(rows, 'affiliation_id');
   const hidden = rows.filter((r) => r.user_id && fresh(r.user_id)).length - known.length;
-  const roster = rank({ registrations: known }).slice(0, 10).map((r) => `<div><div>${esc(`${r.firstname} ${r.lastname}`)} ${tally(r.user_id)[0]}</div></div>`).join('')
-    + (known.length > 10 ? `<div><div>${known.length - 10} more</div></div>` : '');
+  const key = String(rows[0].club_id || rows[0].clubName);
+  const all = rank({ registrations: rows });
+  const full = expanded.has(key);
+  const roster = (full || all.length <= FEW + 1 ? all : all.slice(0, FEW)).map(member).join('')
+    + (all.length > FEW + 1 ? `<button type="button" class="scwr-more" data-academy="${esc(key)}" aria-expanded="${full}">${full ? 'Show fewer' : `Show all ${all.length}`}</button>` : '');
   return '<div class="profile-card"><div class="participant-tr participant-tr-main flex-center"><div class="participant-td participant-td-athlete">'
-    + '<div class="profile-image-wrapper scwr-crest"><span class="icon-academy"></span></div><div class="profile-card-name font-size-medium truncate">'
+    + `<div class="profile-image-wrapper scwr-crest">${draining ? '<span class="icon-academy"></span>' : `<b>${i + 1}</b>`}</div><div class="profile-card-name font-size-medium truncate">`
     + `<a class="truncate block" href="${esc(rows[0].club_url)}"><span>${esc(rows[0].clubName)}</span></a>`
     + (home ? `<div class="profile-country truncate flex-center" style="height: auto"><span class="flag-icon margin-right-xs-4 flag-icon-${esc(home.cn.toLowerCase())}"></span>`
       + `<div class="truncate muted country-name"><span class="font-size-tiny">${esc(home.country)}</span></div></div>` : '')
     + `</div></div><div class="participant-td participant-td-birth"><div>${rows.length}</div>${hidden ? `<div class="muted font-size-tiny">${hidden} hidden</div>` : ''}</div>`
     + `<div class="participant-td participant-td-club">${team ? `<a class="truncate block" href="${esc(team.affiliation_url)}">${esc(team.affiliationName)}</a>` : ''}</div>`
     + `<div class="participant-td scwr-career">${known.length ? figures(t, medals) : draining ? PLACEHOLDER.repeat(COLUMNS.length) : '<div class="muted">Hidden profiles</div>'}</div>`
-    + `<div class="participant-td participant-td-registration">${roster}</div></div></div>`;
+    + `<div class="scwr-roster">${roster}</div></div></div>`;
 }
 
+// Every career landing redraws the list, so a focused toggle is focused again.
 function drawAcademies() {
   const list = academies();
   const name = plural(list.length, 'academy', 'academies');
+  const focused = box.contains(document.activeElement) && document.activeElement.dataset.academy;
   box.innerHTML = list.length ? `<div class="margin-bottom-xs-64"><div class="heading-container flex-center"><h2 class="group-name margin-xs-0">${draining ? `${name}, reading careers…` : name}</h2></div>`
     + '<div class="participants-table-head participant-tr muted margin-bottom-xs-8 participants-desktop"><span class="participant-td participant-td-athlete padding-left-xs-0 margin-right-xs-4">Academy</span>'
     + '<span class="participant-td participant-td-birth">Athletes</span><span class="participant-td participant-td-club">Affiliation</span>'
     + `<span class="participant-td scwr-career">${COLUMNS.map((label) => `<span>${label}</span>`).join('')}</span></div>`
     + `<div class="profile-cards participants-desktop">${list.map(academy).join('')}</div></div>` : '';
+  if (focused) [...box.querySelectorAll('.scwr-more')].find((b) => b.dataset.academy === focused)?.focus();
 }
 
 // Academies are drawn with everything else on screen; Smoothcomp's list stands empty.
@@ -548,8 +567,14 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   const title = list.parentElement.querySelector('h1');
   if (title) title.after(view, ages, approved); else list.before(view, ages, approved);
   box = document.createElement('div');
-  box.className = 'container container-fluid-large';
+  box.className = 'container container-fluid-large scwr-academies';
+  box.dataset.scwrTheme = view.dataset.scwrTheme;
   list.append(box);
+  box.addEventListener('click', (event) => {
+    const key = event.target.closest('.scwr-more')?.dataset.academy;
+    if (key && !expanded.delete(key)) expanded.add(key);
+    if (key) queue();
+  });
   sheet = document.createElement('div');
   sheet.className = 'scwr-bracket';
   sheet.dataset.scwrTheme = view.dataset.scwrTheme;
