@@ -261,14 +261,35 @@ let glide = null; // where each academy stood before the list ranked again
 const FEW = 9;
 const club = (card) => card.dataset.academy;
 
+// An athlete's belt is the one belt their registration's belt or level names;
+// "All belts" or "Purple/Brown/Black" name no single belt, so they show none.
+const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+let beltOf;
+function belt(r) {
+  beltOf ??= new Map((vm.categories ?? []).filter((c) => /belt|level|rank|grade/i.test(c.category_name)).map((c) => {
+    const named = BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(c.name.replace(/gray/i, 'grey')));
+    return [c.id, named.length === 1 ? named[0] : null];
+  }));
+  return r.categories?.map((c) => beltOf.get(c.category_value_id)).find(Boolean);
+}
+
+// Each athlete: wins, then their photo or initials, wearing a filled dot once
+// approved and a hollow one until then, the name, belt and age.
 function member(r) {
   const t = r.user_id && tally(r.user_id);
   const hidden = r.user_id && !t && fresh(r.user_id);
   const wins = t ? `<b${t[0] ? '' : ' class="muted"'}>${t[0]}</b>` : `<b class="muted">${hidden ? '–' : ''}</b>`;
   const tag = r.user_id ? 'a' : 'span';
   const name = esc(`${r.firstname} ${r.lastname}`);
+  const grade = belt(r);
+  const approved = r.approved === 1;
+  const face = r.profile_image_id && r.profile_image ? `<img src="${esc(r.profile_image)}" alt="" loading="lazy" decoding="async">`
+    : esc([r.firstname, r.lastname].map((part) => String(part ?? '').trim().charAt(0)).join('').toUpperCase());
+  const about = [name, t ? plural(t[0], 'career win') : hidden && 'hidden profile', grade && `${grade} belt`,
+    Number.isFinite(r.age) && `${r.age} years old`, !approved && 'not approved'].filter(Boolean).join(', ');
   return `<${tag}${r.user_id ? ` href="${SCWRSite.url.profile(r.user_id)}"` : ''}${String(r.user_id) === me ? ' class="scwr-you"' : ''}`
-    + ` title="${[name, t ? plural(t[0], 'career win') : hidden && 'hidden profile'].filter(Boolean).join(', ')}">${wins}<span>${name}</span></${tag}>`;
+    + `${approved ? '' : ' data-unapproved'} title="${about}">${wins}<i class="scwr-face"${approved ? ' data-approved' : ''}>${face}</i><span>${name}</span>`
+    + `<i class="scwr-belt"${grade ? ` data-belt="${grade}"` : ''}></i>${Number.isFinite(r.age) ? `<small>${r.age}y</small>` : ''}</${tag}>`;
 }
 
 function academy({ rows, known, tally: t, medals }, i) {
