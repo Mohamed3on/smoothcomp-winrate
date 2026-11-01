@@ -121,21 +121,30 @@ function admit() {
 }
 
 function restack() {
+  const groups = () => document.querySelectorAll('#registrations .participant-group');
+  const before = tops(groups(), heading);
   for (const g of vm.all) ranked.add(g.name);
   vm.all = Object.freeze(arrange(vm.all.map((g) => ({ ...g, registrations: rank(g) }))));
   vm.updateResults();
+  vm.$nextTick(() => slide(moved(before, groups(), heading)));
 }
 
-// A row that changes place slides there, unless the reader asked for less motion.
+// A row that changes place slides there. One coming from more than a screen away
+// fades in where it lands instead, so nothing streaks across the page, and with
+// less motion every row does. A row with nowhere to come from just appears.
 function slide(rows) {
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   for (const [row, top] of rows) {
     const shift = top - row.getBoundingClientRect().top;
-    if (shift && row.isConnected) {
-      row.animate([{ transform: `translateY(${shift}px)` }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(0.77, 0, 0.175, 1)' });
-    }
+    if (!shift || !row.isConnected) continue;
+    if (still || Math.abs(shift) > innerHeight) row.animate({ opacity: [0, 1] }, { duration: 200, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
+    else row.animate({ transform: [`translateY(${shift}px)`, 'none'] }, { duration: 280, easing: 'cubic-bezier(0.77, 0, 0.175, 1)' });
   }
 }
+
+// Rows drawn afresh slide from where the row of the same name stood.
+const tops = (rows, key) => new Map([...rows].map((row) => [key(row), row.getBoundingClientRect().top]));
+const moved = (before, rows, key) => new Map([...rows].map((row) => [row, before.get(key(row))]));
 
 // Every athlete in the bracket is asked at once, and the bracket is ranked when
 // the last one answers. Brackets sharing a name are read and ranked together.
@@ -247,7 +256,10 @@ function academies() {
 let box; // where the academies are drawn, under Smoothcomp's own list
 const common = (rows, key) => [...Map.groupBy(rows.filter((r) => r[key]), (r) => r[key]).values()].sort((a, b) => b.length - a.length)[0]?.[0];
 const expanded = new Set(); // academies whose every athlete is shown
+let revealed = null; // the academy just shown in full, whose added names fade in once
+let glide = null; // where each academy stood before the list ranked again
 const FEW = 9;
+const club = (card) => card.dataset.academy;
 
 function member(r) {
   const t = r.user_id && tally(r.user_id);
@@ -268,7 +280,7 @@ function academy({ rows, known, tally: t, medals }, i) {
   const full = expanded.has(key);
   const roster = (full || all.length <= FEW + 1 ? all : all.slice(0, FEW)).map(member).join('')
     + (all.length > FEW + 1 ? `<button type="button" class="scwr-more" data-academy="${esc(key)}" aria-expanded="${full}">${full ? 'Show fewer' : `Show all ${all.length}`}</button>` : '');
-  return '<div class="profile-card"><div class="participant-tr participant-tr-main flex-center"><div class="participant-td participant-td-athlete">'
+  return `<div class="profile-card" data-academy="${esc(key)}"><div class="participant-tr participant-tr-main flex-center"><div class="participant-td participant-td-athlete">`
     + `<div class="profile-image-wrapper scwr-crest">${draining ? '<span class="icon-academy"></span>' : `<b>${i + 1}</b>`}</div><div class="profile-card-name font-size-medium truncate">`
     + `<a class="truncate block" href="${esc(rows[0].club_url)}"><span>${esc(rows[0].clubName)}</span></a>`
     + (home ? `<div class="profile-country truncate flex-center" style="height: auto"><span class="flag-icon margin-right-xs-4 flag-icon-${esc(home.cn.toLowerCase())}"></span>`
@@ -276,10 +288,11 @@ function academy({ rows, known, tally: t, medals }, i) {
     + `</div></div><div class="participant-td participant-td-birth"><div>${rows.length}</div>${hidden ? `<div class="muted font-size-tiny">${hidden} hidden</div>` : ''}</div>`
     + `<div class="participant-td participant-td-club">${team ? `<a class="truncate block" href="${esc(team.affiliation_url)}">${esc(team.affiliationName)}</a>` : ''}</div>`
     + `<div class="participant-td scwr-career">${known.length ? figures(t, medals) : draining ? PLACEHOLDER.repeat(COLUMNS.length) : '<div class="muted">Hidden profiles</div>'}</div>`
-    + `<div class="scwr-roster">${roster}</div></div></div>`;
+    + `<div class="scwr-roster"${revealed === key ? ' data-revealed' : ''}>${roster}</div></div></div>`;
 }
 
-// Every career landing redraws the list, so a focused toggle is focused again.
+// Every career landing redraws the list, so a focused toggle is focused again,
+// and what moves only moves on the draw it was asked for.
 function drawAcademies() {
   const list = academies();
   const name = plural(list.length, 'academy', 'academies');
@@ -290,12 +303,15 @@ function drawAcademies() {
     + `<span class="participant-td scwr-career">${COLUMNS.map((label) => `<span>${label}</span>`).join('')}</span></div>`
     + `<div class="profile-cards participants-desktop">${list.map(academy).join('')}</div></div>` : '';
   if (focused) [...box.querySelectorAll('.scwr-more')].find((b) => b.dataset.academy === focused)?.focus();
+  if (glide) slide(moved(glide, box.querySelectorAll('.profile-card'), club));
+  glide = revealed = null;
 }
 
 // Academies are drawn with everything else on screen; Smoothcomp's list stands empty.
 function show() {
   if (order === 'academies') {
     vm.visible = [];
+    glide = tops(box.querySelectorAll('.profile-card'), club);
     return queue();
   }
   const rows = new Map([...document.querySelectorAll('#registrations .profile-card')].map((row) => [row, row.getBoundingClientRect().top]));
@@ -572,8 +588,10 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   list.append(box);
   box.addEventListener('click', (event) => {
     const key = event.target.closest('.scwr-more')?.dataset.academy;
-    if (key && !expanded.delete(key)) expanded.add(key);
-    if (key) queue();
+    if (!key) return;
+    if (expanded.delete(key)) revealed = null;
+    else { expanded.add(key); revealed = key; }
+    queue();
   });
   sheet = document.createElement('div');
   sheet.className = 'scwr-bracket';
