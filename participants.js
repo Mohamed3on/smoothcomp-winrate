@@ -201,27 +201,37 @@ function athletes() {
 // A division under an athlete opens its bracket over the list: everyone in it,
 // ranked as the brackets view ranks them, the athlete it was opened from marked,
 // and Smoothcomp's own bracket once it is drawn. Careers the list did not need,
-// say an age the range left out, are read while it is open.
+// say an age the range left out, are read while it is open. An athlete resting
+// under the pointer in an academy's roster shows each of their brackets the same way.
 let sheet; // the bracket, a popover
-let shown; // the division it was opened from
+let shown; // the division or roster athlete it was opened from
 
-function bracket(division) {
-  const name = division.textContent.trim();
-  const user = SCWRSite.profileId(division.closest('.profile-card')?.querySelector('a[href*="/profile/"]')?.getAttribute('href'));
-  const groups = vm.all.filter((g) => g.name.trim() === name);
-  const rows = rank({ registrations: groups.flatMap((g) => g.registrations) });
-  const drawn = groups.find((g) => g.bracket_id)?.bracket_id;
-  const career = (r) => {
-    const t = r.user_id && tally(r.user_id);
-    if (t) return `<span><b>${t[0]}</b> ${t[0] === 1 ? 'win' : 'wins'}<span class="muted font-size-tiny">${plural(t[1], 'sub')} · ${t[2]} pts</span></span>`;
-    return `<span class="muted">${!r.user_id ? '' : fresh(r.user_id) ? 'Hidden' : '<i class="scwr-pulse"></i>'}</span>`;
-  };
-  sheet.innerHTML = `<header><strong>${esc(name)}</strong><p class="muted">${plural(rows.length, 'athlete')}`
-    + (drawn ? ` · <a href="${SCWRSite.url.bracket(SCWRSite.eventId(), drawn)}" target="_blank">Open bracket</a>` : '')
-    + '</p></header><ol>' + rows.map((r, i) => `<li${String(r.user_id) === user ? ' class="scwr-this"' : ''}${r.approved === 1 ? '' : ' title="Not approved" data-unapproved'}>`
-      + `<span class="muted">${i + 1}</span><span>${r.user_id ? `<a href="${SCWRSite.url.profile(r.user_id)}">` : '<span>'}${esc(`${r.firstname} ${r.lastname}`)}${r.user_id ? '</a>' : '</span>'}`
-      + `<span class="muted font-size-tiny">${esc(r.clubName ?? '')}</span></span>${career(r)}</li>`).join('') + '</ol>';
-  return rows.map((r) => r.user_id && String(r.user_id)).filter((u) => u && !fresh(u));
+function bracket(names, user) {
+  const missing = [];
+  sheet.innerHTML = names.map((name) => {
+    const groups = vm.all.filter((g) => g.name.trim() === name);
+    const rows = rank({ registrations: groups.flatMap((g) => g.registrations) });
+    const drawn = groups.find((g) => g.bracket_id)?.bracket_id;
+    const career = (r) => {
+      const t = r.user_id && tally(r.user_id);
+      if (t) return `<span><b>${t[0]}</b> ${t[0] === 1 ? 'win' : 'wins'}<span class="muted font-size-tiny">${plural(t[1], 'sub')} · ${t[2]} pts</span></span>`;
+      return `<span class="muted">${!r.user_id ? '' : fresh(r.user_id) ? 'Hidden' : '<i class="scwr-pulse"></i>'}</span>`;
+    };
+    missing.push(...rows.map((r) => r.user_id && String(r.user_id)).filter((u) => u && !fresh(u)));
+    return `<section><header><strong>${esc(name)}</strong><p class="muted">${plural(rows.length, 'athlete')}`
+      + (drawn ? ` · <a href="${SCWRSite.url.bracket(SCWRSite.eventId(), drawn)}" target="_blank">Open bracket</a>` : '')
+      + '</p></header><ol>' + rows.map((r, i) => `<li${String(r.user_id) === user ? ' class="scwr-this"' : ''}${r.approved === 1 ? '' : ' title="Not approved" data-unapproved'}>`
+        + `<span class="muted">${i + 1}</span><span>${r.user_id ? `<a href="${SCWRSite.url.profile(r.user_id)}">` : '<span>'}${esc(`${r.firstname} ${r.lastname}`)}${r.user_id ? '</a>' : '</span>'}`
+        + `<span class="muted font-size-tiny">${esc(r.clubName ?? '')}</span></span>${career(r)}</li>`).join('') + '</ol></section>';
+  }).join('');
+  return missing;
+}
+
+function reveal(source, names, user) {
+  shown = source;
+  const missing = bracket(names, user);
+  sheet.showPopover({ source });
+  if (missing.length) Promise.all(missing.map(readCareer)).then(() => { save(); if (shown === source) bracket(names, user); });
 }
 
 function open(division) {
@@ -230,11 +240,27 @@ function open(division) {
   shown?.removeAttribute('aria-expanded');
   shown = null;
   if (again) return;
-  shown = division;
   division.setAttribute('aria-expanded', 'true');
-  const missing = bracket(division);
-  sheet.showPopover({ source: division });
-  if (missing.length) Promise.all(missing.map(readCareer)).then(() => { save(); if (shown === division) bracket(division); });
+  reveal(division, [division.textContent.trim()],
+    SCWRSite.profileId(division.closest('.profile-card')?.querySelector('a[href*="/profile/"]')?.getAttribute('href')));
+}
+
+// A roster athlete's brackets show after a short rest and stay while the pointer
+// crosses into them; moving to another athlete swaps them at once.
+let resting;
+let aimed;
+function hover(link) {
+  if (link === aimed) return;
+  aimed = link;
+  clearTimeout(resting);
+  const peeking = box.contains(shown);
+  if (link === shown || (!link && !peeking)) return;
+  resting = setTimeout(() => {
+    if (sheet.matches(':popover-open')) sheet.hidePopover();
+    if (!link) return;
+    const user = SCWRSite.profileId(link.getAttribute('href'));
+    reveal(link, [...new Set(vm.all.filter((g) => g.registrations.some((r) => String(r.user_id) === user)).map((g) => g.name.trim()))], user);
+  }, link ? (peeking ? 0 : 350) : 150);
 }
 
 // Each academy with its athletes' careers added up: counted wins, by submission
@@ -296,7 +322,7 @@ function member(r) {
   const about = [name, t ? plural(t[0], 'career win') : hidden && 'hidden profile', grade && `${grade} belt`,
     Number.isFinite(r.age) && `${r.age} years old`, !approved && 'not approved'].filter(Boolean).join(', ');
   return `<${tag}${r.user_id ? ` href="${SCWRSite.url.profile(r.user_id)}"` : ''}${String(r.user_id) === me ? ' class="scwr-you"' : ''}`
-    + `${approved ? '' : ' data-unapproved'} title="${about}">${wins}<i class="scwr-face"${approved ? ' data-approved' : ''}>${face}</i><span>${name}</span>`
+    + `${approved ? '' : ' data-unapproved'} aria-label="${about}">${wins}<i class="scwr-face"${approved ? ' data-approved' : ''}>${face}</i><span>${name}</span>`
     + `<i class="scwr-belt"${grade ? ` data-belt="${grade}"` : ''}></i>${Number.isFinite(r.age) ? `<small>${r.age}y</small>` : ''}</${tag}>`;
 }
 
@@ -323,6 +349,7 @@ function academy({ rows, known, tally: t, medals }, i) {
 // Every career landing redraws the list, so a focused toggle is focused again,
 // and what moves only moves on the draw it was asked for.
 function drawAcademies() {
+  if (box.contains(shown)) return; // the list holds still under an athlete's brackets
   const list = academies();
   const name = plural(list.length, 'academy', 'academies');
   const focused = box.contains(document.activeElement) && document.activeElement.dataset.academy;
@@ -630,8 +657,15 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   list.after(sheet);
   sheet.addEventListener('toggle', (event) => {
     if (event.newState === 'open') return;
+    const held = box.contains(shown);
     shown?.removeAttribute('aria-expanded');
-    shown = null;
+    shown = aimed = null;
+    if (held) queue();
+  });
+  document.addEventListener('pointerover', (event) => {
+    if (order === 'academies' && event.pointerType === 'mouse') {
+      hover(sheet.contains(event.target) ? shown : event.target.closest('.scwr-academies .scwr-roster > a'));
+    }
   });
   const division = (target) => LEADS.includes(order) && target.closest?.('.participant-td-registration > [role="button"]');
   list.addEventListener('click', (event) => { const d = division(event.target); if (d) open(d); });
