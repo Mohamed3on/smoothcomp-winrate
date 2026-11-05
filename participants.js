@@ -33,6 +33,8 @@ function readCareer(user) {
 function save() {
   for (const user of Object.keys(careers)) if (!fresh(user)) delete careers[user];
   SCWRSite.store.set(CAREERS, careers);
+  for (const user of Object.keys(ranks)) if (Date.now() - ranks[user].at >= WEEK) delete ranks[user];
+  SCWRSite.store.set('ranks', ranks);
 }
 
 // Counted wins, wins by submission and wins by points; null while the career
@@ -176,16 +178,18 @@ let view; // the menu that picks it
 let youngest = 0;
 let oldest = Infinity;
 const inAge = (r) => (!youngest && oldest === Infinity) || (Number.isFinite(r.age) && r.age >= youngest && r.age <= oldest);
-// The belts picked, kept per site; none picked leaves every athlete in.
+// The belts picked, kept per site; none picked, or every one offered, leaves every
+// athlete in, a belt still unknown included.
 const belts = new Set(SCWRSite.store.get('belts', []));
-const inBelt = (r) => !belts.size || belts.has(belt(r.user_id ?? r.id));
+let offered = [];
+const inBelt = (r) => !belts.size || offered.every((b) => belts.has(b)) || belts.has(belt(r.user_id ?? r.id));
 
 // The belts the athletes every other filter leaves wear, rank order, each a
 // toggle; a belt picked stays offered, so nothing is filtered out unseen.
 let picker;
 function offerBelts() {
   const worn = new Set(people(false).map((r) => belt(r.user_id ?? r.id)));
-  const offered = BELTS.filter((b) => worn.has(b) || belts.has(b));
+  offered = BELTS.filter((b) => worn.has(b) || belts.has(b));
   if (picker.dataset.offered === String(offered)) return;
   picker.dataset.offered = offered;
   picker.innerHTML = '<span>Belt</span>' + offered.map((b) => `<button type="button" aria-pressed="${belts.has(b)}"`
@@ -304,14 +308,28 @@ const club = (card) => card.dataset.academy;
 
 // An athlete's belt is the first one belt any of their registrations' belt or
 // level names: "All belts" or a no-gi "Purple/Brown/Black" name no single belt, so
-// the gi division beside it decides, and an athlete with only those shows none.
+// the gi division beside it decides. An athlete with only those wears the latest
+// BJJ belt their profile lists, read once and kept a week; with none there either,
+// no belt.
 const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+const oneBelt = (text) => {
+  const named = BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(text.replace(/gray/i, 'grey')));
+  return named.length === 1 ? named[0] : null;
+};
+const ranks = SCWRSite.store.get('ranks', {}); // a user's profile belt, as { at, belt }
+const needsRank = (user) => !belt(user) && Date.now() - (ranks[user]?.at ?? 0) >= WEEK;
+async function readRank(user) {
+  const response = await fetch(SCWRSite.url.skills(user), { credentials: 'include' }).catch(() => null);
+  if (!response || response.status === 429 || response.status >= 500) return;
+  const skills = response.ok ? (await response.json().catch(() => null))?.data ?? [] : [];
+  const latest = skills.filter((skill) => /jiu|bjj/i.test(skill.name)).sort((a, b) => b.sort_order - a.sort_order)[0];
+  ranks[user] = { at: Date.now(), belt: latest?.belt && oneBelt(latest.belt) };
+}
 let beltOf;
 function belt(key) {
   if (!beltOf) {
     const values = new Map((vm.categories ?? []).filter((c) => /belt|level|rank|grade/i.test(c.category_name)).map((c) => {
-      const named = BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(c.name.replace(/gray/i, 'grey')));
-      return [c.id, named.length === 1 ? named[0] : null];
+      return [c.id, oneBelt(c.name)];
     }));
     beltOf = new Map();
     for (const e of source.flatMap((g) => g.registrations)) {
@@ -319,7 +337,7 @@ function belt(key) {
       if (!beltOf.get(key)) beltOf.set(key, e.categories?.map((c) => values.get(c.category_value_id)).find(Boolean));
     }
   }
-  return beltOf.get(String(key));
+  return beltOf.get(String(key)) || ranks[key]?.belt;
 }
 
 // Each athlete: wins, then their photo or initials, wearing a filled dot once
@@ -380,6 +398,7 @@ function drawAcademies() {
 
 // Academies are drawn with everything else on screen; Smoothcomp's list stands empty.
 function show() {
+  offerBelts();
   if (order === 'academies') {
     vm.visible = [];
     glide = tops(box.querySelectorAll('.profile-card'), club);
@@ -398,8 +417,8 @@ const pending = new Set();
 let draining = null;
 function ranking() {
   for (const r of people()) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
+  for (const r of people(false)) if (r.user_id && needsRank(r.user_id)) pending.add(String(r.user_id));
   drain();
-  offerBelts();
   show();
 }
 
@@ -408,7 +427,8 @@ function drain() {
     draining ??= Promise.all(Array.from({ length: 12 }, async () => {
       for (const user of pending) {
         pending.delete(user);
-        await readCareer(user);
+        if (!fresh(user)) await readCareer(user);
+        if (order !== null && needsRank(user)) await readRank(user);
         queue();
       }
     })).then(() => {
