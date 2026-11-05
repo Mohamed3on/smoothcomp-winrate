@@ -176,12 +176,15 @@ let view; // the menu that picks it
 let youngest = 0;
 let oldest = Infinity;
 const inAge = (r) => (!youngest && oldest === Infinity) || (Number.isFinite(r.age) && r.age >= youngest && r.age <= oldest);
+// The belts picked, kept per site; none picked leaves every athlete in.
+const belts = new Set(SCWRSite.store.get('belts', []));
+const inBelt = (r) => !belts.size || belts.has(belt(r.user_id ?? r.id));
 
 // Each athlete once, as their first registration the filters leave.
 function people() {
   const rows = new Map();
   for (const r of vm.participants.flatMap((g) => g.registrations)) {
-    if (!r.filtered && inAge(r) && !rows.has(r.user_id ?? r.id)) rows.set(r.user_id ?? r.id, r);
+    if (!r.filtered && inAge(r) && inBelt(r) && !rows.has(r.user_id ?? r.id)) rows.set(r.user_id ?? r.id, r);
   }
   return [...rows.values()];
 }
@@ -292,7 +295,7 @@ const club = (card) => card.dataset.academy;
 // the gi division beside it decides, and an athlete with only those shows none.
 const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
 let beltOf;
-function belt(r) {
+function belt(key) {
   if (!beltOf) {
     const values = new Map((vm.categories ?? []).filter((c) => /belt|level|rank|grade/i.test(c.category_name)).map((c) => {
       const named = BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(c.name.replace(/gray/i, 'grey')));
@@ -300,11 +303,11 @@ function belt(r) {
     }));
     beltOf = new Map();
     for (const e of source.flatMap((g) => g.registrations)) {
-      const key = e.user_id ?? e.id;
+      const key = String(e.user_id ?? e.id);
       if (!beltOf.get(key)) beltOf.set(key, e.categories?.map((c) => values.get(c.category_value_id)).find(Boolean));
     }
   }
-  return beltOf.get(r.user_id ?? r.id);
+  return beltOf.get(String(key));
 }
 
 // Each athlete: wins, then their photo or initials, wearing a filled dot once
@@ -315,7 +318,7 @@ function member(r) {
   const wins = t ? `<b${t[0] ? '' : ' class="muted"'}>${t[0]}</b>` : `<b class="muted">${hidden ? '–' : ''}</b>`;
   const tag = r.user_id ? 'a' : 'span';
   const name = esc(`${r.firstname} ${r.lastname}`);
-  const grade = belt(r);
+  const grade = belt(r.user_id ?? r.id);
   const approved = r.approved === 1;
   const face = r.profile_image_id && r.profile_image ? `<img src="${esc(r.profile_image)}" alt="" loading="lazy" decoding="async">`
     : esc([r.firstname, r.lastname].map((part) => String(part ?? '').trim().charAt(0)).join('').toUpperCase());
@@ -467,6 +470,19 @@ function paint() {
       draw(cell, row.classList.contains('participants-table-head') ? 'head'
         : SCWRSite.profileId(row.querySelector('a[href*="/profile/"]')?.getAttribute('href')));
     }
+  }
+  // In the athletes list, each athlete wears their belt after their name.
+  for (const link of document.querySelectorAll('#registrations .profile-card-name > a[href*="/profile/"]')) {
+    let swatch = link.querySelector(':scope > .scwr-belt');
+    const grade = LEADS.includes(order) && belt(SCWRSite.profileId(link.getAttribute('href')));
+    if (!grade) { swatch?.remove(); continue; }
+    if (!swatch) {
+      swatch = document.createElement('i');
+      swatch.className = 'scwr-belt';
+      link.append(swatch);
+    }
+    swatch.dataset.belt = grade;
+    swatch.title = `${grade[0].toUpperCase()}${grade.slice(1)} belt`;
   }
   if (LEADS.includes(order)) {
     for (const division of document.querySelectorAll('#registrations .participant-td-registration > div:not([role])')) {
@@ -632,12 +648,31 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   ages.setAttribute('aria-label', 'Age');
   ages.innerHTML = '<span>Age</span><input type="number" min="0" max="120" placeholder="Any" aria-label="From">'
     + '<span>–</span><input type="number" min="0" max="120" placeholder="Any" aria-label="To">';
+  // The belts the event's athletes wear, each a toggle, beside the age range.
+  const worn = new Set(source.flatMap((g) => g.registrations).map((r) => belt(r.user_id ?? r.id)));
+  const picker = document.createElement('div');
+  picker.className = 'scwr-belts';
+  picker.dataset.scwrTheme = view.dataset.scwrTheme;
+  picker.hidden = true;
+  picker.setAttribute('role', 'group');
+  picker.setAttribute('aria-label', 'Belt');
+  picker.innerHTML = '<span>Belt</span>' + BELTS.filter((b) => worn.has(b)).map((b) => `<button type="button" aria-pressed="${belts.has(b)}"`
+    + ` title="${b[0].toUpperCase()}${b.slice(1)}"><i class="scwr-belt" data-belt="${b}"></i></button>`).join('');
+  picker.addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    const b = button.firstChild.dataset.belt;
+    if (!belts.delete(b)) belts.add(b);
+    button.setAttribute('aria-pressed', belts.has(b));
+    SCWRSite.store.set('belts', [...belts]);
+    if (order !== null) ranking();
+  });
   const approved = document.createElement('label');
   approved.className = 'scwr-approved';
   approved.dataset.scwrTheme = view.dataset.scwrTheme;
   approved.innerHTML = '<input type="checkbox">Approved only';
   const title = list.parentElement.querySelector('h1');
-  if (title) title.after(view, ages, approved); else list.before(view, ages, approved);
+  if (title) title.after(view, ages, picker, approved); else list.before(view, ages, picker, approved);
   box = document.createElement('div');
   box.className = 'container container-fluid-large scwr-academies';
   box.dataset.scwrTheme = view.dataset.scwrTheme;
@@ -680,7 +715,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     order = stack ? null : view.value || null;
     if (order === null) pending.clear();
     list.classList.toggle('scwr-ranked', order !== null);
-    ages.hidden = order === null;
+    ages.hidden = picker.hidden = order === null;
     if (stack) return stacking();
     vm.all = Object.freeze(arrange(vm.all));
     vm.updateResults();
