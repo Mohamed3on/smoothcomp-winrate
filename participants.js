@@ -537,7 +537,7 @@ function queue() {
 }
 
 // Over the list, the biggest brackets the signed-in athlete could enter and would
-// top-seed. Their gender and birth date come from their settings and their belt
+// top-seed. Their gender and birth date come from their settings and their latest belt
 // from their profile, kept a week; their weight is theirs to give, kept per site.
 // Who is signed in is known once the list mounts: Cloudflare's Rocket Loader runs
 // the page's inline scripts, `window.userId` among them, after this one.
@@ -560,7 +560,7 @@ async function profile() {
     at: Date.now(),
     gender: field('Gender')?.[0],
     birth: field('Birthdate'),
-    belt: skills.data?.find((skill) => /jiu|bjj/i.test(skill.name))?.belt?.toLowerCase(),
+    belt: skills.data?.filter((skill) => /jiu|bjj/i.test(skill.name)).sort((a, b) => b.sort_order - a.sort_order)[0]?.belt?.toLowerCase(),
   };
   if (!found.gender || !found.birth) throw new Error('unreadable settings');
   SCWRSite.store.set('profile', found);
