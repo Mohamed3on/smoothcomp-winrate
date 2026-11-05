@@ -180,11 +180,23 @@ const inAge = (r) => (!youngest && oldest === Infinity) || (Number.isFinite(r.ag
 const belts = new Set(SCWRSite.store.get('belts', []));
 const inBelt = (r) => !belts.size || belts.has(belt(r.user_id ?? r.id));
 
+// The belts the athletes every other filter leaves wear, rank order, each a
+// toggle; a belt picked stays offered, so nothing is filtered out unseen.
+let picker;
+function offerBelts() {
+  const worn = new Set(people(false).map((r) => belt(r.user_id ?? r.id)));
+  const offered = BELTS.filter((b) => worn.has(b) || belts.has(b));
+  if (picker.dataset.offered === String(offered)) return;
+  picker.dataset.offered = offered;
+  picker.innerHTML = '<span>Belt</span>' + offered.map((b) => `<button type="button" aria-pressed="${belts.has(b)}"`
+    + ` title="${b[0].toUpperCase()}${b.slice(1)}"><i class="scwr-belt" data-belt="${b}"></i></button>`).join('');
+}
+
 // Each athlete once, as their first registration the filters leave.
-function people() {
+function people(byBelt = true) {
   const rows = new Map();
   for (const r of vm.participants.flatMap((g) => g.registrations)) {
-    if (!r.filtered && inAge(r) && inBelt(r) && !rows.has(r.user_id ?? r.id)) rows.set(r.user_id ?? r.id, r);
+    if (!r.filtered && inAge(r) && (!byBelt || inBelt(r)) && !rows.has(r.user_id ?? r.id)) rows.set(r.user_id ?? r.id, r);
   }
   return [...rows.values()];
 }
@@ -387,6 +399,7 @@ let draining = null;
 function ranking() {
   for (const r of people()) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
   drain();
+  offerBelts();
   show();
 }
 
@@ -648,16 +661,13 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   ages.setAttribute('aria-label', 'Age');
   ages.innerHTML = '<span>Age</span><input type="number" min="0" max="120" placeholder="Any" aria-label="From">'
     + '<span>–</span><input type="number" min="0" max="120" placeholder="Any" aria-label="To">';
-  // The belts the event's athletes wear, each a toggle, beside the age range.
-  const worn = new Set(source.flatMap((g) => g.registrations).map((r) => belt(r.user_id ?? r.id)));
-  const picker = document.createElement('div');
+  // The belts ride beside the age range.
+  picker = document.createElement('div');
   picker.className = 'scwr-belts';
   picker.dataset.scwrTheme = view.dataset.scwrTheme;
   picker.hidden = true;
   picker.setAttribute('role', 'group');
   picker.setAttribute('aria-label', 'Belt');
-  picker.innerHTML = '<span>Belt</span>' + BELTS.filter((b) => worn.has(b)).map((b) => `<button type="button" aria-pressed="${belts.has(b)}"`
-    + ` title="${b[0].toUpperCase()}${b.slice(1)}"><i class="scwr-belt" data-belt="${b}"></i></button>`).join('');
   picker.addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button) return;
