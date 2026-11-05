@@ -642,7 +642,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   admit();
   vm.updateResults();
   queue();
-  // Beside the page title, which list to show: the brackets, every athlete, or
+  // Under the search, which list to show: the brackets, every athlete, or
   // every academy; and for the last two, an age range, open at either end.
   const list = document.querySelector('#registrations');
   view = document.createElement('select');
@@ -681,8 +681,11 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   approved.className = 'scwr-approved';
   approved.dataset.scwrTheme = view.dataset.scwrTheme;
   approved.innerHTML = '<input type="checkbox">Approved only';
-  const title = list.parentElement.querySelector('h1');
-  if (title) title.after(view, ages, picker, approved); else list.before(view, ages, picker, approved);
+  const bar = document.createElement('div');
+  bar.className = 'scwr-bar';
+  bar.append(view, ages, picker, approved);
+  const search = list.querySelector('.well');
+  if (search) search.after(bar); else list.before(bar);
   box = document.createElement('div');
   box.className = 'container container-fluid-large scwr-academies';
   box.dataset.scwrTheme = view.dataset.scwrTheme;

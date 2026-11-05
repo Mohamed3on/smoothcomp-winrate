@@ -375,18 +375,20 @@
 /* A pick scrolls its bracket to the top, clear of an organiser's sticky header. */
 #registrations .participant-group { scroll-margin-top: 132px; }
 
-/* The list menu sits beside the page title in the shape and size of Smoothcomp's
+/* The list menu and its filters ride in one row under Smoothcomp's search, right
+   over the list they shape. */
+.scwr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+
+/* The list menu takes the shape and size of Smoothcomp's
    own header button, a pill of borrowed ink with a drawn caret. Its options open
    in a panel of the page's raised grey, the current one checked in the accent. */
 .scwr-view,
 .scwr-view::picker(select) { appearance: base-select; }
 .scwr-view {
-  float: right;
   display: flex;
   align-items: center;
   gap: 12px;
   height: 42px;
-  margin-left: 16px;
   padding: 0 18px 0 20px;
   border: 0;
   border-radius: 999px;
@@ -411,7 +413,7 @@
 }
 .scwr-view:open::picker-icon { rotate: 180deg; }
 .scwr-view::picker(select) {
-  position-area: block-end span-inline-start;
+  position-area: block-end span-inline-end;
   margin-top: 6px;
   padding: 4px;
   border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
@@ -437,12 +439,10 @@
 /* The age range rides beside the menu in the same pill: two ends reading "Any"
    until set, and the accent's ground once either is. */
 .scwr-ages {
-  float: right;
   display: flex;
   align-items: center;
   gap: 4px;
   height: 42px;
-  margin-left: 16px;
   padding: 0 20px;
   border-radius: 999px;
   background-color: color-mix(in srgb, currentColor 10%, transparent);
@@ -469,12 +469,10 @@
 /* The belts ride in the same pill, one swatch each. Once any is picked, the rest
    step back, and the pill takes the accent's ground as the age range does. */
 .scwr-belts {
-  float: right;
   display: flex;
   align-items: center;
   gap: 2px;
   height: 42px;
-  margin-left: 16px;
   padding: 0 14px 0 20px;
   border-radius: 999px;
   background-color: color-mix(in srgb, currentColor 10%, transparent);
@@ -506,12 +504,11 @@
 
 /* Approved only rides in the same pill, on the accent's ground while it is on. */
 .scwr-approved {
-  float: right;
   display: flex;
   align-items: center;
   gap: 10px;
   height: 42px;
-  margin: 0 0 0 16px;
+  margin: 0;
   padding: 0 20px;
   border-radius: 999px;
   background-color: color-mix(in srgb, currentColor 10%, transparent);
