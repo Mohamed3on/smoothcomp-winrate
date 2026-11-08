@@ -265,7 +265,8 @@ function open(division) {
 }
 
 // A roster athlete's brackets show after a short rest and stay while the pointer
-// crosses into them; moving to another athlete swaps them at once.
+// crosses into them; moving to another athlete swaps them after a brief pause, so
+// passing over a neighbour on the way into them keeps them.
 let resting;
 let aimed;
 function hover(link) {
@@ -279,7 +280,7 @@ function hover(link) {
     if (!link) return;
     const user = SCWRSite.profileId(link.getAttribute('href'));
     reveal(link, [...new Set(vm.all.filter((g) => g.registrations.some((r) => String(r.user_id) === user)).map((g) => g.name.trim()))], user);
-  }, link ? (peeking ? 0 : 350) : 150);
+  }, link && !peeking ? 350 : 150);
 }
 
 // Each academy with its athletes' careers added up: counted wins, by submission
