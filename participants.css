@@ -204,6 +204,21 @@
 .scwr-belt[data-belt='brown'] { --belt: #79472f; }
 .scwr-belt[data-belt='black'] { --belt: #17191c; --belt-rank: #b53b42; }
 .scwr-roster [data-unapproved] .scwr-belt { opacity: 0.5; }
+
+/* The medals an athlete's brackets point to, beside the belt so they line up
+   down the column, as the results page draws a medal: a filled dot when their
+   wins settle the place, a ring of it when the place rests on a tie or an
+   unknown career. */
+.scwr-medals { display: flex; flex: none; gap: 3px; }
+.scwr-medal { flex: none; width: 7px; height: 7px; box-sizing: border-box; border-radius: 50%; background: var(--medal); }
+.scwr-medal[data-medal='gold'] { --medal: var(--gold); }
+.scwr-medal[data-medal='silver'] { --medal: var(--silver); }
+.scwr-medal[data-medal='bronze'] { --medal: var(--bronze); }
+.scwr-medal[data-tied] { border: 1.5px solid var(--medal); background: none; }
+.scwr-roster [data-unapproved] .scwr-medals { opacity: 0.5; }
+/* In a bracket, the medal sits in the gutter before its place. */
+.scwr-bracket li { position: relative; }
+.scwr-bracket li > .scwr-medal { position: absolute; top: 50%; left: 4px; translate: 0 -50%; }
 /* Shown in full, the names past the first nine fade in where they land. */
 .scwr-roster[data-revealed] > :nth-child(n + 10) { animation: scwr-in 180ms cubic-bezier(0.23, 1, 0.32, 1); }
 .scwr-roster .scwr-you,
@@ -297,6 +312,9 @@
   --accent: #1565c0;
   --accent-soft: rgba(21, 101, 192, 0.09);
   --accent-line: rgba(21, 101, 192, 0.32);
+  --gold: #8a6100;
+  --silver: #5f646c;
+  --bronze: #8a4f1e;
 }
 .scwr-picks[data-scwr-theme='dark'],
 .scwr-view[data-scwr-theme='dark'],
@@ -308,6 +326,9 @@
   --accent: #79b3ea;
   --accent-soft: rgba(121, 179, 234, 0.13);
   --accent-line: rgba(121, 179, 234, 0.4);
+  --gold: #e3b757;
+  --silver: #c3c9d2;
+  --bronze: #d59a68;
 }
 .scwr-picks ::selection { background: var(--accent-soft); }
 .scwr-picks-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }

@@ -65,6 +65,21 @@ function rank(group, lead = 0) {
     .map(([r]) => r);
 }
 
+// The medal a bracket's ranking points to at each place: first gold, second
+// silver, third bronze; a fourth place wins nothing. A call is sure when the
+// athlete's wins are known and no one else in it has as many; a tie, or a career
+// of their own not known, makes it a ring. A hidden rival ranks last, as in the
+// bracket, rather than clouding every call beside them.
+const MEDALS = ['gold', 'silver', 'bronze'];
+function calls(rows) {
+  const wins = rows.map((r) => tally(r.user_id)?.[0]);
+  return rows.map((r, i) => i < 3 && {
+    medal: i,
+    sure: rows.length === 1 || (wins[i] !== undefined && wins.every((w, j) => j === i || w !== wins[i])),
+  });
+}
+const dot = (call) => (call ? `<i class="scwr-medal" data-medal="${MEDALS[call.medal]}"${call.sure ? '' : ' data-tied'}></i>` : '');
+
 // The heading holds the name exactly as the payload has it, stray spaces included.
 const heading = (group) => group.querySelector('.group-name')?.textContent;
 
@@ -230,6 +245,7 @@ function bracket(names, user) {
   sheet.innerHTML = names.map((name) => {
     const groups = vm.all.filter((g) => g.name.trim() === name);
     const rows = rank({ registrations: groups.flatMap((g) => g.registrations) });
+    const called = calls(rows);
     const drawn = groups.find((g) => g.bracket_id)?.bracket_id;
     const career = (r) => {
       const t = r.user_id && tally(r.user_id);
@@ -240,7 +256,7 @@ function bracket(names, user) {
     return `<section><header><strong>${esc(name)}</strong><p class="muted">${plural(rows.length, 'athlete')}`
       + (drawn ? ` · <a href="${SCWRSite.url.bracket(SCWRSite.eventId(), drawn)}" target="_blank">Open bracket</a>` : '')
       + '</p></header><ol>' + rows.map((r, i) => `<li${String(r.user_id) === user ? ' class="scwr-this"' : ''}${r.approved === 1 ? '' : ' title="Not approved" data-unapproved'}>`
-        + `<span class="muted">${i + 1}</span><span>${r.user_id ? `<a href="${SCWRSite.url.profile(r.user_id)}">` : '<span>'}${esc(`${r.firstname} ${r.lastname}`)}${r.user_id ? '</a>' : '</span>'}`
+        + `<span class="muted">${i + 1}</span>${dot(called[i])}<span>${r.user_id ? `<a href="${SCWRSite.url.profile(r.user_id)}">` : '<span>'}${esc(`${r.firstname} ${r.lastname}`)}${r.user_id ? '</a>' : '</span>'}`
         + `<span class="muted font-size-tiny">${esc(r.clubName ?? '')}</span></span>${career(r)}</li>`).join('') + '</ol></section>';
   }).join('');
   return missing;
@@ -285,13 +301,29 @@ function hover(link) {
   }, link && !peeking ? 350 : 150);
 }
 
+// Each athlete's medal calls, one per bracket they would place in, gold first.
+let foreseen = new Map();
+const id = (r) => String(r.user_id ?? r.id);
+function foresee() {
+  foreseen = new Map();
+  for (const groups of Map.groupBy(vm.all, (g) => g.name.trim()).values()) {
+    const rows = rank({ registrations: groups.flatMap((g) => g.registrations) });
+    calls(rows).forEach((call, i) => call && foreseen.set(id(rows[i]), [...foreseen.get(id(rows[i])) ?? [], call]));
+  }
+  for (const list of foreseen.values()) list.sort((a, b) => a.medal - b.medal);
+}
+
 // Each academy with its athletes' careers added up: counted wins, by submission
-// and on points, and medals. A hidden career adds nothing.
+// and on points, and medals, then the medals their brackets point to. A hidden
+// career adds nothing.
 function academies() {
+  foresee();
   const list = [...Map.groupBy(people(), (r) => r.club_id || r.clubName).values()].map((rows) => {
     const known = rows.filter((r) => tally(r.user_id));
     const sum = (figures) => known.reduce((total, r) => total.map((n, i) => n + figures(r)[i]), [0, 0, 0]);
-    return { rows, known, tally: sum((r) => tally(r.user_id)), medals: sum((r) => careers[r.user_id].medals) };
+    const expected = [0, 0, 0];
+    for (const r of rows) for (const call of foreseen.get(id(r)) ?? []) expected[call.medal]++;
+    return { rows, known, tally: sum((r) => tally(r.user_id)), medals: sum((r) => careers[r.user_id].medals), expected };
   });
   return draining ? list : list.sort((a, b) => b.tally.reduce((order, n, i) => order || n - a.tally[i], 0) || a.rows[0].clubName.localeCompare(b.rows[0].clubName));
 }
@@ -353,16 +385,19 @@ function member(r) {
   const name = esc(`${r.firstname} ${r.lastname}`);
   const grade = belt(r.user_id ?? r.id);
   const approved = r.approved === 1;
+  const called = foreseen.get(id(r)) ?? [];
   const face = r.profile_image_id && r.profile_image ? `<img src="${esc(r.profile_image)}" alt="" loading="lazy" decoding="async">`
     : esc([r.firstname, r.lastname].map((part) => String(part ?? '').trim().charAt(0)).join('').toUpperCase());
   const about = [name, t ? plural(t[0], 'career win') : hidden && 'hidden profile', grade && `${grade} belt`,
+    called.length && `expected ${MEDALS.map((m, i) => [called.filter((c) => c.medal === i).length, m]).filter(([n]) => n).map((pair) => pair.join(' ')).join(', ')}`,
     Number.isFinite(r.age) && `${r.age} years old`, !approved && 'not approved'].filter(Boolean).join(', ');
   return `<${tag}${r.user_id ? ` href="${SCWRSite.url.profile(r.user_id)}"` : ''}${String(r.user_id) === me ? ' class="scwr-you"' : ''}`
     + `${approved ? '' : ' data-unapproved'} aria-label="${about}">${wins}<i class="scwr-face"${approved ? ' data-approved' : ''}>${face}</i><span>${name}</span>`
+    + (called.length ? `<i class="scwr-medals">${called.map(dot).join('')}</i>` : '')
     + `<i class="scwr-belt"${grade ? ` data-belt="${grade}"` : ''}></i>${Number.isFinite(r.age) ? `<small>${r.age}y</small>` : ''}</${tag}>`;
 }
 
-function academy({ rows, known, tally: t, medals }, i) {
+function academy({ rows, known, tally: t, medals, expected }, i) {
   const home = common(rows, 'cn');
   const team = common(rows, 'affiliation_id');
   const hidden = rows.filter((r) => r.user_id && fresh(r.user_id)).length - known.length;
@@ -378,7 +413,8 @@ function academy({ rows, known, tally: t, medals }, i) {
       + `<div class="truncate muted country-name"><span class="font-size-tiny">${esc(home.country)}</span></div></div>` : '')
     + `</div></div><div class="participant-td participant-td-birth"><div>${rows.length}</div>${hidden ? `<div class="muted font-size-tiny">${hidden} hidden</div>` : ''}</div>`
     + `<div class="participant-td participant-td-club">${team ? `<a class="truncate block" href="${esc(team.affiliation_url)}">${esc(team.affiliationName)}</a>` : ''}</div>`
-    + `<div class="participant-td scwr-career">${known.length ? figures(t, medals) : draining ? PLACEHOLDER.repeat(COLUMNS.length) : '<div class="muted">Hidden profiles</div>'}</div>`
+    + `<div class="participant-td scwr-career">${known.length ? figures(t, medals) : draining ? PLACEHOLDER.repeat(COLUMNS.length) : '<div class="muted">Hidden profiles</div><div></div>'}`
+      + `${draining ? PLACEHOLDER : haul(expected)}</div>`
     + `<div class="scwr-roster"${revealed === key ? ' data-revealed' : ''}>${roster}</div></div></div>`;
 }
 
@@ -392,7 +428,7 @@ function drawAcademies() {
   box.innerHTML = list.length ? `<div class="margin-bottom-xs-64"><div class="heading-container flex-center"><h2 class="group-name margin-xs-0">${draining ? `${name}, reading careers…` : name}</h2></div>`
     + '<div class="participants-table-head participant-tr muted margin-bottom-xs-8 participants-desktop"><span class="participant-td participant-td-athlete padding-left-xs-0 margin-right-xs-4">Academy</span>'
     + '<span class="participant-td participant-td-birth">Athletes</span><span class="participant-td participant-td-club">Affiliation</span>'
-    + `<span class="participant-td scwr-career">${COLUMNS.map((label) => `<span>${label}</span>`).join('')}</span></div>`
+    + `<span class="participant-td scwr-career">${[...COLUMNS, 'Expected'].map((label) => `<span>${label}</span>`).join('')}</span></div>`
     + `<div class="profile-cards participants-desktop">${list.map(academy).join('')}</div></div>` : '';
   if (focused) [...box.querySelectorAll('.scwr-more')].find((b) => b.dataset.academy === focused)?.focus();
   if (glide) slide(moved(glide, box.querySelectorAll('.profile-card'), club));
@@ -449,8 +485,8 @@ const COLUMNS = ['Wins', 'Medals'];
 const plural = (n, word, words = `${word}s`) => `${n} ${n === 1 ? word : words}`;
 // A zero steps back to Smoothcomp's muted ink, so the eye lands on the figures that count.
 const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${figure}</div><div class="muted font-size-tiny">${line}</div></div>`;
-const figures = (t, [gold, silver, bronze]) => column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`)
-  + (gold + silver + bronze ? column(gold, `${gold} gold`, `${silver} silver · ${bronze} bronze`) : '<div class="muted">No medals</div>');
+const haul = ([gold, silver, bronze]) => (gold + silver + bronze ? column(gold, `${gold} gold`, `${silver} silver · ${bronze} bronze`) : '<div class="muted">No medals</div>');
+const figures = (t, medals) => column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`) + haul(medals);
 // The placeholder takes the shape of what replaces it, so nothing moves when it lands.
 const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-size-tiny"><i class="scwr-pulse"></i></div></div>';
 
