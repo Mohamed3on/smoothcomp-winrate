@@ -43,9 +43,12 @@
 .scwr-bracket {
   position-area: block-end span-inline-end;
   position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  /* It opens on the roomier side and never runs past the window, so its end
+     stays in reach of the wheel. */
+  position-try-order: most-block-size;
   inset: auto;
   width: 440px;
-  max-height: min(480px, 70vh);
+  max-height: min(480px, 70vh, calc(100% - 16px));
   margin: 8px 0;
   padding: 4px;
   overflow: auto;
