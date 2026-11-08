@@ -276,6 +276,8 @@ function hover(link) {
   const peeking = box.contains(shown);
   if (link === shown || (!link && !peeking)) return;
   resting = setTimeout(() => {
+    // Swapping one athlete's brackets for another's skips the drop.
+    sheet.toggleAttribute('data-swap', Boolean(link) && sheet.matches(':popover-open'));
     if (sheet.matches(':popover-open')) sheet.hidePopover();
     if (!link) return;
     const user = SCWRSite.profileId(link.getAttribute('href'));
@@ -726,6 +728,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   list.after(sheet);
   sheet.addEventListener('toggle', (event) => {
     if (event.newState === 'open') return;
+    sheet.removeAttribute('data-swap');
     const held = box.contains(shown);
     shown?.removeAttribute('aria-expanded');
     shown = aimed = null;
@@ -735,6 +738,10 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     if (order === 'academies' && event.pointerType === 'mouse') {
       hover(sheet.contains(event.target) ? shown : event.target.closest('.scwr-academies .scwr-roster > a'));
     }
+  });
+  // Tabbing onto a roster athlete shows their brackets as resting the pointer does.
+  document.addEventListener('focusin', (event) => {
+    if (order === 'academies' && !sheet.contains(event.target)) hover(event.target.closest('.scwr-academies .scwr-roster > a'));
   });
   const division = (target) => LEADS.includes(order) && target.closest?.('.participant-td-registration > [role="button"]');
   list.addEventListener('click', (event) => { const d = division(event.target); if (d) open(d); });

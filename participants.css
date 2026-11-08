@@ -97,6 +97,7 @@
 }
 .scwr-bracket:popover-open { animation: scwr-drop 160ms cubic-bezier(0.23, 1, 0.32, 1); }
 @keyframes scwr-drop { from { opacity: 0; translate: 0 -4px; } }
+.scwr-bracket[data-swap]:popover-open { animation: none; }
 
 /* An academy has no photo; Smoothcomp's own academy icon stands on the photo's tile. */
 .scwr-crest {
