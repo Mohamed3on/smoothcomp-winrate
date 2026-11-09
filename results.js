@@ -6,7 +6,7 @@
   const EVENT_ID = SCWRSite.eventId();
   const counting = () => ({ types: state.types });
   const state = {
-    view: 'athletes', sort: 'wins', direction: -1, search: '', minimum: 1, minimumAge: 0, maximumAge: 0,
+    view: 'athletes', sort: 'net', direction: -1, search: '', minimum: 1, minimumAge: 0, maximumAge: 0,
     // Belts are held as the grades left *out*, not the ones kept: an allowlist
     // saved at a gi event would empty the table at a no-gi one graded by level.
     beltsOff: [],
@@ -39,7 +39,7 @@
     return node;
   };
 
-  const DEFAULT_SORT = { athletes: 'wins', academies: 'wins', brackets: 'size' };
+  const DEFAULT_SORT = { athletes: 'net', academies: 'net', brackets: 'size' };
   const VIEWS = {
     athletes: { label: 'Athletes', unit: ['athlete', 'athletes'] },
     academies: { label: 'Academies', unit: ['academy', 'academies'] },
@@ -75,7 +75,7 @@
   const COLUMNS = {
     athletes: [
       { key: 'name', label: 'Athlete', align: 'start', cell: identityCell, grow: true },
-      { key: 'wins', label: 'W–L', title: 'Match record. Byes never count; walkovers follow the toggle.', cell: recordCell },
+      { key: 'net', label: 'W–L', title: 'Match record, ranked by wins minus losses. Byes never count; walkovers follow the toggle.', cell: recordCell },
       { key: 'rate', label: 'Win %', title: 'Wins ÷ matches contested.', cell: (r) => strong(percent(r.rate)) },
       { key: 'finish', label: 'How they won', align: 'start', title: 'Every win, ordered from the most decisive finish to the least.', cell: barCell, wide: true },
       { key: 'conceded', label: 'How they lost', align: 'start', title: 'Every loss, ordered from the most decisive finish to the least. Sorts by the share that ended in a submission, so the hardest to finish come first.', cell: lossBarCell, wide: true, reverse: true },
@@ -84,7 +84,7 @@
     ],
     academies: [
       { key: 'name', label: 'Academy', align: 'start', cell: identityCell, grow: true },
-      { key: 'wins', label: 'W–L', title: 'Combined record of every athlete from this academy.', cell: recordCell },
+      { key: 'net', label: 'W–L', title: 'Combined record of every athlete from this academy, ranked by wins minus losses.', cell: recordCell },
       { key: 'rate', label: 'Win %', title: 'Wins ÷ matches contested.', cell: (r) => strong(percent(r.rate)) },
       { key: 'finish', label: 'How they won', align: 'start', title: 'Every win, ordered from the most decisive finish to the least.', cell: barCell, wide: true },
       { key: 'conceded', label: 'How they lost', align: 'start', title: 'Every loss this academy took, ordered from the most decisive finish to the least. Sorts by the share that ended in a submission, so the hardest to finish come first.', cell: lossBarCell, wide: true, reverse: true },

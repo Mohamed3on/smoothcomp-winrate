@@ -196,6 +196,7 @@ const SCWRModel = (() => {
   const derive = (row, wins, losses, types, lossTypes, medals) => ({
     ...row, wins, losses, types, lossTypes, medals,
     total: wins + losses,
+    net: wins - losses,
     rate: wins + losses ? wins / (wins + losses) : null,
     submissions: types.submission ?? 0,
     submitted: lossTypes.submission ?? 0,
@@ -354,7 +355,7 @@ const SCWRModel = (() => {
   }
 
   const METRICS = {
-    wins: 'wins', losses: 'losses', rate: 'rate', submissions: 'submissions', submitted: 'submitted',
+    wins: 'wins', net: 'net', losses: 'losses', rate: 'rate', submissions: 'submissions', submitted: 'submitted',
     finish: 'finishRate', conceded: 'concededRate', submissionRate: 'submissionRate', golds: 'golds', podiums: 'podiums',
     silvers: 'silvers', bronzes: 'bronzes', biggest: 'biggestBracket', biggestGold: 'biggestGold', gap: 'gap', divisions: 'divisions', athletes: 'athletes', depth: 'depth', size: 'size',
   };

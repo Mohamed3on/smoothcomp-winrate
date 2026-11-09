@@ -208,9 +208,11 @@ test('an old, unreadable or unwritable cache never costs the reader the numbers'
   }
 });
 
-test('sorted fewest wins first, a tied win rate puts the most losses first', async () => {
+test('the record sorts by wins minus losses, opening on the worst performer when sorted up', async () => {
   const { model, SCWRModel } = await resultsPage('25901');
-  const rows = SCWRModel.leaderboard(model, { table: 'athletes', types: COUNTED, sort: 'wins', direction: 1 });
+  const rows = SCWRModel.leaderboard(model, { table: 'athletes', types: COUNTED, sort: 'net', direction: 1 });
+  const nets = plain(rows.map((row) => row.net));
+  assert.deepEqual(nets, [...nets].sort((a, b) => a - b));
   const winless = plain(rows.filter((row) => row.wins === 0 && row.losses > 0)
     .map((row) => [row.losses, row.lossTypes.submission ?? 0]));
   assert.ok(winless.length > 1);
