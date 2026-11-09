@@ -360,12 +360,13 @@ const SCWRModel = (() => {
   };
 
   // Descending by default: every metric here reads "more is better". Ties fall
-  // through a fixed chain — more wins, then a higher win rate, then podiums
-  // weighted by the field they finished ahead of, then more decisive wins
-  // (submissions first, in WIN_TYPES order), then more golds, then a longer
-  // record, then name — so a re-sort never reshuffles rows that
-  // genuinely tie. The record length is what separates two winless athletes:
-  // 0–6 is a more convincing 0% than 0–2, so it ranks first either way.
+  // through a fixed chain from the better performer — more wins, then a higher
+  // win rate, then fewer losses, then fewer decisive losses (submissions first,
+  // in WIN_TYPES order), then podiums weighted by the field they finished ahead
+  // of, then more decisive wins, then more golds — and ascending runs the same
+  // chain backwards, so it opens on the worst performer: the most losses, then
+  // the most submitted. A row with no fought match trails its ties either way,
+  // and name comes last, so a re-sort never reshuffles rows that genuinely tie.
   function rank(rows, sort, direction = -1) {
     const metric = METRICS[sort] ?? sort;
     const value = (row) => {
@@ -375,11 +376,12 @@ const SCWRModel = (() => {
     return [...rows].sort((a, b) => {
       if (metric === 'name') return direction * a.name.localeCompare(b.name);
       const primary = (value(a) - value(b)) * direction;
-      return primary || b.wins - a.wins || (b.rate ?? -1) - (a.rate ?? -1) ||
+      const better = b.wins - a.wins || (b.rate ?? -1) - (a.rate ?? -1) || a.losses - b.losses ||
+        SCWRSite.WIN_TYPES.reduce((order, t) => order || (a.lossTypes[t] ?? 0) - (b.lossTypes[t] ?? 0), 0) ||
         (b.medalScore ?? 0) - (a.medalScore ?? 0) ||
         SCWRSite.WIN_TYPES.reduce((order, t) => order || (b.types[t] ?? 0) - (a.types[t] ?? 0), 0) ||
-        b.golds - a.golds || (b.biggestGold ?? 0) - (a.biggestGold ?? 0) ||
-        b.total - a.total || a.name.localeCompare(b.name);
+        b.golds - a.golds || (b.biggestGold ?? 0) - (a.biggestGold ?? 0);
+      return primary || !a.total - !b.total || -direction * better || a.name.localeCompare(b.name);
     });
   }
 
