@@ -20,19 +20,20 @@
   font-size: 13px;
   line-height: 20px;
 }
-#registrations.scwr-ranked .participant-td-registration > div { flex: 0 1 auto; margin-right: 12px; opacity: 0.4; }
+/* The name steps back; the medal its bracket points to leads it in full colour. */
+#registrations.scwr-ranked .participant-td-registration > div { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; margin-right: 12px; }
+#registrations.scwr-ranked .participant-td-registration > div > div { opacity: 0.4; transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1); }
 #registrations.scwr-ranked .participant-td-registration > div:not(:last-child) > div::after { content: '·'; margin-left: 12px; }
 /* Each division opens its bracket: it steps forward on hover, and stays forward
    while its bracket is open. */
 #registrations.scwr-ranked .participant-td-registration > [role='button'] {
   border-radius: 4px;
   cursor: pointer;
-  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-#registrations.scwr-ranked .participant-td-registration > [role='button']:hover,
-#registrations.scwr-ranked .participant-td-registration > [aria-expanded='true'] { opacity: 0.85; }
+#registrations.scwr-ranked .participant-td-registration > [role='button']:hover > div,
+#registrations.scwr-ranked .participant-td-registration > [aria-expanded='true'] > div,
+#registrations.scwr-ranked .participant-td-registration > [role='button']:focus-visible > div { opacity: 0.85; }
 #registrations.scwr-ranked .participant-td-registration > [role='button']:focus-visible {
-  opacity: 0.85;
   outline: 2px solid color-mix(in srgb, currentColor 50%, transparent);
   outline-offset: 2px;
 }
@@ -308,6 +309,7 @@
 .scwr-belts,
 .scwr-approved,
 .scwr-academies,
+#registrations,
 .scwr-bracket {
   --accent: #1565c0;
   --accent-soft: rgba(21, 101, 192, 0.09);
@@ -322,6 +324,7 @@
 .scwr-belts[data-scwr-theme='dark'],
 .scwr-approved[data-scwr-theme='dark'],
 .scwr-academies[data-scwr-theme='dark'],
+#registrations[data-scwr-theme='dark'],
 .scwr-bracket[data-scwr-theme='dark'] {
   --accent: #79b3ea;
   --accent-soft: rgba(121, 179, 234, 0.13);

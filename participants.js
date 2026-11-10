@@ -301,14 +301,15 @@ function hover(link) {
   }, link && !peeking ? 350 : 150);
 }
 
-// Each athlete's medal calls, one per bracket they would place in, gold first.
+// Each athlete's medal calls, one per bracket they would place in, gold first,
+// each naming its bracket.
 let foreseen = new Map();
 const id = (r) => String(r.user_id ?? r.id);
 function foresee() {
   foreseen = new Map();
-  for (const groups of Map.groupBy(vm.all, (g) => g.name.trim()).values()) {
+  for (const [name, groups] of Map.groupBy(vm.all, (g) => g.name.trim())) {
     const rows = rank({ registrations: groups.flatMap((g) => g.registrations) });
-    calls(rows).forEach((call, i) => call && foreseen.set(id(rows[i]), [...foreseen.get(id(rows[i])) ?? [], call]));
+    calls(rows).forEach((call, i) => call && foreseen.set(id(rows[i]), [...foreseen.get(id(rows[i])) ?? [], { ...call, name }]));
   }
   for (const list of foreseen.values()) list.sort((a, b) => a.medal - b.medal);
 }
@@ -556,11 +557,24 @@ function paint() {
     swatch.dataset.belt = grade;
     swatch.title = `${grade[0].toUpperCase()}${grade.slice(1)} belt`;
   }
+  // Each division an athlete entered opens its bracket and, once every career is
+  // read, leads with the medal that bracket points to for them.
   if (LEADS.includes(order)) {
-    for (const division of document.querySelectorAll('#registrations .participant-td-registration > div:not([role])')) {
-      division.setAttribute('role', 'button');
-      division.setAttribute('aria-haspopup', 'dialog');
-      division.tabIndex = 0;
+    if (!draining) foresee();
+    for (const division of document.querySelectorAll('#registrations .participant-td-registration > div')) {
+      if (!division.role) {
+        division.setAttribute('role', 'button');
+        division.setAttribute('aria-haspopup', 'dialog');
+        division.tabIndex = 0;
+      }
+      const user = SCWRSite.profileId(division.closest('.profile-card')?.querySelector('a[href*="/profile/"]')?.getAttribute('href'));
+      const call = !draining && foreseen.get(user)?.find((c) => c.name === division.textContent.trim());
+      const medal = call ? dot(call) : '';
+      const held = division.querySelector(':scope > .scwr-medal');
+      if ((held?.outerHTML ?? '') === medal) continue;
+      held?.remove();
+      division.insertAdjacentHTML('afterbegin', medal);
+      division.ariaDescription = call ? `${call.sure ? 'Expected' : 'Maybe'} ${MEDALS[call.medal]}` : null;
     }
   }
   if (order === 'academies') drawAcademies(); else if (box.firstChild) box.replaceChildren();
@@ -706,7 +720,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   const list = document.querySelector('#registrations');
   view = document.createElement('select');
   view.className = 'scwr-view';
-  view.dataset.scwrTheme = SCWRSite.theme(list);
+  view.dataset.scwrTheme = list.dataset.scwrTheme = SCWRSite.theme(list);
   view.setAttribute('aria-label', 'List');
   view.innerHTML = '<option value="">Brackets, biggest first</option><option value="stacked">Brackets, most wins</option>'
     + '<hr><option value="wins">Athletes, most wins</option>'
