@@ -98,6 +98,9 @@ files the manifest loads (`pack.ts`) to a GitHub release. The Chrome Web Store w
 submits that build for review (`publish-chrome-web-store.ts`); while an earlier version is
 still in review, a daily run submits it once the review clears.
 
+The store's description is `store-listing.txt`. The API can't set it, so a release that changes
+what the extension does updates that file, and it gets pasted into the dashboard by hand.
+
 ## Notes
 
 `plans/standalone-import-proof/` records why this has to be a content script: every

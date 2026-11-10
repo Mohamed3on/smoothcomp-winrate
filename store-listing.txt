@@ -1,0 +1,31 @@
+Mat Stats recounts every record at a Smoothcomp event from the event's own matches, and adds the views the site doesn't have.
+
+Smoothcomp's win rate counts a walkover as a win, so an athlete who advanced on two no-shows looks the same as one who submitted two opponents. Mat Stats reads every match off the event's schedule, live or finished, and counts only the win types you choose: submissions, stoppages, points, decisions and DQs, with walkovers off unless you switch them on.
+
+RESULTS PAGE
+• Athletes: wins and losses, W–L, win rate, how each athlete won and lost, medals, and the size of their biggest bracket
+• Every athlete's matches under their divisions, including the ones still to come, with a mark on anyone who still has a match to fight
+• Academies: every academy's record, how its wins and losses came, its medals, and each athlete's matches
+• Brackets: each bracket's size and gold medallist, beside whoever won the most matches there; open one for its standings and matches
+• Matchups: any two academies head to head, with the record between them and every match where they met
+• Belt and age filters, a minimum match count, and search across names, academies, divisions and countries
+• Each athlete's record inline in the official results, which you can reorder by placement, bracket size or wins
+• Divisions still waiting on published results count from the schedule, with medals read off their final and bronze matches
+
+PARTICIPANTS PAGE
+• Every bracket at once, biggest first, instead of a few at a time as you scroll, including athletes still waiting on approval
+• Each athlete's career beside their name: wins, how many came by submission and on points, and medals
+• Each bracket ranked by those careers, so you can size up your division before you compete, or the brackets sorted by how stacked they are
+• Athletes: everyone at the event in one list, ranked by career wins or submission wins, with their belt, age, divisions and the medal each bracket points to
+• Academies: every academy ranked by its athletes' combined career wins, with the athletes behind it and the medals they're on course for
+• Belt, age, country and approved-only filters
+• Signed in: every bracket you could enter and would top-seed, with the athlete you'd displace
+
+Works on smoothcomp.com events and on AJP Tour events (ajptour.com).
+
+PRIVACY
+Mat Stats runs only on Smoothcomp and AJP Tour event pages. It reads what those sites already show you, keeps a cache in your browser so repeat visits make fewer requests, and sends nothing anywhere else: no accounts, no analytics, no tracking.
+
+Mat Stats is independent and is not affiliated with or endorsed by Smoothcomp or AJP Tour.
+
+Source code: https://github.com/Mohamed3on/smoothcomp-winrate
