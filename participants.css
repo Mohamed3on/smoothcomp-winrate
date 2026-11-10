@@ -20,10 +20,21 @@
   font-size: 13px;
   line-height: 20px;
 }
-/* The name steps back; the medal its bracket points to leads it in full colour. */
-#registrations.scwr-ranked .participant-td-registration > div { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; margin-right: 12px; }
+/* Each division is a bullet: the medal its bracket points to, in full colour, or
+   a faint dot in the same slot, so every line starts on the same edge. The name
+   steps back behind it. */
+#registrations.scwr-ranked .participant-td-registration > div { display: flex; flex: 0 1 auto; align-items: center; gap: 6px; margin-right: 20px; }
+#registrations.scwr-ranked .participant-td-registration > div:not(:has(> .scwr-medal))::before {
+  content: '';
+  flex: none;
+  width: 3px;
+  height: 3px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+}
 #registrations.scwr-ranked .participant-td-registration > div > div { opacity: 0.4; transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1); }
-#registrations.scwr-ranked .participant-td-registration > div:not(:last-child) > div::after { content: '·'; margin-left: 12px; }
 /* Each division opens its bracket: it steps forward on hover, and stays forward
    while its bracket is open. */
 #registrations.scwr-ranked .participant-td-registration > [role='button'] {
