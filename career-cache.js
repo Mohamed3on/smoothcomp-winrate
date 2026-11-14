@@ -1,7 +1,7 @@
 const SCWRCache = (() => {
   const DAY = 24 * 60 * 60 * 1000;
   const KEPT = 21 * DAY;
-  const PRIVATE = 14 * DAY;
+  const PRIVATE = 30 * DAY;
   const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
   const oneBelt = (text) => {
     const named = BELTS.filter(b => new RegExp(`\\b${b}`, 'i').test(text.replace(/gray/i, 'grey')));

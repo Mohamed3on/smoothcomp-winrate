@@ -27,7 +27,7 @@ As a bracket nears the screen, each athlete's career replaces the registration c
 repeated the bracket title: wins, leaving out walkovers unless the results page counts them, over how many
 came by submission and on points, then medals. The bracket ranks itself by wins, submissions, points,
 then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for three
-weeks across organiser sites. Confirmed private profiles have no career shown and are checked again after two weeks.
+weeks across organiser sites. Confirmed private profiles have no career shown and are checked again after 30 days.
 Tabs share one request allowance and reuse work already in progress; each completed athlete is saved immediately.
 
 A menu beside the page title swaps the brackets for one list of every athlete, one row each, ranked by career wins,
@@ -60,7 +60,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `matches.js` | Reads every match off the event's schedule, one request per mat |
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
-| `career-cache.js` | Shared cache validation and expiry: three weeks for public records, two for confirmed privacy |
+| `career-cache.js` | Shared cache validation and expiry: three weeks for public records, 30 days for confirmed privacy |
 | `background.js` | Coordinates requests across tabs and saves each completed athlete in extension storage |
 | `shared.js` | Reads through the signed-in browser session and bridges cache updates to the page |
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |

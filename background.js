@@ -38,7 +38,7 @@ async function handle(message, sender) {
   const { op, kind, user, token } = message;
   if (op === 'read') {
     const all = await chrome.storage.local.get(null);
-    const expired = Object.entries(all).filter(([name, entry]) => name.startsWith(PREFIX) && (!Number.isFinite(entry?.at) || Date.now() - entry.at >= SCWRCache.KEPT)).map(([name]) => name);
+    const expired = Object.entries(all).filter(([name, entry]) => name.startsWith(PREFIX) && (!Number.isFinite(entry?.at) || Date.now() - entry.at >= Math.max(SCWRCache.KEPT, entry.hidden === true ? SCWRCache.PRIVATE : 0))).map(([name]) => name);
     if (expired.length) await chrome.storage.local.remove(expired);
     const temporary = await chrome.storage.session.get(null);
     const stale = Object.entries(temporary).filter(([name, entry]) => name.startsWith(PREFIX) && !SCWRCache.fresh(entry, 'signatures')).map(([name]) => name);

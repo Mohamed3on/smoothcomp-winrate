@@ -92,7 +92,7 @@ test('a second tab joins completed work instead of fetching the athlete twice', 
   assert.equal(second.api.careers['1'].wins.submission, 7);
 });
 
-test('confirmed privacy skips the career endpoint, then is rechecked after two weeks', async () => {
+test('confirmed privacy skips the career endpoint, then is rechecked after 30 days', async () => {
   const w = worker();
   let privateProfile = true;
   const p = page(w, url => url.includes('/profile/') ? privateProfile ? new Response('<h1>This profile is not public.</h1>') : profile(w) : career());
@@ -101,7 +101,7 @@ test('confirmed privacy skips the career endpoint, then is rechecked after two w
   assert.equal(p.api.careers['1'].hidden, true);
   await p.api.readCareer('1');
   assert.equal(p.fetched.length, 1);
-  w.advance(14 * 24 * 60 * 60 * 1000 + 1);
+  w.advance(30 * 24 * 60 * 60 * 1000 + 1);
   privateProfile = false;
   await p.api.readCareer('1');
   assert.equal(p.fetched.length, 3);
@@ -145,16 +145,18 @@ test('one tab owns a career; completed work is immediately available in another'
   assert.equal(Object.values(w.storage.local).filter(e => e?.wins).length, 1);
 });
 
-test('private profiles expire in two weeks while public careers stay for three weeks', async () => {
+test('private profiles expire after 30 days while public careers stay for three weeks', async () => {
   const w = worker();
   for (const [user, entry] of [['1', { at: 1800000000000, hidden: true }], ['2', { at: 1800000000000, wins: {}, medals: [0, 0, 0] }]]) {
     const job = { kind: 'careers', user };
     const { token } = await w.send({ op: 'claim', ...job });
     await w.send({ op: 'complete', ...job, token, entry });
   }
-  w.advance(14 * 24 * 60 * 60 * 1000 + 1);
+  w.advance(21 * 24 * 60 * 60 * 1000 + 1);
+  assert.ok((await w.send({ op: 'claim', kind: 'careers', user: '1' })).entry.hidden);
+  assert.ok((await w.send({ op: 'claim', kind: 'careers', user: '2' })).token);
+  w.advance(9 * 24 * 60 * 60 * 1000);
   assert.ok((await w.send({ op: 'claim', kind: 'careers', user: '1' })).token);
-  assert.ok((await w.send({ op: 'claim', kind: 'careers', user: '2' })).entry.wins);
 });
 
 test('a vanished tab cannot keep a career claimed indefinitely', async () => {
@@ -192,7 +194,7 @@ test('expired privacy does not resurrect an older public cache from another orga
     'smoothcomp.com:careers': { '1': { at: 1799999999000, wins: { points: 9 }, medals: [0, 0, 0] } },
     'scwr2:smoothcomp.com:careers:1': { at: 1800000000000, hidden: true },
   }, session: {} });
-  w.advance(14 * 24 * 60 * 60 * 1000 + 1);
+  w.advance(30 * 24 * 60 * 60 * 1000 + 1);
   const p = page(w, url => url.includes('/profile/') ? profile(w) : career());
   await p.api.ready;
   assert.equal(p.api.fresh('1'), false);
@@ -201,10 +203,10 @@ test('expired privacy does not resurrect an older public cache from another orga
   assert.equal(p.api.careers['1'].wins.submission, 7);
 });
 
-test('expired keys are removed while privacy invalidation survives until older public data expires', async () => {
+test('cleanup keeps private profiles through 30 days while removing expired public data', async () => {
   const now = 1800000000000;
   const old = now - 22 * 86400000;
-  const tombstone = now - 15 * 86400000;
+  const tombstone = now - 25 * 86400000;
   const w = worker({ local: {
     'scwr2:smoothcomp.com:careers:1': { at: old, wins: {}, medals: [0, 0, 0] },
     'scwr2:smoothcomp.com:careers:2': { at: tombstone, hidden: true },
@@ -215,6 +217,9 @@ test('expired keys are removed while privacy invalidation survives until older p
   assert.equal(w.storage.local['scwr2:smoothcomp.com:careers:1'], undefined);
   assert.equal(w.storage.session['scwr2:smoothcomp.com:signatures:1'], undefined);
   assert.equal(w.storage.local['scwr2:smoothcomp.com:careers:2'].at, tombstone);
+  w.advance(6 * 86400000);
+  await w.send({ op: 'read' });
+  assert.equal(w.storage.local['scwr2:smoothcomp.com:careers:2'], undefined);
 });
 
 test('page events cannot forge a global cooldown', async () => {
