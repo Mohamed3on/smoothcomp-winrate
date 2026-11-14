@@ -19,8 +19,9 @@ const fresh = (user) => Date.now() - (careers[user]?.at ?? 0) < KEPT;
 // those pages through every ten seconds and refuses the rest, which a read from
 // an organiser's subdomain sees as a failed fetch; asking faster only wastes
 // requests. So five go at once, the rest at that pace, and a refusal rests every
-// read a while before it asks again. A page with no signature is a hidden
-// profile, or a site that signs nothing, and its routes are asked unsigned.
+// read a while before it asks again. Each turn goes to an athlete on screen
+// before any other. A page with no signature is a hidden profile, or a site that
+// signs nothing, and its routes are asked unsigned.
 const BURST = 5;
 const WINDOW = 10500;
 const signatures = new Map();
@@ -28,17 +29,44 @@ const asked = []; // when the last few profile pages were asked
 let held = 0; // no profile page is asked before then
 const pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
-async function signature(user) {
+// The athletes whose rows are on screen, by the profile links the rows hold.
+function onScreen() {
+  const seen = new Set();
+  for (const link of document.querySelectorAll('#registrations a[href*="/profile/"], .scwr-bracket a[href*="/profile/"]')) {
+    const { top, bottom } = link.getBoundingClientRect();
+    if (bottom > 0 && top < innerHeight) seen.add(SCWRSite.profileId(link.getAttribute('href')));
+  }
+  return seen;
+}
+
+const line = []; // athletes waiting for their profile page
+let turning = false;
+async function turns() {
+  if (turning) return;
+  turning = true;
+  while (line.length) {
+    const wait = Math.max(held, asked.length < BURST ? 0 : asked[0] + WINDOW) - Date.now();
+    if (wait > 0) { await pause(wait); continue; }
+    asked.push(Date.now());
+    if (asked.length > BURST) asked.shift();
+    // First an athlete on screen, then a whole-event read with one to pick, then whoever waited longest.
+    const seen = onScreen();
+    let next = line.findIndex((waiting) => seen.has(waiting.user));
+    if (next < 0 && [...pending].some((user) => seen.has(user))) next = line.findIndex((waiting) => !waiting.user);
+    line.splice(Math.max(0, next), 1)[0].go();
+  }
+  turning = false;
+}
+// A turn asked for no athlete in particular is a whole-event read's: it picks
+// its athlete once the turn comes, so a list scrolled meanwhile is read where it stands.
+const turn = (user) => new Promise((go) => { line.push({ user, go }); turns(); });
+
+async function signature(user, taken = false) {
   const kept = signatures.get(user);
   if (kept?.until > Date.now()) return kept.query;
   for (let rest = 10000; ; rest = Math.min(rest * 2, 60000)) {
-    for (;;) {
-      const wait = Math.max(held, asked.length < BURST ? 0 : asked[0] + WINDOW) - Date.now();
-      if (wait <= 0) break;
-      await pause(wait);
-    }
-    asked.push(Date.now());
-    if (asked.length > BURST) asked.shift();
+    if (!taken) await turn(user);
+    taken = false;
     const response = await fetch(SCWRSite.url.page(user), { credentials: 'include' }).catch(() => null);
     if (response && response.status !== 429 && response.status < 500) {
       const found = (await response.text()).match(/data-data-signature="([^"]*)"/)?.[1].replaceAll('&quot;', '"');
@@ -59,9 +87,9 @@ if (!SCWRSite.store.get('signed')) {
   SCWRSite.store.set('signed', true);
 }
 
-function readCareer(user) {
+function readCareer(user, taken) {
   if (!reading.has(user)) {
-    reading.set(user, signature(user).then((signed) => fetch(SCWRSite.url.career(user, signed), { credentials: 'include' })).then(async (response) => {
+    reading.set(user, signature(user, taken).then((signed) => fetch(SCWRSite.url.career(user, signed), { credentials: 'include' })).then(async (response) => {
       // A hidden profile answers 403, which asking again will not change; a busy
       // server might, so that athlete stays unread until the bracket is next seen.
       if (response.status === 429 || response.status >= 500) return;
@@ -80,7 +108,24 @@ function save() {
   SCWRSite.store.set(CAREERS, careers);
   for (const user of Object.keys(ranks)) if (Date.now() - ranks[user].at >= KEPT) delete ranks[user];
   SCWRSite.store.set('ranks', ranks);
+  document.dispatchEvent(new CustomEvent('scwr:keep', { detail: JSON.stringify({ careers, ranks }) }));
 }
+
+// What any organiser's site has read is kept by the extension too (shared.js),
+// and joins what this site kept, newest first, before the list is ranked; what
+// this site alone had goes back the same way.
+const shared = new Promise((done) => {
+  document.addEventListener('scwr:kept', (event) => {
+    const kept = JSON.parse(event.detail);
+    for (const [mine, theirs] of [[careers, kept.careers], [ranks, kept.ranks]]) {
+      for (const [user, entry] of Object.entries(theirs)) if (entry.at > (mine[user]?.at ?? 0)) mine[user] = entry;
+    }
+    save();
+    done();
+  }, { once: true });
+  setTimeout(done, 1000);
+});
+document.dispatchEvent(new CustomEvent('scwr:ask'));
 
 // Counted wins, wins by submission and wins by points; null while the career
 // is unread or hidden.
@@ -219,7 +264,7 @@ async function read(name) {
   const users = new Set(vm.all.filter((g) => g.name === name).flatMap((g) => g.registrations.map((r) => r.user_id && String(r.user_id))));
   const missing = [...users].filter((user) => user && !fresh(user));
   if (!missing.length && ranked.has(name)) return;
-  const batch = Promise.all(missing.map(readCareer));
+  const batch = Promise.all(missing.map((user) => readCareer(user)));
   queue();
   await batch;
   if (missing.length) save();
@@ -313,7 +358,7 @@ function reveal(source, names, user) {
   shown = source;
   const missing = bracket(names, user);
   sheet.showPopover({ source });
-  if (missing.length) Promise.all(missing.map(readCareer)).then(() => { save(); if (shown === source) bracket(names, user); });
+  if (missing.length) Promise.all(missing.map((user) => readCareer(user))).then(() => { save(); if (shown === source) bracket(names, user); });
 }
 
 function open(division) {
@@ -515,9 +560,13 @@ function ranking() {
 function drain() {
   if (pending.size) {
     draining ??= Promise.all(Array.from({ length: BURST }, async () => {
-      for (const user of pending) {
+      while (pending.size) {
+        await turn();
+        const seen = onScreen();
+        const user = [...pending].find((waiting) => seen.has(waiting)) ?? pending.values().next().value;
+        if (!user) break;
         pending.delete(user);
-        if (!fresh(user)) await readCareer(user);
+        if (!fresh(user)) await readCareer(user, true);
         if (order !== null && needsRank(user)) await readRank(user);
         if (order === 'academies') glide ??= tops(box.querySelectorAll('.profile-card'), club);
         if (LEADS.includes(order) && Date.now() - shownAt > 15000) show(); else queue();
@@ -745,8 +794,9 @@ async function pick() {
 
 // The list is fetched after mount, so wait for it to land — a large entry list on
 // a slow connection takes a while, but not forever.
-SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000 }).then((found) => {
+SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000 }).then(async (found) => {
   if (!found) return;
+  await shared;
   vm = found;
   place = new Map(vm.all.flatMap((g) => g.registrations.map((r, i) => [r.id, i])));
   first = new Map(vm.all.map((g, i) => [g.name, i]).reverse());

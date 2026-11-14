@@ -9,7 +9,21 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "permissions": [
+    "storage"
+  ],
   "content_scripts": [
+    {
+      "matches": [
+        "https://*.smoothcomp.com/*/event/*/participants*",
+        "https://smoothcomp.com/*/event/*/participants*",
+        "https://ajptour.com/*/event/*/participants*"
+      ],
+      "js": [
+        "shared.js"
+      ],
+      "run_at": "document_idle"
+    },
     {
       "matches": [
         "https://*.smoothcomp.com/*/event/*/participants*",

@@ -59,6 +59,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `matches.js` | Reads every match off the event's schedule, one request per mat |
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
+| `shared.js` | Keeps careers and belts in the extension's own storage, so every organiser's subdomain shares what one has read |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
 | `participants.js` | The participants page |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
