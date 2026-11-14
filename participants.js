@@ -2,21 +2,66 @@
 // payload, then renders four at a time behind infinite scroll. Show them all at
 // once, biggest bracket first, and rank each bracket by its athletes' careers.
 
-// A career is one request per athlete, so it is read only for brackets near the
-// screen, a whole bracket at once, and kept for a week. Walkovers stay out unless
+// A career is two requests per athlete, so it is read only for brackets near the
+// screen, a whole bracket at once, and kept for three weeks. Walkovers stay out unless
 // switched on in the results page; every other win counts, since this page shows
 // no switch that could explain one missing.
 const CAREERS = 'careers';
-const WEEK = 7 * 24 * 60 * 60 * 1000;
+const KEPT = 21 * 24 * 60 * 60 * 1000;
 const careers = SCWRSite.store.get(CAREERS, {});
 const reading = new Map();
 const typesOff = SCWRSite.store.get('results-prefs')?.typesOff;
 const counted = (type) => type !== 'walkover' || (Array.isArray(typesOff) && !typesOff.includes(type));
-const fresh = (user) => Date.now() - (careers[user]?.at ?? 0) < WEEK;
+const fresh = (user) => Date.now() - (careers[user]?.at ?? 0) < KEPT;
+
+// Smoothcomp signs each athlete's routes, and the signature comes only in their
+// profile page, good for a quarter of an hour. Cloudflare lets about five of
+// those pages through every ten seconds and refuses the rest, which a read from
+// an organiser's subdomain sees as a failed fetch; asking faster only wastes
+// requests. So five go at once, the rest at that pace, and a refusal rests every
+// read a while before it asks again. A page with no signature is a hidden
+// profile, or a site that signs nothing, and its routes are asked unsigned.
+const BURST = 5;
+const WINDOW = 10500;
+const signatures = new Map();
+const asked = []; // when the last few profile pages were asked
+let held = 0; // no profile page is asked before then
+const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+
+async function signature(user) {
+  const kept = signatures.get(user);
+  if (kept?.until > Date.now()) return kept.query;
+  for (let rest = 10000; ; rest = Math.min(rest * 2, 60000)) {
+    for (;;) {
+      const wait = Math.max(held, asked.length < BURST ? 0 : asked[0] + WINDOW) - Date.now();
+      if (wait <= 0) break;
+      await pause(wait);
+    }
+    asked.push(Date.now());
+    if (asked.length > BURST) asked.shift();
+    const response = await fetch(SCWRSite.url.page(user), { credentials: 'include' }).catch(() => null);
+    if (response && response.status !== 429 && response.status < 500) {
+      const found = (await response.text()).match(/data-data-signature="([^"]*)"/)?.[1].replaceAll('&quot;', '"');
+      const { signature: sign, expires } = found ? JSON.parse(found) : {};
+      const query = sign ? `?signature=${sign}&expires=${expires}` : '';
+      signatures.set(user, { query, until: sign ? expires * 1000 - 60000 : Date.now() + 60000 });
+      return query;
+    }
+    held = Date.now() + rest;
+  }
+}
+
+// Records refused before the signature was read were kept as hidden profiles.
+if (!SCWRSite.store.get('signed')) {
+  for (const user of Object.keys(careers)) if (!careers[user].wins) delete careers[user];
+  SCWRSite.store.set(CAREERS, careers);
+  SCWRSite.store.set('ranks', {});
+  SCWRSite.store.set('signed', true);
+}
 
 function readCareer(user) {
   if (!reading.has(user)) {
-    reading.set(user, fetch(SCWRSite.url.career(user), { credentials: 'include' }).then(async (response) => {
+    reading.set(user, signature(user).then((signed) => fetch(SCWRSite.url.career(user, signed), { credentials: 'include' })).then(async (response) => {
       // A hidden profile answers 403, which asking again will not change; a busy
       // server might, so that athlete stays unread until the bracket is next seen.
       if (response.status === 429 || response.status >= 500) return;
@@ -25,7 +70,7 @@ function readCareer(user) {
         wins: Object.fromEntries(data.win_method_breakdown.map((t) => [t.won_by, t.count])),
         medals: [data.medals.gold, data.medals.silver, data.medals.bronze],
       }) };
-    }).catch(() => {}).finally(() => reading.delete(user)));
+    }).catch(() => {}).finally(() => { reading.delete(user); queue(); }));
   }
   return reading.get(user);
 }
@@ -33,7 +78,7 @@ function readCareer(user) {
 function save() {
   for (const user of Object.keys(careers)) if (!fresh(user)) delete careers[user];
   SCWRSite.store.set(CAREERS, careers);
-  for (const user of Object.keys(ranks)) if (Date.now() - ranks[user].at >= WEEK) delete ranks[user];
+  for (const user of Object.keys(ranks)) if (Date.now() - ranks[user].at >= KEPT) delete ranks[user];
   SCWRSite.store.set('ranks', ranks);
 }
 
@@ -45,6 +90,10 @@ function tally(user) {
   const n = (type) => (counted(type) ? career.wins[type] ?? 0 : 0);
   return [Object.keys(career.wins).reduce((sum, type) => sum + n(type), 0), n('submission'), n('points')];
 }
+
+// How much of a whole-event read is still to come: the athletes among these
+// registrations whose career is not read yet.
+const left = (rows) => `${plural(new Set(rows.filter((r) => r.user_id && !fresh(r.user_id)).map((r) => r.user_id)).size, 'career')} left to read`;
 
 let vm;
 let place; // each registration's index in Smoothcomp's own order
@@ -163,8 +212,8 @@ function slide(rows) {
 const tops = (rows, key) => new Map([...rows].map((row) => [key(row), row.getBoundingClientRect().top]));
 const moved = (before, rows, key) => new Map([...rows].map((row) => [row, before.get(key(row))]));
 
-// Every athlete in the bracket is asked at once, and the bracket is ranked when
-// the last one answers. Brackets sharing a name are read and ranked together.
+// Every athlete in the bracket is asked at once, each filling in as it answers,
+// and the bracket is ranked when the last one does. Brackets sharing a name are read and ranked together.
 async function read(name) {
   // Ids as strings, the way the rows' profile links give them back.
   const users = new Set(vm.all.filter((g) => g.name === name).flatMap((g) => g.registrations.map((r) => r.user_id && String(r.user_id))));
@@ -227,9 +276,7 @@ function athletes() {
     return { ...r, approved: +mine.some(([e]) => e.approved === 1), categories: mine.map(([, name], i) => ({ category_value_id: i, value: name })) };
   });
   const name = plural(registrations.length, 'athlete');
-  return draining
-    ? { id: 'scwr-athletes', name: `${name}, reading careers…`, registrations }
-    : { id: 'scwr-athletes', name, registrations: rank({ registrations }, LEADS.indexOf(order)) };
+  return { id: 'scwr-athletes', name: draining ? `${name}, ${left(registrations)}` : name, registrations: rank({ registrations }, LEADS.indexOf(order)) };
 }
 
 // A division under an athlete opens its bracket over the list: everyone in it,
@@ -326,7 +373,7 @@ function academies() {
     for (const r of rows) for (const call of foreseen.get(id(r)) ?? []) expected[call.medal]++;
     return { rows, known, tally: sum((r) => tally(r.user_id)), medals: sum((r) => careers[r.user_id].medals), expected };
   });
-  return draining ? list : list.sort((a, b) => b.tally.reduce((order, n, i) => order || n - a.tally[i], 0) || a.rows[0].clubName.localeCompare(b.rows[0].clubName));
+  return list.sort((a, b) => b.tally.reduce((order, n, i) => order || n - a.tally[i], 0) || a.rows[0].clubName.localeCompare(b.rows[0].clubName));
 }
 
 // Smoothcomp draws the athletes; the extension draws the academies, in Smoothcomp's
@@ -345,7 +392,7 @@ const club = (card) => card.dataset.academy;
 // An athlete's belt is the first one belt any of their registrations' belt or
 // level names: "All belts" or a no-gi "Purple/Brown/Black" name no single belt, so
 // the gi division beside it decides. An athlete with only those wears the latest
-// BJJ belt their profile lists, read once and kept a week; with none there either,
+// BJJ belt their profile lists, read once and kept three weeks; with none there either,
 // no belt.
 const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
 const oneBelt = (text) => {
@@ -353,9 +400,9 @@ const oneBelt = (text) => {
   return named.length === 1 ? named[0] : null;
 };
 const ranks = SCWRSite.store.get('ranks', {}); // a user's profile belt, as { at, belt }
-const needsRank = (user) => !belt(user) && Date.now() - (ranks[user]?.at ?? 0) >= WEEK;
+const needsRank = (user) => !belt(user) && Date.now() - (ranks[user]?.at ?? 0) >= KEPT;
 async function readRank(user) {
-  const response = await fetch(SCWRSite.url.skills(user), { credentials: 'include' }).catch(() => null);
+  const response = await signature(user).then((signed) => fetch(SCWRSite.url.skills(user, signed), { credentials: 'include' })).catch(() => null);
   if (!response || response.status === 429 || response.status >= 500) return;
   const skills = response.ok ? (await response.json().catch(() => null))?.data ?? [] : [];
   const latest = skills.filter((skill) => /jiu|bjj/i.test(skill.name)).sort((a, b) => b.sort_order - a.sort_order)[0];
@@ -426,7 +473,7 @@ function drawAcademies() {
   const list = academies();
   const name = plural(list.length, 'academy', 'academies');
   const focused = box.contains(document.activeElement) && document.activeElement.dataset.academy;
-  box.innerHTML = list.length ? `<div class="margin-bottom-xs-64"><div class="heading-container flex-center"><h2 class="group-name margin-xs-0">${draining ? `${name}, reading careers…` : name}</h2></div>`
+  box.innerHTML = list.length ? `<div class="margin-bottom-xs-64"><div class="heading-container flex-center"><h2 class="group-name margin-xs-0">${draining ? `${name}, ${left(list.flatMap((a) => a.rows))}` : name}</h2></div>`
     + '<div class="participants-table-head participant-tr muted margin-bottom-xs-8 participants-desktop"><span class="participant-td participant-td-athlete padding-left-xs-0 margin-right-xs-4">Academy</span>'
     + '<span class="participant-td participant-td-birth">Athletes</span><span class="participant-td participant-td-club">Affiliation</span>'
     + `<span class="participant-td scwr-career">${[...COLUMNS, 'Expected'].map((label) => `<span>${label}</span>`).join('')}</span></div>`
@@ -437,7 +484,9 @@ function drawAcademies() {
 }
 
 // Academies are drawn with everything else on screen; Smoothcomp's list stands empty.
+let shownAt = 0;
 function show() {
+  shownAt = Date.now();
   offerBelts();
   if (order === 'academies') {
     vm.visible = [];
@@ -450,9 +499,10 @@ function show() {
   vm.$nextTick(() => { slide(rows); queue(); });
 }
 
-// Opening either reads every career it still lacks, twelve at a time. Until the
-// last one lands, the heading says so and the rows keep the page's own order,
-// filling in as a bracket's do; then the list ranks.
+// Opening either reads every career it still lacks, at the pace profile pages
+// allow: a big event takes many minutes the first time. Until the last one lands
+// the heading counts down, and the list ranks what is read so far, athletes
+// every quarter of a minute and academies as each career lands.
 const pending = new Set();
 let draining = null;
 function ranking() {
@@ -464,12 +514,13 @@ function ranking() {
 
 function drain() {
   if (pending.size) {
-    draining ??= Promise.all(Array.from({ length: 12 }, async () => {
+    draining ??= Promise.all(Array.from({ length: BURST }, async () => {
       for (const user of pending) {
         pending.delete(user);
         if (!fresh(user)) await readCareer(user);
         if (order !== null && needsRank(user)) await readRank(user);
-        queue();
+        if (order === 'academies') glide ??= tops(box.querySelectorAll('.profile-card'), club);
+        if (LEADS.includes(order) && Date.now() - shownAt > 15000) show(); else queue();
       }
     })).then(() => {
       draining = null;
@@ -516,6 +567,7 @@ function draw(cell, user) {
 function paint() {
   painter.disconnect();
   const strength = stack && !draining && strengths();
+  const unread = stack && draining && left(vm.all.flatMap((g) => g.registrations));
   for (const group of document.querySelectorAll('#registrations .participant-group')) {
     watcher.observe(group);
     // A stacked order says what it ranks by beside each bracket's name.
@@ -528,7 +580,7 @@ function paint() {
         container.append(label);
       }
       const [wins, each] = strength ? strength.get(heading(group)) : [];
-      const text = strength ? `${plural(wins, 'win')} · ${+each.toFixed(1)} per athlete` : 'Reading careers…';
+      const text = strength ? `${plural(wins, 'win')} · ${+each.toFixed(1)} per athlete` : unread;
       if (label.textContent !== text) label.textContent = text;
     } else label?.remove();
     for (const row of group.querySelectorAll('.participants-table-head, .participants-desktop .participant-tr-main')) {
@@ -591,7 +643,7 @@ function queue() {
 
 // Over the list, the biggest brackets the signed-in athlete could enter and would
 // top-seed. Their gender and birth date come from their settings and their latest belt
-// from their profile, kept a week; their weight is theirs to give, kept per site.
+// from their profile, kept three weeks; their weight is theirs to give, kept per site.
 // Who is signed in is known once the list mounts: Cloudflare's Rocket Loader runs
 // the page's inline scripts, `window.userId` among them, after this one.
 let me;
@@ -601,11 +653,11 @@ let picking = 0;
 
 async function profile() {
   const kept = SCWRSite.store.get('profile');
-  if (kept?.user === me && Date.now() - kept.at < WEEK) return kept;
+  if (kept?.user === me && Date.now() - kept.at < KEPT) return kept;
   const get = (url) => fetch(url, { credentials: 'include' }).then((r) => (r.ok ? r : Promise.reject(r.status)));
   const [settings, skills] = await Promise.all([
     get(SCWRSite.url.settings(me)).then((r) => r.text()),
-    get(SCWRSite.url.skills(me)).then((r) => r.json()),
+    signature(me).then((signed) => get(SCWRSite.url.skills(me, signed))).then((r) => r.json()),
   ]);
   const field = (label) => settings.match(new RegExp(`label="${label}"[^>]*?value="([^"]*)"`))?.[1];
   const found = {

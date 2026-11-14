@@ -48,10 +48,12 @@ const SCWRSite = (() => {
     bracket: (event, bracket) => `/${locale()}/event/${event}/bracket/${bracket}`,
     match: (match) => `${home()}/${locale()}/getBracketMatchData/${match}`,
     // An athlete's wins by method and medals, across every event they entered.
-    career: (user) => `${home()}/en/athlete/${user}/wins-and-medals`,
+    // Smoothcomp signs both an athlete's routes; the signature comes in their profile page.
+    page: (user) => `${home()}/en/profile/${user}`,
+    career: (user, signed = '') => `${home()}/en/athlete/${user}/wins-and-medals${signed}`,
     // The signed-in athlete's own gender and birth date, and their grade per sport.
     settings: (user) => `${home()}/en/user/${user}/settings`,
-    skills: (user) => `${home()}/en/athlete/${user}/skills`,
+    skills: (user, signed = '') => `${home()}/en/athlete/${user}/skills${signed}`,
     profile: (user) => `/${locale()}/profile/${user}`,
     club: (club) => `/${locale()}/club/${club}`,
   };
