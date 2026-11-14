@@ -15,6 +15,7 @@ RESULTS PAGE
 PARTICIPANTS PAGE
 • Every bracket at once, biggest first, instead of a few at a time as you scroll, including athletes still waiting on approval
 • Each athlete's career beside their name: wins, how many came by submission and on points, and medals
+• Careers shared across organiser sites and tabs, with progress saved as each athlete loads; private profiles are checked again after two weeks
 • Each bracket ranked by those careers, so you can size up your division before you compete, or the brackets sorted by how stacked they are
 • Athletes: everyone at the event in one list, ranked by career wins or submission wins, with their belt, age, divisions and the medal each bracket points to
 • Academies: every academy ranked by its athletes' combined career wins, with the athletes behind it and the medals they're on course for

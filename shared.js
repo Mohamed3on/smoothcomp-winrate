@@ -1,46 +1,63 @@
-// The page's own storage is per origin, and every organiser has its own
-// subdomain. Careers and belts cost a rate-limited request each, so they are
-// also kept in the extension's storage, which every Smoothcomp site shares. The
-// page scripts run in the page's world and cannot reach it; this one can, and
-// passes them across as events. AJP Tour numbers its athletes itself, so it
-// keeps its own.
-const SITE = location.hostname.endsWith('smoothcomp.com') ? 'smoothcomp.com' : location.hostname;
-const NAMES = ['careers', 'ranks'];
-const KEPT = 21 * 24 * 60 * 60 * 1000;
-const read = async () => {
-  const kept = await chrome.storage.local.get(NAMES.map((name) => `${SITE}:${name}`));
-  return Object.fromEntries(NAMES.map((name) => [name, kept[`${SITE}:${name}`] ?? {}]));
-};
+// The isolated script performs authenticated reads and reports real failures;
+// page events cannot manufacture a cooldown for every organiser tab.
+const send = message => chrome.runtime.sendMessage({ ...message, channel: 'scwr' });
+const OPS = ['read', 'import', 'claim', 'renew', 'complete', 'peek', 'available', 'delay'];
+async function fetchAthlete(request, started) {
+  const { resource, user, signed = {} } = request;
+  if (!['profile', 'career', 'skills'].includes(resource) || !/^\d{1,12}$/.test(user)) throw new Error('Invalid athlete request');
+  const { wait } = await send({ op: resource === 'profile' ? 'slot' : 'delay' });
+  if (wait) return { wait };
+  const home = location.hostname === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com';
+  const path = resource === 'profile' ? `profile/${user}` : `athlete/${user}/${resource === 'career' ? 'wins-and-medals' : 'skills'}`;
+  const url = new URL(`/en/${path}`, home);
+  if (resource !== 'profile' && typeof signed.signature === 'string' && /^[\w-]{1,256}$/.test(signed.signature) && Number.isSafeInteger(signed.expires)) {
+    url.searchParams.set('signature', signed.signature);
+    url.searchParams.set('expires', signed.expires);
+  }
+  started();
+  let response;
+  let body = '';
+  try {
+    response = await fetch(url.href, { credentials: 'include', signal: AbortSignal.timeout(20000) });
+    body = await response.text();
+  } catch { response = null; }
+  const challenged = response?.headers.get('cf-mitigated') === 'challenge' || /<title>\s*Just a moment|\/cdn-cgi\/challenge-platform\//i.test(body);
+  if (!response || challenged || response.status === 429 || response.status >= 500) {
+    const retry = response?.headers.get('Retry-After');
+    const ms = retry ? (/^\d+$/.test(retry) ? Number(retry) * 1000 : Math.max(0, Date.parse(retry) - Date.now())) : 0;
+    await send({ op: 'cooldown', ms });
+    return { temporary: true };
+  }
+  if (resource === 'profile' && response.ok) await send({ op: 'healthy' });
+  return { status: response.status, body, headers: { 'content-type': response.headers.get('content-type') ?? '' } };
+}
 
-// Any script on any organiser's page can raise these events, and what is kept
-// is drawn on every other site, so only the shapes the page script writes get
-// in: counts as whole numbers, a belt by name, a time not in the future.
-const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
-const whole = (n) => Number.isSafeInteger(n) && n >= 0;
-const CLEAN = {
-  careers: (entry) => (entry.wins && typeof entry.wins === 'object' ? {
-    wins: Object.fromEntries(Object.entries(entry.wins).filter(([type, n]) => /^[\w -]{1,40}$/.test(type) && whole(n))),
-    medals: [0, 1, 2].map((i) => (whole(entry.medals?.[i]) ? entry.medals[i] : 0)),
-  } : {}),
-  ranks: (entry) => ({ belt: BELTS.includes(entry.belt) ? entry.belt : null }),
-};
-const sound = (user, entry) => /^\d{1,12}$/.test(user) && Number.isFinite(entry?.at) && entry.at <= Date.now() + 60000;
-
-document.addEventListener('scwr:ask', async () => {
-  document.dispatchEvent(new CustomEvent('scwr:kept', { detail: JSON.stringify(await read()) }));
+document.addEventListener('scwr:request', async event => {
+  let id;
+  const reply = result => document.dispatchEvent(new CustomEvent('scwr:response', { detail: JSON.stringify({ id, ...result }) }));
+  try {
+    const request = JSON.parse(event.detail);
+    id = request.id;
+    if (!Number.isSafeInteger(id)) return;
+    if (request.op === 'fetch') reply(await fetchAthlete(request, () => reply({ started: true })));
+    else if (OPS.includes(request.op)) reply(await send(request));
+    else reply({ error: 'Unsupported page request' });
+  } catch {
+    reply({ error: 'Extension unavailable; reload this page.' });
+  }
 });
 
-// Another tab may have written since, so each entry is kept at its newest; one
-// write ends before the next reads, or the second would undo the first.
-let writing = Promise.resolve();
-document.addEventListener('scwr:keep', (event) => { writing = writing.then(() => keep(JSON.parse(event.detail))).catch(() => {}); });
-async function keep(given) {
-  const kept = await read();
-  for (const name of NAMES) {
-    for (const [user, entry] of Object.entries(given[name] ?? {})) {
-      if (sound(user, entry) && entry.at > (kept[name][user]?.at ?? 0)) kept[name][user] = { at: entry.at, ...CLEAN[name](entry) };
-    }
-    for (const user of Object.keys(kept[name])) if (Date.now() - kept[name][user].at >= KEPT) delete kept[name][user];
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  const site = location.hostname === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com';
+  const prefix = `scwr2:${site}:`;
+  const kept = { careers: {}, ranks: {} };
+  for (const [name, change] of Object.entries(changes)) {
+    if (!name.startsWith(prefix) || !change.newValue) continue;
+    const [kind, user] = name.slice(prefix.length).split(':');
+    if (Object.hasOwn(kept, kind)) kept[kind][user] = change.newValue;
   }
-  await chrome.storage.local.set(Object.fromEntries(NAMES.map((name) => [`${SITE}:${name}`, kept[name]])));
-}
+  if (Object.keys(kept.careers).length || Object.keys(kept.ranks).length) {
+    document.dispatchEvent(new CustomEvent('scwr:updated', { detail: JSON.stringify(kept) }));
+  }
+});

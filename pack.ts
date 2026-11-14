@@ -13,6 +13,7 @@ if (version) {
 const manifest = await Bun.file('manifest.json').json();
 const files = new Set<string>([
   'manifest.json',
+  ...(manifest.background?.service_worker ? [manifest.background.service_worker, 'career-cache.js'] : []),
   ...Object.values<string>(manifest.icons),
   ...manifest.content_scripts.flatMap((script: { js?: string[]; css?: string[] }) => [
     ...(script.js ?? []),

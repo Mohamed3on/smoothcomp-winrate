@@ -32,6 +32,8 @@
       ],
       "js": [
         "site.js",
+        "career-cache.js",
+        "careers.js",
         "picks.js",
         "participants.js"
       ],
@@ -59,5 +61,8 @@
         "results.css"
       ]
     }
-  ]
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
 }

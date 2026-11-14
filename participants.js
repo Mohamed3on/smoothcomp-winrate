@@ -2,130 +2,41 @@
 // payload, then renders four at a time behind infinite scroll. Show them all at
 // once, biggest bracket first, and rank each bracket by its athletes' careers.
 
-// A career is two requests per athlete, so it is read only for brackets near the
-// screen, a whole bracket at once, and kept for three weeks. Walkovers stay out unless
-// switched on in the results page; every other win counts, since this page shows
-// no switch that could explain one missing.
-const CAREERS = 'careers';
-const KEPT = 21 * 24 * 60 * 60 * 1000;
-const careers = SCWRSite.store.get(CAREERS, {});
-const reading = new Map();
+const { careers, ranks, fresh, readCareer, readRank, save, ready: shared } = SCWRCareers;
+const KEPT = SCWRCache.KEPT;
+const BURST = 5;
 const typesOff = SCWRSite.store.get('results-prefs')?.typesOff;
 const counted = (type) => type !== 'walkover' || (Array.isArray(typesOff) && !typesOff.includes(type));
-const fresh = (user) => Date.now() - (careers[user]?.at ?? 0) < KEPT;
 
-// Smoothcomp signs each athlete's routes, and the signature comes only in their
-// profile page, good for a quarter of an hour. Cloudflare lets about five of
-// those pages through every ten seconds and refuses the rest, which a read from
-// an organiser's subdomain sees as a failed fetch; asking faster only wastes
-// requests. So five go at once, the rest at that pace, and a refusal rests every
-// read a while before it asks again. Each turn goes to an athlete on screen
-// before any other. A page with no signature is a hidden profile, or a site that
-// signs nothing, and its routes are asked unsigned.
-const BURST = 5;
-const WINDOW = 10500;
-const signatures = new Map();
-const asked = []; // when the last few profile pages were asked
-let held = 0; // no profile page is asked before then
-const pause = (ms) => new Promise((done) => setTimeout(done, ms));
-
-// The athletes whose rows are on screen, by the profile links the rows hold.
+let seenAt = 0;
+let visibleUsers = new Set();
 function onScreen() {
+  if (Date.now() - seenAt < 100) return visibleUsers;
+  seenAt = Date.now();
   const seen = new Set();
   for (const link of document.querySelectorAll('#registrations a[href*="/profile/"], .scwr-bracket a[href*="/profile/"]')) {
     const { top, bottom } = link.getBoundingClientRect();
     if (bottom > 0 && top < innerHeight) seen.add(SCWRSite.profileId(link.getAttribute('href')));
   }
-  return seen;
+  return visibleUsers = seen;
 }
-
-const line = []; // athletes waiting for their profile page
-let turning = false;
-async function turns() {
-  if (turning) return;
-  turning = true;
-  while (line.length) {
-    const wait = Math.max(held, asked.length < BURST ? 0 : asked[0] + WINDOW) - Date.now();
-    if (wait > 0) { await pause(wait); continue; }
-    asked.push(Date.now());
-    if (asked.length > BURST) asked.shift();
-    // First an athlete on screen, then a whole-event read with one to pick, then whoever waited longest.
-    const seen = onScreen();
-    let next = line.findIndex((waiting) => seen.has(waiting.user));
-    if (next < 0 && [...pending].some((user) => seen.has(user))) next = line.findIndex((waiting) => !waiting.user);
-    line.splice(Math.max(0, next), 1)[0].go();
-  }
-  turning = false;
-}
-// A turn asked for no athlete in particular is a whole-event read's: it picks
-// its athlete once the turn comes, so a list scrolled meanwhile is read where it stands.
-const turn = (user) => new Promise((go) => { line.push({ user, go }); turns(); });
-
-async function signature(user, taken = false) {
-  const kept = signatures.get(user);
-  if (kept?.until > Date.now()) return kept.query;
-  for (let rest = 10000; ; rest = Math.min(rest * 2, 60000)) {
-    if (!taken) await turn(user);
-    taken = false;
-    const response = await fetch(SCWRSite.url.page(user), { credentials: 'include' }).catch(() => null);
-    if (response && response.status !== 429 && response.status < 500) {
-      const found = (await response.text()).match(/data-data-signature="([^"]*)"/)?.[1].replaceAll('&quot;', '"');
-      const { signature: sign, expires } = found ? JSON.parse(found) : {};
-      const query = sign ? `?signature=${sign}&expires=${expires}` : '';
-      signatures.set(user, { query, until: sign ? expires * 1000 - 60000 : Date.now() + 60000 });
-      return query;
+SCWRCareers.configure({ priority: onScreen, changed: careerChanged });
+let resorting;
+function careerChanged(users) {
+  if (!vm) return;
+  if (users?.size && order === null) {
+    const names = new Set(vm.all.filter(g => g.registrations.some(r => users.has(String(r.user_id)))).map(g => g.name));
+    if (names.size) {
+      if (stack && !draining) restack(); else rerank(names);
     }
-    held = Date.now() + rest;
+  } else if (users?.size && LEADS.includes(order) && !resorting) {
+    resorting = setTimeout(() => {
+      resorting = null;
+      if (LEADS.includes(order)) show();
+    }, draining ? Math.max(0, shownAt + 15000 - Date.now()) : 0);
   }
+  queue();
 }
-
-// Records refused before the signature was read were kept as hidden profiles.
-if (!SCWRSite.store.get('signed')) {
-  for (const user of Object.keys(careers)) if (!careers[user].wins) delete careers[user];
-  SCWRSite.store.set(CAREERS, careers);
-  SCWRSite.store.set('ranks', {});
-  SCWRSite.store.set('signed', true);
-}
-
-function readCareer(user, taken) {
-  if (!reading.has(user)) {
-    reading.set(user, signature(user, taken).then((signed) => fetch(SCWRSite.url.career(user, signed), { credentials: 'include' })).then(async (response) => {
-      // A hidden profile answers 403, which asking again will not change; a busy
-      // server might, so that athlete stays unread until the bracket is next seen.
-      if (response.status === 429 || response.status >= 500) return;
-      const data = response.ok ? (await response.json()).data : null;
-      careers[user] = { at: Date.now(), ...(data && {
-        wins: Object.fromEntries(data.win_method_breakdown.map((t) => [t.won_by, t.count])),
-        medals: [data.medals.gold, data.medals.silver, data.medals.bronze],
-      }) };
-    }).catch(() => {}).finally(() => { reading.delete(user); queue(); }));
-  }
-  return reading.get(user);
-}
-
-function save() {
-  for (const user of Object.keys(careers)) if (!fresh(user)) delete careers[user];
-  SCWRSite.store.set(CAREERS, careers);
-  for (const user of Object.keys(ranks)) if (Date.now() - ranks[user].at >= KEPT) delete ranks[user];
-  SCWRSite.store.set('ranks', ranks);
-  document.dispatchEvent(new CustomEvent('scwr:keep', { detail: JSON.stringify({ careers, ranks }) }));
-}
-
-// What any organiser's site has read is kept by the extension too (shared.js),
-// and joins what this site kept, newest first, before the list is ranked; what
-// this site alone had goes back the same way.
-const shared = new Promise((done) => {
-  document.addEventListener('scwr:kept', (event) => {
-    const kept = JSON.parse(event.detail);
-    for (const [mine, theirs] of [[careers, kept.careers], [ranks, kept.ranks]]) {
-      for (const [user, entry] of Object.entries(theirs)) if (entry.at > (mine[user]?.at ?? 0)) mine[user] = entry;
-    }
-    save();
-    done();
-  }, { once: true });
-  setTimeout(done, 1000);
-});
-document.dispatchEvent(new CustomEvent('scwr:ask'));
 
 // Counted wins, wins by submission and wins by points; null while the career
 // is unread or hidden.
@@ -167,9 +78,10 @@ function rank(group, lead = 0) {
 const MEDALS = ['gold', 'silver', 'bronze'];
 function calls(rows) {
   const wins = rows.map((r) => tally(r.user_id)?.[0]);
+  const complete = rows.every(r => !r.user_id || fresh(r.user_id));
   return rows.map((r, i) => i < 3 && {
     medal: i,
-    sure: rows.length === 1 || (wins[i] !== undefined && wins.every((w, j) => j === i || w !== wins[i])),
+    sure: rows.length === 1 || (complete && wins[i] !== undefined && wins.every((w, j) => j === i || w !== wins[i])),
   });
 }
 const dot = (call) => (call ? `<i class="scwr-medal" data-medal="${MEDALS[call.medal]}"${call.sure ? '' : ' data-tied'}></i>` : '');
@@ -439,20 +351,8 @@ const club = (card) => card.dataset.academy;
 // the gi division beside it decides. An athlete with only those wears the latest
 // BJJ belt their profile lists, read once and kept three weeks; with none there either,
 // no belt.
-const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
-const oneBelt = (text) => {
-  const named = BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(text.replace(/gray/i, 'grey')));
-  return named.length === 1 ? named[0] : null;
-};
-const ranks = SCWRSite.store.get('ranks', {}); // a user's profile belt, as { at, belt }
-const needsRank = (user) => !belt(user) && Date.now() - (ranks[user]?.at ?? 0) >= KEPT;
-async function readRank(user) {
-  const response = await signature(user).then((signed) => fetch(SCWRSite.url.skills(user, signed), { credentials: 'include' })).catch(() => null);
-  if (!response || response.status === 429 || response.status >= 500) return;
-  const skills = response.ok ? (await response.json().catch(() => null))?.data ?? [] : [];
-  const latest = skills.filter((skill) => /jiu|bjj/i.test(skill.name)).sort((a, b) => b.sort_order - a.sort_order)[0];
-  ranks[user] = { at: Date.now(), belt: latest?.belt && oneBelt(latest.belt) };
-}
+const { BELTS, oneBelt } = SCWRCache;
+const needsRank = (user) => !belt(user) && !SCWRCache.fresh(ranks[user], 'ranks');
 let beltOf;
 function belt(key) {
   if (!beltOf) {
@@ -561,12 +461,9 @@ function drain() {
   if (pending.size) {
     draining ??= Promise.all(Array.from({ length: BURST }, async () => {
       while (pending.size) {
-        await turn();
-        const seen = onScreen();
-        const user = [...pending].find((waiting) => seen.has(waiting)) ?? pending.values().next().value;
+        const user = await SCWRCareers.next(pending, u => !fresh(u) || (order !== null && needsRank(u)));
         if (!user) break;
-        pending.delete(user);
-        if (!fresh(user)) await readCareer(user, true);
+        if (!fresh(user)) await readCareer(user);
         if (order !== null && needsRank(user)) await readRank(user);
         if (order === 'academies') glide ??= tops(box.querySelectorAll('.profile-card'), club);
         if (LEADS.includes(order) && Date.now() - shownAt > 15000) show(); else queue();
@@ -594,7 +491,7 @@ const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-
 function draw(cell, user) {
   const t = user && tally(user);
   const medals = t && careers[user].medals;
-  const state = user === 'head' ? user : t ? `${t}|${medals}` : !user ? '' : fresh(user) ? 'hidden' : reading.has(user) || pending.has(user) ? 'reading' : '';
+  const state = user === 'head' ? user : t ? `${t}|${medals}` : !user ? '' : fresh(user) ? 'hidden' : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
   if (cell.dataset.state === state) return;
   cell.dataset.state = state;
   cell.title = '';
@@ -658,10 +555,10 @@ function paint() {
     swatch.dataset.belt = grade;
     swatch.title = `${grade[0].toUpperCase()}${grade.slice(1)} belt`;
   }
-  // Each division an athlete entered opens its bracket and, once every career is
-  // read, leads with the medal that bracket points to for them.
+  // Each division leads with its bracket's current medal call. Unread rivals
+  // make that bracket's call a ring; another bracket loading does not hide it.
   if (LEADS.includes(order)) {
-    if (!draining) foresee();
+    foresee();
     for (const division of document.querySelectorAll('#registrations .participant-td-registration > div')) {
       if (!division.role) {
         division.setAttribute('role', 'button');
@@ -669,7 +566,7 @@ function paint() {
         division.tabIndex = 0;
       }
       const user = SCWRSite.profileId(division.closest('.profile-card')?.querySelector('a[href*="/profile/"]')?.getAttribute('href'));
-      const call = !draining && foreseen.get(user)?.find((c) => c.name === division.textContent.trim());
+      const call = foreseen.get(user)?.find((c) => c.name === division.textContent.trim());
       const medal = call ? dot(call) : '';
       const held = division.querySelector(':scope > .scwr-medal');
       if ((held?.outerHTML ?? '') === medal) continue;
@@ -706,7 +603,7 @@ async function profile() {
   const get = (url) => fetch(url, { credentials: 'include' }).then((r) => (r.ok ? r : Promise.reject(r.status)));
   const [settings, skills] = await Promise.all([
     get(SCWRSite.url.settings(me)).then((r) => r.text()),
-    signature(me).then((signed) => get(SCWRSite.url.skills(me, signed))).then((r) => r.json()),
+    SCWRCareers.signature(me).then((signed) => get(SCWRSite.url.skills(me, SCWRCareers.query(signed)))).then((r) => r.json()),
   ]);
   const field = (label) => settings.match(new RegExp(`label="${label}"[^>]*?value="([^"]*)"`))?.[1];
   const found = {

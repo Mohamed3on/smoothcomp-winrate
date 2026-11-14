@@ -1,0 +1,299 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const { test } = require('node:test');
+
+// Two real content-script senders share one worker and Chrome's storage contract.
+// No Smoothcomp requests are sent by these concurrency and expiry checks.
+function worker(storage = { local: {}, session: {} }, now = 1800000000000) {
+  let listener;
+  const storageListeners = [];
+  const replies = [];
+  const area = (name) => ({
+    get: async (keys) => structuredClone(keys === null ? storage[name] : Object.fromEntries(keys.filter(k => k in storage[name]).map(k => [k, storage[name][k]]))),
+    set: async (given) => {
+      const changes = Object.fromEntries(Object.entries(given).map(([key, value]) => [key, { oldValue: structuredClone(storage[name][key]), newValue: structuredClone(value) }]));
+      Object.assign(storage[name], structuredClone(given));
+      for (const fn of storageListeners) fn(changes, name);
+    },
+    remove: async (keys) => { for (const key of keys) delete storage[name][key]; },
+  });
+  const context = vm.createContext({ URL, importScripts() {}, crypto: require('node:crypto').webcrypto,
+    Date: class extends Date { static now() { return now; } },
+    chrome: { storage: { local: area('local'), session: area('session') }, runtime: { onMessage: { addListener(fn) { listener = fn; } } } },
+  });
+  vm.runInContext(fs.readFileSync('career-cache.js', 'utf8'), context);
+  vm.runInContext(fs.readFileSync('background.js', 'utf8'), context);
+  return {
+    storage,
+    now: () => now,
+    replies,
+    onStorageChange: fn => storageListeners.push(fn),
+    advance: (ms) => { now += ms; },
+    send: (message, tab = 1, host = 'grapplingindustries.smoothcomp.com') => new Promise(resolve => {
+      listener({ channel: 'scwr', ...message }, { tab: { id: tab }, documentId: `doc-${tab}`, url: `https://${host}/en/event/25902/participants` }, result => { replies.push({ op: message.op, ...structuredClone(result) }); resolve(structuredClone(result)); });
+    }),
+  };
+}
+
+test('tabs share five profile slots, including after the worker restarts', async () => {
+  const w = worker();
+  const slots = await Promise.all(Array.from({ length: 6 }, (_, i) => w.send({ op: 'slot' }, i + 1)));
+  assert.equal(slots.filter(s => s.wait === 0).length, 5);
+  assert.equal(slots[5].wait, 10500);
+  const restarted = worker(w.storage);
+  assert.equal((await restarted.send({ op: 'slot' })).wait, 10500);
+  restarted.advance(10500);
+  assert.equal((await restarted.send({ op: 'slot' })).wait, 0);
+});
+
+function page(w, fetcher, tab = 1) {
+  class CustomEvent extends Event { constructor(name, options) { super(name); this.detail = options.detail; } }
+  const document = new EventTarget();
+  const stored = {};
+  const fetched = [];
+  const context = vm.createContext({ document, CustomEvent, setTimeout, clearTimeout, setInterval, clearInterval, AbortSignal, Response,
+    Date: class extends Date { static now() { return w.now(); } },
+    location: { hostname: 'grapplingindustries.smoothcomp.com' },
+    SCWRSite: { store: { get: (key, fallback) => stored[key] ?? fallback, set: (key, value) => { stored[key] = value; } },
+      url: { page: u => `https://smoothcomp.com/en/profile/${u}`, career: (u, s) => `https://smoothcomp.com/en/athlete/${u}/wins-and-medals${s}`, skills: (u, s) => `https://smoothcomp.com/en/athlete/${u}/skills${s}` } },
+    fetch: async url => { fetched.push(url); return fetcher(url); },
+  });
+  const bridge = vm.createContext({ document, CustomEvent, URL, Date: class extends Date { static now() { return w.now(); } }, AbortSignal,
+    location: { hostname: 'grapplingindustries.smoothcomp.com' }, fetch: async url => { fetched.push(url); return fetcher(url); },
+    chrome: { runtime: { sendMessage: message => w.send(message, tab) }, storage: { onChanged: { addListener: w.onStorageChange } } } });
+  vm.runInContext(fs.readFileSync('shared.js', 'utf8'), bridge);
+  for (const file of ['career-cache.js', 'careers.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+  return { api: vm.runInContext('SCWRCareers', context), fetched, context, document, CustomEvent };
+}
+const json = data => new Response(JSON.stringify({ data }), { headers: { 'Content-Type': 'application/json' } });
+const career = () => json({ win_method_breakdown: [{ won_by: 'submission', count: 7 }], medals: { gold: 1, silver: 0, bronze: 0 } });
+const profile = w => new Response(`<athlete-profile data-data-signature="{&quot;signature&quot;:&quot;abc&quot;,&quot;expires&quot;:${Math.floor(w.now() / 1000) + 900}}"></athlete-profile>`);
+
+test('career and belt readers share one profile request and persist without an event-wide save', async () => {
+  const w = worker();
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : url.includes('/skills') ? json([{ name: 'BJJ', belt: 'Purple', sort_order: 1 }]) : career());
+  await Promise.all([p.api.readCareer('1'), p.api.readCareer('1'), p.api.readRank('1')]);
+  assert.equal(p.fetched.filter(url => url.includes('/profile/')).length, 1);
+  assert.equal(p.fetched.length, 3);
+  assert.equal(p.api.careers['1'].wins.submission, 7);
+  assert.equal(p.api.ranks['1'].belt, 'purple');
+  assert.equal((await w.send({ op: 'claim', kind: 'careers', user: '1' }, 2)).entry.wins.submission, 7);
+  assert.equal(w.storage.session['scwr:requests'].sites['smoothcomp.com'].asked.length, 1);
+});
+
+test('a second tab joins completed work instead of fetching the athlete twice', async () => {
+  const w = worker();
+  const fetcher = url => url.includes('/profile/') ? profile(w) : career();
+  const first = page(w, fetcher);
+  const second = page(w, fetcher, 2);
+  await Promise.all([first.api.readCareer('1'), second.api.readCareer('1')]);
+  assert.equal(first.fetched.length + second.fetched.length, 2);
+  assert.equal(second.api.careers['1'].wins.submission, 7);
+});
+
+test('confirmed privacy skips the career endpoint, then is rechecked after two weeks', async () => {
+  const w = worker();
+  let privateProfile = true;
+  const p = page(w, url => url.includes('/profile/') ? privateProfile ? new Response('<h1>This profile is not public.</h1>') : profile(w) : career());
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.length, 1);
+  assert.equal(p.api.careers['1'].hidden, true);
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.length, 1);
+  w.advance(14 * 24 * 60 * 60 * 1000 + 1);
+  privateProfile = false;
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.length, 3);
+  assert.equal(p.api.careers['1'].wins.submission, 7);
+});
+
+test('403s and unexpected unsigned pages are not cached as private', async () => {
+  for (const fetcher of [url => url.includes('/profile/') ? new Response('<h1>Forbidden</h1>', { status: 403 }) : career(),
+    url => url.includes('/profile/') ? new Response('<h1>Something unexpected</h1>') : career(),
+    url => url.includes('/profile/') ? profile({ now: () => 1800000000000 }) : new Response('Forbidden', { status: 403 })]) {
+    const w = worker();
+    const p = page(w, fetcher);
+    await p.api.readCareer('1');
+    assert.equal(p.api.fresh('1'), false);
+    assert.equal(p.api.careers['1'], undefined);
+    assert.equal(Object.values(w.storage.local).some(entry => entry.hidden), false);
+  }
+});
+
+test('a cached career costs no slots and a belt-only read costs exactly one', async () => {
+  const w = worker();
+  await w.send({ op: 'import', careers: { '1': { at: w.now(), wins: {}, medals: [0, 0, 0] } }, ranks: {} });
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : json([]));
+  await p.api.ready;
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.length, 0);
+  await p.api.readRank('1');
+  assert.equal(p.fetched.length, 2);
+  assert.equal(w.storage.session['scwr:requests'].sites['smoothcomp.com'].asked.length, 1);
+});
+
+test('one tab owns a career; completed work is immediately available in another', async () => {
+  const w = worker();
+  const job = { kind: 'careers', user: '123' };
+  const owner = await w.send({ op: 'claim', ...job });
+  assert.ok(owner.token);
+  assert.ok((await w.send({ op: 'claim', ...job }, 2)).wait > 0);
+  const entry = { at: 1800000000000, wins: { submission: 7 }, medals: [1, 2, 0] };
+  await w.send({ op: 'complete', ...job, token: owner.token, entry });
+  assert.deepEqual((await w.send({ op: 'claim', ...job }, 2)).entry, entry);
+  assert.equal(Object.values(w.storage.local).filter(e => e?.wins).length, 1);
+});
+
+test('private profiles expire in two weeks while public careers stay for three weeks', async () => {
+  const w = worker();
+  for (const [user, entry] of [['1', { at: 1800000000000, hidden: true }], ['2', { at: 1800000000000, wins: {}, medals: [0, 0, 0] }]]) {
+    const job = { kind: 'careers', user };
+    const { token } = await w.send({ op: 'claim', ...job });
+    await w.send({ op: 'complete', ...job, token, entry });
+  }
+  w.advance(14 * 24 * 60 * 60 * 1000 + 1);
+  assert.ok((await w.send({ op: 'claim', kind: 'careers', user: '1' })).token);
+  assert.ok((await w.send({ op: 'claim', kind: 'careers', user: '2' })).entry.wins);
+});
+
+test('a vanished tab cannot keep a career claimed indefinitely', async () => {
+  const w = worker();
+  const job = { kind: 'careers', user: '1' };
+  const first = await w.send({ op: 'claim', ...job });
+  w.advance(121000);
+  const next = await w.send({ op: 'claim', ...job }, 2);
+  assert.ok(next.token);
+  assert.notEqual(first.token, next.token);
+  await w.send({ op: 'complete', ...job, token: first.token, entry: { at: 1800000121000, hidden: true } });
+  assert.ok((await w.send({ op: 'claim', ...job }, 3)).wait > 0);
+});
+
+test('cooldowns are shared; AJP and lookalike hosts cannot interfere with Smoothcomp', async () => {
+  const w = worker();
+  await w.send({ op: 'cooldown', ms: 30000 });
+  assert.equal((await w.send({ op: 'slot' }, 2)).wait, 30000);
+  assert.equal((await w.send({ op: 'slot' }, 3, 'ajptour.com')).wait, 0);
+  assert.ok((await w.send({ op: 'slot' }, 4, 'notsmoothcomp.com')).error);
+});
+
+test('old ambiguous hidden entries are discarded and simultaneous saves survive', async () => {
+  const w = worker();
+  await Promise.all([
+    w.send({ op: 'import', careers: { '1': { at: 1800000000000 }, '2': { at: 1800000000000, wins: {}, medals: [0, 0, 0] } }, ranks: {} }),
+    w.send({ op: 'import', careers: { '3': { at: 1800000000000, hidden: true } }, ranks: {} }, 2),
+  ]);
+  const kept = await w.send({ op: 'read' });
+  assert.deepEqual(Object.keys(kept.careers).sort(), ['2', '3']);
+});
+
+test('expired privacy does not resurrect an older public cache from another organiser', async () => {
+  const w = worker({ local: {
+    'smoothcomp.com:careers': { '1': { at: 1799999999000, wins: { points: 9 }, medals: [0, 0, 0] } },
+    'scwr2:smoothcomp.com:careers:1': { at: 1800000000000, hidden: true },
+  }, session: {} });
+  w.advance(14 * 24 * 60 * 60 * 1000 + 1);
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : career());
+  await p.api.ready;
+  assert.equal(p.api.fresh('1'), false);
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.length, 2);
+  assert.equal(p.api.careers['1'].wins.submission, 7);
+});
+
+test('expired keys are removed while privacy invalidation survives until older public data expires', async () => {
+  const now = 1800000000000;
+  const old = now - 22 * 86400000;
+  const tombstone = now - 15 * 86400000;
+  const w = worker({ local: {
+    'scwr2:smoothcomp.com:careers:1': { at: old, wins: {}, medals: [0, 0, 0] },
+    'scwr2:smoothcomp.com:careers:2': { at: tombstone, hidden: true },
+  }, session: {
+    'scwr2:smoothcomp.com:signatures:1': { at: now - 100000, signature: 'abc', expires: now / 1000 - 1 },
+  } });
+  await w.send({ op: 'read' });
+  assert.equal(w.storage.local['scwr2:smoothcomp.com:careers:1'], undefined);
+  assert.equal(w.storage.session['scwr2:smoothcomp.com:signatures:1'], undefined);
+  assert.equal(w.storage.local['scwr2:smoothcomp.com:careers:2'].at, tombstone);
+});
+
+test('page events cannot forge a global cooldown', async () => {
+  const w = worker();
+  const p = page(w, () => career());
+  await p.api.ready;
+  const response = new Promise(resolve => {
+    const listener = event => { const result = JSON.parse(event.detail); if (result.id === 900000) { p.document.removeEventListener('scwr:response', listener); resolve(result); } };
+    p.document.addEventListener('scwr:response', listener);
+  });
+  p.document.dispatchEvent(new p.CustomEvent('scwr:request', { detail: JSON.stringify({ id: 900000, op: 'cooldown', ms: 86400000 }) }));
+  assert.ok((await response).error);
+  assert.equal((await w.send({ op: 'slot' }, 2)).wait, 0);
+});
+
+test('a real throttle or challenge pauses other tabs, then retries without caching privacy', async () => {
+  for (const refusal of [() => new Response('Too many requests', { status: 429, headers: { 'Retry-After': '30' } }),
+    () => new Response('<title>Just a moment...</title>', { status: 403, headers: { 'cf-mitigated': 'challenge' } })]) {
+    const w = worker();
+    const send = w.send;
+    let blocked;
+    w.send = async (...args) => {
+      const result = await send(...args);
+      if (args[0].op === 'cooldown') {
+        blocked = (await send({ op: 'slot' }, 2)).wait;
+        w.advance(blocked + 1);
+      }
+      return result;
+    };
+    let attempts = 0;
+    const p = page(w, url => url.includes('/profile/') ? ++attempts === 1 ? refusal() : profile(w) : career());
+    await p.api.readCareer('1');
+    assert.ok(blocked >= 10000);
+    assert.equal(attempts, 2);
+    assert.equal(p.api.careers['1'].wins.submission, 7);
+    assert.equal(p.api.careers['1'].hidden, undefined);
+  }
+});
+
+test('a transient initial worker failure recovers without reloading the page', async () => {
+  const w = worker();
+  const send = w.send;
+  let failed = false;
+  w.send = (...args) => {
+    if (args[0].op === 'read' && !failed) { failed = true; return Promise.reject(new Error('Worker restarting')); }
+    return send(...args);
+  };
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : career());
+  await p.api.readCareer('1');
+  assert.equal(p.api.careers['1'].wins.submission, 7);
+});
+
+test('scrolling during a slot wait selects the newly visible pending athlete without spending a slot', async () => {
+  const w = worker();
+  await Promise.all(Array.from({ length: 5 }, () => w.send({ op: 'slot' })));
+  const p = page(w, () => career());
+  let visible = new Set(['1']);
+  p.api.configure({ priority: () => visible, changed() {} });
+  const pending = new Set(['1', '2']);
+  const next = p.api.next(pending, () => true);
+  while (!w.replies.some(r => r.op === 'available' && r.wait > 0)) await new Promise(setImmediate);
+  visible = new Set(['2']);
+  w.advance(10500);
+  assert.equal(await next, '2');
+  assert.deepEqual([...pending], ['1']);
+  assert.equal(p.fetched.length, 0);
+  const slots = await Promise.all(Array.from({ length: 6 }, () => w.send({ op: 'slot' })));
+  assert.equal(slots.filter(r => r.wait === 0).length, 5);
+});
+
+test('another tab broadcasts completed careers through the isolated bridge', async () => {
+  const w = worker();
+  const first = page(w, url => url.includes('/profile/') ? profile(w) : career());
+  const second = page(w, url => url.includes('/profile/') ? profile(w) : career(), 2);
+  await Promise.all([first.api.ready, second.api.ready]);
+  let updated;
+  first.api.configure({ priority: () => new Set(), changed(users) { if (users?.size) updated = [...users]; } });
+  await second.api.readCareer('1');
+  assert.equal(first.fetched.length, 0);
+  assert.equal(first.api.careers['1'].wins.submission, 7);
+  assert.deepEqual(updated, ['1']);
+});

@@ -26,14 +26,15 @@ Athletes Smoothcomp hides until their registration is approved show too, faded a
 As a bracket nears the screen, each athlete's career replaces the registration column, which only
 repeated the bracket title: wins, leaving out walkovers unless the results page counts them, over how many
 came by submission and on points, then medals. The bracket ranks itself by wins, submissions, points,
-then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for a
-week; a hidden profile has none.
+then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for three
+weeks across organiser sites. Confirmed private profiles have no career shown and are checked again after two weeks.
+Tabs share one request allowance and reuse work already in progress; each completed athlete is saved immediately.
 
 A menu beside the page title swaps the brackets for one list of every athlete, one row each, ranked by career wins,
 submission wins or wins on points, with every division they entered under their name; or for every academy, ranked by
 its athletes' career wins added up, with the athletes behind them. An age range beside the menu narrows either list, as
-do search and the country filter. Opening one reads every career not yet kept, twelve at a time, and the list ranks once
-the last one lands.
+do search and the country filter. Opening one reads every career not yet kept at the pace Smoothcomp allows, prioritising athletes on screen.
+The lists rank as careers arrive and show how many are still unread.
 
 Signed in, a panel over the list names the three biggest brackets you could enter and would top-seed by that same
 order, with the athlete you'd displace and how many profiles stay hidden, and marks the ones you've entered. Gender, age and belt come from your
@@ -59,7 +60,10 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `matches.js` | Reads every match off the event's schedule, one request per mat |
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
-| `shared.js` | Keeps careers and belts in the extension's own storage, so every organiser's subdomain shares what one has read |
+| `career-cache.js` | Shared cache validation and expiry: three weeks for public records, two for confirmed privacy |
+| `background.js` | Coordinates requests across tabs and saves each completed athlete in extension storage |
+| `shared.js` | Reads through the signed-in browser session and bridges cache updates to the page |
+| `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
 | `participants.js` | The participants page |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
