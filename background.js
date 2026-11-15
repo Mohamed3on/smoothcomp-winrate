@@ -12,6 +12,9 @@ async function requests() {
 const checkpoint = () => chrome.storage.session.set({ [SESSION]: state });
 const key = (site, kind, user) => `${PREFIX}${site}:${kind}:${user}`;
 const validUser = (user) => typeof user === 'string' && /^\d{1,12}$/.test(user);
+// Backoff doubles from 10 s to a minute. Refused this many times running, the
+// browser is challenged for good, so ask only once a quarter hour.
+const PAUSE = 5;
 
 function siteFor(sender) {
   try {
@@ -84,11 +87,13 @@ async function handle(message, sender) {
     limit.asked = limit.asked.filter(at => at + 10500 > Date.now());
     const wait = Math.max(0, limit.held - Date.now(), op !== 'delay' && limit.asked.length >= 5 ? limit.asked[0] + 10500 - Date.now() : 0);
     if (op === 'slot' && !wait) { limit.asked.push(Date.now()); await checkpoint(); }
-    return { wait };
+    return { wait, paused: limit.strikes >= PAUSE };
   }
   if (op === 'cooldown') {
-    limit.strikes = Math.min(limit.strikes + 1, 4);
-    const rest = Math.max(Math.min(10000 * 2 ** (limit.strikes - 1), 60000), Number.isFinite(message.ms) ? Math.min(message.ms, 24 * 60 * 60 * 1000) : 0);
+    // Requests already in flight fail together: one refusal, not several.
+    if (limit.held <= Date.now()) limit.strikes = Math.min(limit.strikes + 1, PAUSE);
+    const backoff = limit.strikes >= PAUSE ? 15 * 60000 : Math.min(10000 * 2 ** (limit.strikes - 1), 60000);
+    const rest = Math.max(backoff, Number.isFinite(message.ms) ? Math.min(message.ms, 24 * 60 * 60 * 1000) : 0);
     limit.held = Math.max(limit.held, Date.now() + rest);
     await checkpoint();
     return { wait: limit.held - Date.now() };

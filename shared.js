@@ -5,8 +5,8 @@ const OPS = ['read', 'import', 'claim', 'renew', 'complete', 'peek', 'available'
 async function fetchAthlete(request, started) {
   const { resource, user, signed = {} } = request;
   if (!['profile', 'career', 'skills'].includes(resource) || !/^\d{1,12}$/.test(user)) throw new Error('Invalid athlete request');
-  const { wait } = await send({ op: resource === 'profile' ? 'slot' : 'delay' });
-  if (wait) return { wait };
+  const { wait, paused } = await send({ op: resource === 'profile' ? 'slot' : 'delay' });
+  if (wait) return { wait, paused };
   const home = location.hostname === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com';
   const path = resource === 'profile' ? `profile/${user}` : `athlete/${user}/${resource === 'career' ? 'wins-and-medals' : 'skills'}`;
   const url = new URL(`/en/${path}`, home);

@@ -179,6 +179,21 @@ test('cooldowns are shared; AJP and lookalike hosts cannot interfere with Smooth
   assert.ok((await w.send({ op: 'slot' }, 4, 'notsmoothcomp.com')).error);
 });
 
+test('refusals in flight count once, and five running pause reading for a quarter hour', async () => {
+  const w = worker();
+  await Promise.all([1, 2, 3].map(tab => w.send({ op: 'cooldown' }, tab)));
+  assert.deepEqual(await w.send({ op: 'slot' }), { wait: 10000, paused: false });
+  for (const ms of [10000, 20000, 40000, 60000]) {
+    w.advance(ms);
+    await w.send({ op: 'cooldown' });
+  }
+  assert.deepEqual(await w.send({ op: 'available' }), { wait: 15 * 60000, paused: true });
+  w.advance(15 * 60000);
+  assert.deepEqual(await w.send({ op: 'slot' }), { wait: 0, paused: true });
+  await w.send({ op: 'healthy' });
+  assert.deepEqual(await w.send({ op: 'available' }), { wait: 0, paused: false });
+});
+
 test('old ambiguous hidden entries are discarded and simultaneous saves survive', async () => {
   const w = worker();
   await Promise.all([

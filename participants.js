@@ -20,7 +20,7 @@ function onScreen() {
   }
   return visibleUsers = seen;
 }
-SCWRCareers.configure({ priority: onScreen, changed: careerChanged });
+SCWRCareers.configure({ priority: onScreen, changed: careerChanged, halted: () => { if (!vm) return; if (LEADS.includes(order)) show(); else queue(); } });
 let resorting;
 function careerChanged(users) {
   if (!vm) return;
@@ -49,7 +49,7 @@ function tally(user) {
 
 // How much of a whole-event read is still to come: the athletes among these
 // registrations whose career is not read yet.
-const left = (rows) => `${plural(new Set(rows.filter((r) => r.user_id && !fresh(r.user_id)).map((r) => r.user_id)).size, 'career')} left to read`;
+const left = (rows) => `${plural(new Set(rows.filter((r) => r.user_id && !fresh(r.user_id)).map((r) => r.user_id)).size, 'career')} left to read${SCWRCareers.paused() ? ', paused while Smoothcomp refuses reads' : ''}`;
 
 let vm;
 let place; // each registration's index in Smoothcomp's own order

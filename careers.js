@@ -9,11 +9,16 @@ const SCWRCareers = (() => {
   let turning = false;
   let priority = () => new Set();
   let changed = () => {};
+  let halted = () => {};
   const pause = (ms) => new Promise(done => setTimeout(done, ms));
+  // Smoothcomp kept refusing profile pages, so reading waits a quarter hour per try.
+  let paused = false;
+  const pausing = (now) => { if (now !== paused) { paused = now; halted(); } };
 
   document.addEventListener('scwr:response', event => {
     try {
       const result = JSON.parse(event.detail);
+      if (typeof result.paused === 'boolean') pausing(result.paused);
       requests.get(result.id)?.(result);
     } catch {}
   });
@@ -98,7 +103,7 @@ const SCWRCareers = (() => {
         const started = new Promise(resolve => { release = resolve; });
         ask({ op: 'fetch', resource: 'profile', user: item.user }, () => release(0)).then(result => {
           if (result.wait) release(result.wait);
-          else { item.resolve(result); release(0); }
+          else { if (result.status === 200) pausing(false); item.resolve(result); release(0); }
         }, error => { item.reject(error); release(0); });
         const wait = await started;
         if (wait) await pause(Math.min(wait, 1000));
@@ -190,8 +195,8 @@ const SCWRCareers = (() => {
   }
   return { careers, ranks, ready, save, signature, query, next,
     fresh: user => SCWRCache.fresh(careers[user]),
-    isReading: user => reading.has(`careers:${user}`),
+    isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: user => read('careers', user), readRank: user => read('ranks', user),
-    configure(options) { priority = options.priority; changed = options.changed; },
+    configure(options) { priority = options.priority; changed = options.changed; halted = options.halted ?? halted; },
   };
 })();
