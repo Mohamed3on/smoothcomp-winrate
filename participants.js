@@ -52,8 +52,15 @@ function tally(user) {
 }
 
 // How much of a whole-event read is still to come: the athletes among these
-// registrations whose career is not read yet.
-const left = (rows) => `${plural(new Set(rows.filter((r) => r.user_id && !fresh(r.user_id)).map((r) => r.user_id)).size, 'career')} left to read${SCWRCareers.paused() ? ', paused while Smoothcomp refuses reads' : ''}`;
+// registrations whose career is not read yet. The progress bar fills from the
+// same count the heading gives.
+let done = 0;
+const left = (rows) => {
+  const users = new Set(rows.filter((r) => r.user_id).map((r) => r.user_id));
+  const unread = [...users].filter((user) => !fresh(user)).length;
+  done = users.size ? 1 - unread / users.size : 0;
+  return `${plural(unread, 'career')} left to read${SCWRCareers.paused() ? ', paused while Smoothcomp refuses reads' : ''}`;
+};
 
 let vm;
 let place; // each registration's index in Smoothcomp's own order
@@ -343,6 +350,7 @@ function academies() {
 // the most common affiliation, the careers added up, and under them every athlete,
 // most wins first: a grid of wins beside names, the first few until shown in full.
 let box; // where the academies are drawn, under Smoothcomp's own list
+let progress; // how much of a whole-event read has landed, under the list menu
 const common = (rows, key) => [...Map.groupBy(rows.filter((r) => r[key]), (r) => r[key]).values()].sort((a, b) => b.length - a.length)[0]?.[0];
 const expanded = new Set(); // academies whose every athlete is shown
 let revealed = null; // the academy just shown in full, whose added names fade in once
@@ -580,6 +588,8 @@ function paint() {
     }
   }
   if (order === 'academies') drawAcademies(); else if (box.firstChild) box.replaceChildren();
+  progress.hidden = !draining || (order === null && !stack);
+  progress.style.setProperty('--done', done);
   painter.observe(document.querySelector('#registrations'), { childList: true, subtree: true });
 }
 
@@ -757,9 +767,14 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   approved.className = 'scwr-approved';
   approved.dataset.scwrTheme = view.dataset.scwrTheme;
   approved.innerHTML = '<input type="checkbox">Approved only';
+  progress = document.createElement('div');
+  progress.className = 'scwr-progress';
+  progress.dataset.scwrTheme = view.dataset.scwrTheme;
+  progress.hidden = true;
+  progress.innerHTML = '<i></i>';
   const bar = document.createElement('div');
   bar.className = 'scwr-bar';
-  bar.append(view, ages, picker, approved);
+  bar.append(view, ages, picker, approved, progress);
   const search = list.querySelector('.well');
   if (search) search.after(bar); else list.before(bar);
   box = document.createElement('div');

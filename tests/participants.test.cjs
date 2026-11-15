@@ -32,7 +32,7 @@ test('division medals update during loading and only depend on their own bracket
   vm.runInContext(source.slice(source.indexOf('let foreseen ='), source.indexOf('// Each academy with')), context);
   vm.runInContext(`
     const LEADS = ['wins', 'submission']; let order = 'wins'; let draining = Promise.resolve();
-    const painter = { disconnect() {}, observe() {} }; const box = { firstChild: null };
+    const painter = { disconnect() {}, observe() {} }; const box = { firstChild: null }; const progress = { style: { setProperty() {} } };
     const a = { name: 'Bracket A', registrations: [{ id: 1, user_id: '1' }, { id: 2, user_id: '2' }] };
     const b = { name: 'Bracket B', registrations: [{ id: 3, user_id: '3' }] };
     vm = { all: [a, b] }; place = new Map([[1, 0], [2, 1], [3, 2]]);

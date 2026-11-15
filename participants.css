@@ -321,6 +321,7 @@
 .scwr-ages,
 .scwr-belts,
 .scwr-approved,
+.scwr-progress,
 .scwr-academies,
 #registrations,
 .scwr-bracket {
@@ -336,6 +337,7 @@
 .scwr-ages[data-scwr-theme='dark'],
 .scwr-belts[data-scwr-theme='dark'],
 .scwr-approved[data-scwr-theme='dark'],
+.scwr-progress[data-scwr-theme='dark'],
 .scwr-academies[data-scwr-theme='dark'],
 #registrations[data-scwr-theme='dark'],
 .scwr-bracket[data-scwr-theme='dark'] {
@@ -419,6 +421,26 @@
 /* The list menu and its filters ride in one row under Smoothcomp's search, right
    over the list they shape. */
 .scwr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 16px; }
+
+/* A whole-event read fills a hairline under the menu as careers land, and holds
+   faded while Smoothcomp refuses reads. */
+.scwr-progress {
+  flex-basis: 100%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  transition: opacity 200ms ease;
+}
+.scwr-progress > i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transform: scaleX(var(--done, 0));
+  transform-origin: left;
+  transition: transform 600ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+[data-scwr-paused] .scwr-progress { opacity: 0.4; }
 
 /* The list menu takes the shape and size of Smoothcomp's
    own header button, a pill of borrowed ink with a drawn caret. Its options open
@@ -569,6 +591,8 @@
   .scwr-career .scwr-pulse,
   .scwr-bracket .scwr-pulse { animation: none; }
   .scwr-view::picker-icon { transition: none; }
+  .scwr-progress,
+  .scwr-progress > i { transition: none; }
   .scwr-bracket:popover-open { animation-name: scwr-in; }
 }
 
