@@ -288,6 +288,8 @@
   animation: scwr-pulse 1.2s ease-in-out infinite;
 }
 .scwr-career .font-size-tiny .scwr-pulse { width: 8em; }
+/* Nothing is being read while Smoothcomp refuses reads, so the bars hold still. */
+[data-scwr-paused] .scwr-pulse { animation: none; }
 
 /* An unapproved athlete fades back, as Smoothcomp fades a row a search filtered
    out, and says so at the end of the row rather than on a line of its own. The

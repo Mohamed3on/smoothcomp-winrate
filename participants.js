@@ -20,7 +20,11 @@ function onScreen() {
   }
   return visibleUsers = seen;
 }
-SCWRCareers.configure({ priority: onScreen, changed: careerChanged, halted: () => { if (!vm) return; if (LEADS.includes(order)) show(); else queue(); } });
+SCWRCareers.configure({ priority: onScreen, changed: careerChanged, halted: () => {
+  document.documentElement.toggleAttribute('data-scwr-paused', SCWRCareers.paused());
+  if (!vm) return;
+  if (LEADS.includes(order)) show(); else queue();
+} });
 let resorting;
 function careerChanged(users) {
   if (!vm) return;
