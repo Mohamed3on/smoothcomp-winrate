@@ -26,15 +26,14 @@ Athletes Smoothcomp hides until their registration is approved show too, faded a
 As a bracket nears the screen, each athlete's career replaces the registration column, which only
 repeated the bracket title: wins, leaving out walkovers unless the results page counts them, over how many
 came by submission and on points, then medals. The bracket ranks itself by wins, submissions, points,
-then the younger athlete, and otherwise keeps Smoothcomp's order. Careers are read a bracket at a time and kept for three
-weeks across organiser sites. Confirmed private profiles have no career shown and are checked again after 30 days.
+then the younger athlete, and otherwise keeps Smoothcomp's order. Every career in the event is read from page load, brackets on
+screen first, with a bar under the menu filling as they land, and kept for three weeks across organiser sites. Confirmed private profiles have no career shown and are checked again after 30 days.
 Tabs share one request allowance and reuse work already in progress; each completed athlete is saved immediately.
 
 A menu beside the page title swaps the brackets for one list of every athlete, one row each, ranked by career wins,
 submission wins or wins on points, with every division they entered under their name; or for every academy, ranked by
 its athletes' career wins added up, with the athletes behind them. An age range beside the menu narrows either list, as
-do search and the country filter. Opening one reads every career not yet kept at the pace Smoothcomp allows, prioritising athletes on screen.
-The lists rank as careers arrive and show how many are still unread.
+do search and the country filter. Opening one finds the careers read so far; the lists rank as the rest arrive and show how many are still unread.
 
 Signed in, a panel over the list names the three biggest brackets you could enter and would top-seed by that same
 order, with the athlete you'd displace and how many profiles stay hidden, and marks the ones you've entered. Gender, age and belt come from your

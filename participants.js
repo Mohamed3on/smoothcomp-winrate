@@ -135,11 +135,16 @@ function arrange(groups) {
   }).sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0)).map(([g]) => g);
 }
 
-// A stacked order needs every career in the event, read as the athletes view
-// reads them; the brackets reorder once the last one lands.
-function stacking() {
-  for (const g of vm.all) for (const r of g.registrations) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
+// Every career in the event is read from the moment the page opens, athletes on
+// screen first, so a whole-event view opened later finds most of them read.
+function readAll() {
+  for (const g of source) for (const r of g.registrations) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
   drain();
+}
+
+// A stacked order needs every career in the event; the brackets reorder once the last one lands.
+function stacking() {
+  readAll();
   if (draining) queue(); else restack();
 }
 
@@ -456,8 +461,8 @@ function show() {
   vm.$nextTick(() => { slide(rows); queue(); });
 }
 
-// Opening either reads every career it still lacks, at the pace profile pages
-// allow: a big event takes many minutes the first time. Until the last one lands
+// Every career is read from page load, at the pace profile pages allow: a big
+// event takes many minutes the first time. Until the last one lands
 // the heading counts down, and the list ranks what is read so far, athletes
 // every quarter of a minute and academies as each career lands.
 const pending = new Set();
@@ -525,7 +530,7 @@ function draw(cell, user) {
 function paint() {
   painter.disconnect();
   const strength = stack && !draining && strengths();
-  const unread = stack && draining && left(vm.all.flatMap((g) => g.registrations));
+  const unread = draining && order === null && left(vm.all.flatMap((g) => g.registrations));
   for (const group of document.querySelectorAll('#registrations .participant-group')) {
     watcher.observe(group);
     // A stacked order says what it ranks by beside each bracket's name.
@@ -588,7 +593,7 @@ function paint() {
     }
   }
   if (order === 'academies') drawAcademies(); else if (box.firstChild) box.replaceChildren();
-  progress.hidden = !draining || (order === null && !stack);
+  progress.hidden = !draining;
   progress.style.setProperty('--done', done);
   painter.observe(document.querySelector('#registrations'), { childList: true, subtree: true });
 }
@@ -727,6 +732,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   source = vm.all;
   admit();
   vm.updateResults();
+  readAll();
   queue();
   // Under the search, which list to show: the brackets, every athlete, or
   // every academy; and for the last two, an age range, open at either end.
@@ -822,7 +828,6 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
     SCWRSite.store.set('view', view.value);
     stack = view.value === 'stacked';
     order = stack ? null : view.value || null;
-    if (order === null) pending.clear();
     list.classList.toggle('scwr-ranked', order !== null);
     ages.hidden = picker.hidden = order === null;
     if (stack) return stacking();
