@@ -1264,8 +1264,9 @@
     try {
       const path = SCWRSite.url.data(EVENT_ID, 'participants');
       const page = await fetch(path, { credentials: 'same-origin' }).then((r) => r.text());
-      const signed = page.match(/participantsUrl:\s*("[^"]*")/)?.[1];
-      return await post(signed ? JSON.parse(signed) : path, 'Participants');
+      const found = page.match(/participantsUrl:\s*("[^"]*")/)?.[1];
+      const signed = found && new URL(JSON.parse(found), location.origin);
+      return await post(signed?.origin === location.origin && signed.pathname === path ? signed.href : path, 'Participants');
     } catch {
       return null;
     }
