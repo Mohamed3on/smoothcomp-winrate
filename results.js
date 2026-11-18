@@ -1258,9 +1258,14 @@
   // Ages, belts and photos live only in the registration list, and so does which
   // user each scheduled side belongs to. Without it the joins fall back to name
   // and academy, so a failure here must never cost the reader the standings.
+  // Smoothcomp signs the list's address (403 without it) and prints the signed one
+  // only in the participants page.
   async function fetchParticipants() {
     try {
-      return await post(SCWRSite.url.data(EVENT_ID, 'participants'), 'Participants');
+      const path = SCWRSite.url.data(EVENT_ID, 'participants');
+      const page = await fetch(path, { credentials: 'same-origin' }).then((r) => r.text());
+      const signed = page.match(/participantsUrl:\s*("[^"]*")/)?.[1];
+      return await post(signed ? JSON.parse(signed) : path, 'Participants');
     } catch {
       return null;
     }
