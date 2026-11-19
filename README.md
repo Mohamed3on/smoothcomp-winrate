@@ -71,7 +71,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `career-cache.js` | Shared cache validation and expiry: three weeks for public records, 30 days for confirmed privacy |
 | `background.js` | Coordinates requests across tabs, saves each completed athlete in extension storage, and trades careers with the shared cache |
 | `server/` | The shared cache every install reads an event from first: a Cloudflare Worker over D1 (`wrangler deploy` from `server/`); `stats.js` holds the stats site's read API |
-| `site/` | The stats site: static files the same Worker serves, no build step |
+| `site/` | The stats site: React, shadcn/ui and Vite; `bun run build` in `site/`, then `wrangler deploy` in `server/` serves `site/dist` |
 | `shared.js` | Reads through the signed-in browser session and bridges cache updates to the page |
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
