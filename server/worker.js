@@ -16,6 +16,11 @@ async function lookup(env, { site, users }) {
     .bind(site, Date.now() - KEPT, JSON.stringify(users)).all();
   const kept = { careers: {}, ranks: {}, seen: {} };
   for (const row of results) kept[row.kind][row.user] = JSON.parse(row.entry);
+  // A career kept without its event count takes the count of the event list kept beside it,
+  // so no install reads the profile again just for that.
+  const counts = await env.DB.prepare('SELECT user, count(*) AS events FROM history WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
+    .bind(site, JSON.stringify(Object.keys(kept.careers).filter((user) => kept.careers[user].wins && kept.careers[user].events == null))).all();
+  for (const row of counts.results) kept.careers[row.user].events = row.events;
   // What results pages have shown of each athlete, event by event, walkovers aside.
   const seen = await env.DB.prepare('SELECT user, sum(wins) wins, sum(losses) losses, count(*) events FROM records WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
     .bind(site, JSON.stringify(users)).all();
