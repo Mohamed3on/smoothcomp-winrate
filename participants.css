@@ -302,10 +302,10 @@
 }
 #registrations .participants-desktop .profile-card.unapproved .participant-tr { background-color: var(--gray-2); }
 #registrations .participants-desktop .participant-tr-note-notapproved { display: none; }
-.profile-card.unapproved .scwr-career::after {
-  content: 'Not approved';
-  margin-left: auto;
-  align-self: center;
+/* On the country line, where the name column has room, so the figures stay in line. */
+.profile-card.unapproved .profile-country::after {
+  content: '· Not approved';
+  margin-left: 6px;
   white-space: nowrap;
   font-style: italic;
 }
@@ -598,3 +598,12 @@
 
 /* A stacked bracket order shows its measure at the heading's far end. */
 .scwr-stack { margin-left: auto; padding-left: 16px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* The name takes the room the figures leave, so it is cut only when it must be. */
+#registrations .participant-tr > .participant-td-athlete { flex-grow: 1; }
+#registrations .participant-tr > .scwr-career { flex: none; }
+
+.scwr-career .scwr-haul { display: flex; gap: 14px; align-self: center; }
+.scwr-haul > span { display: inline-flex; align-items: center; gap: 6px; }
+.scwr-haul .scwr-medal { width: 9px; height: 9px; }
+.scwr-haul > .muted .scwr-medal { opacity: 0.35; }

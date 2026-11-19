@@ -511,9 +511,12 @@ const COLUMNS = ['Wins', 'Medals'];
 const plural = (n, word, words = `${word}s`) => `${n} ${n === 1 ? word : words}`;
 // A zero steps back to Smoothcomp's muted ink, so the eye lands on the figures that count.
 const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${figure}</div><div class="muted font-size-tiny">${line}</div></div>`;
-const haul = ([gold, silver, bronze]) => (gold + silver + bronze ? column(gold, `${gold} gold`, `${silver} silver · ${bronze} bronze`) : '<div class="muted">No medals</div>');
+// Medals as their colours, each with its count; a colour never won steps back.
+const haul = (medals) => (medals.some(Boolean)
+  ? `<div class="scwr-haul">${medals.map((n, i) => `<span${n ? '' : ' class="muted"'} title="${plural(n, MEDALS[i])}"><i class="scwr-medal" data-medal="${MEDALS[i]}"></i>${n}</span>`).join('')}</div>`
+  : '<div class="muted">No medals</div>');
 const figures = (t, medals, events) => (Number.isInteger(events)
-  ? column(t[0], events ? `<b>${(t[0] / events).toFixed(1)}</b> per event` : 'No events yet', `${plural(t[0], 'win')} in ${plural(events, 'event')}`)
+  ? column(t[0], events ? `<b>${(t[0] / events).toFixed(1)}</b>` : 'No events yet', `${plural(t[0], 'win')} · ${plural(events, 'event')}`)
   : column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`)) + haul(medals);
 // The placeholder takes the shape of what replaces it, so nothing moves when it lands.
 const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-size-tiny"><i class="scwr-pulse"></i></div></div>';
@@ -522,20 +525,23 @@ function draw(cell, user) {
   const t = user && tally(user);
   const medals = t && careers[user].medals;
   const events = t && order === 'event' && careers[user].events;
-  const state = user === 'head' ? user : t ? `${t}|${medals}|${events}` : !user ? '' : fresh(user) ? 'hidden' : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
+  const state = user === 'head' ? `head|${order === 'event'}` : t ? `${t}|${medals}|${events}` : !user ? '' : fresh(user) ? `hidden|${SCWRCareers.seen[user] ?? ''}` : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
   if (cell.dataset.state === state) return;
   cell.dataset.state = state;
   cell.title = '';
-  if (state === 'head') {
-    cell.innerHTML = COLUMNS.map((label) => `<span>${label}</span>`).join('');
+  if (user === 'head') {
+    cell.innerHTML = (order === 'event' ? ['Wins per event', COLUMNS[1]] : COLUMNS).map((label) => `<span>${label}</span>`).join('');
   } else if (t) {
     cell.innerHTML = figures(t, medals, events);
     const by =(keep) => Object.entries(careers[user].wins).filter(([type]) => counted(type) === keep)
       .map(([type, n]) => `${n} by ${type}`).join(', ');
     cell.title = `${plural(t[0], 'career win')}: ${by(true) || 'none'}${by(false) ? `, not counting ${by(false)}` : ''}.`;
-  } else if (state === 'hidden') {
-    cell.innerHTML = '<div class="muted">Hidden profile</div>';
-    cell.title = 'Smoothcomp does not share a hidden profile\'s record.';
+  } else if (state.startsWith('hidden')) {
+    // What Mat Stats users' results pages have seen of them stands in, as a record, never as a career.
+    const s = SCWRCareers.seen[user];
+    cell.innerHTML = (s ? column(s[0], `<b>${s[0]}–${s[1]}</b>`, `in ${plural(s[2], 'event')} seen`) : '') + '<div class="muted">Hidden profile</div>';
+    cell.title = (s ? `Wins–losses, walkovers aside, across ${plural(s[2], 'event')} whose results Mat Stats users have opened. ` : '')
+      + 'Smoothcomp does not share a hidden profile\'s record.';
   } else {
     cell.innerHTML = state === 'reading' ? PLACEHOLDER.repeat(COLUMNS.length) : '';
   }
