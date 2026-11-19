@@ -380,13 +380,13 @@ test('a results page sends its records, and the lookup brings back what was seen
   assert.equal(JSON.stringify(p.api.seen), '{"3":[4,1,2]}');
 });
 
-test('off screen, an athlete the filters show is read before one they hide', async () => {
+test('careers are read down the list shown, then on screen, then the rest', async () => {
   const w = worker();
   const p = page(w, () => career());
-  p.api.configure({ priority: () => new Set(['9']), wanted: () => new Set(['3']), changed() {} });
+  p.api.configure({ priority: () => new Set(['1']), listed: () => ['9', '3', '2'], changed() {} });
   const pending = new Set(['1', '2', '3']);
   assert.equal(await p.api.next(pending, () => true), '3');
-  p.api.configure({ priority: () => new Set(['2']), changed() {} });
+  p.api.configure({ priority: () => new Set(['2']), listed: () => [], changed() {} });
   w.advance(2100);
   assert.equal(await p.api.next(pending, () => true), '2');
 });

@@ -20,15 +20,19 @@ function onScreen() {
   }
   return visibleUsers = seen;
 }
-// Off screen, the athletes the filters leave come before the ones they hide.
-let wantedAt = 0;
-let wantedUsers = null;
-function filtered() {
-  if (Date.now() - wantedAt < 1000) return wantedUsers;
-  wantedAt = Date.now();
-  return wantedUsers = vm && order !== null ? new Set(people().map((r) => String(r.user_id))) : null;
+// Careers are read down the list being shown, top first: the first academy's
+// athletes, the top athlete, the first bracket. What the filters hide comes after.
+let listedAt = 0;
+let listed = [];
+function listOrder() {
+  if (Date.now() - listedAt < 1000) return listed;
+  listedAt = Date.now();
+  const rows = !vm ? [] : order === 'academies' ? academies().flatMap((a) => a.rows)
+    : order !== null ? athletes().registrations
+    : vm.participants.flatMap((g) => g.registrations.filter((r) => !r.filtered));
+  return listed = rows.filter((r) => r.user_id).map((r) => String(r.user_id));
 }
-SCWRCareers.configure({ priority: onScreen, wanted: filtered, changed: careerChanged, halted: () => {
+SCWRCareers.configure({ priority: onScreen, listed: listOrder, changed: careerChanged, halted: () => {
   document.documentElement.toggleAttribute('data-scwr-paused', SCWRCareers.paused());
   if (!vm) return;
   if (LEADS.includes(order)) show(); else queue();
