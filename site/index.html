@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mat Stats</title>
+  <meta name="description" content="Grappling rankings recounted from Smoothcomp: athletes, academies and events, walkovers left out.">
+  <meta name="color-scheme" content="dark">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <div class="bar-inner">
+      <a class="mark" href="/"><img src="/icon.svg" alt="" width="22" height="22">Mat Stats</a>
+      <nav aria-label="Sections">
+        <a href="/" data-nav="athletes">Athletes</a>
+        <a href="/academies" data-nav="academies">Academies</a>
+        <a href="/events" data-nav="events">Events</a>
+      </nav>
+      <div class="find">
+        <input type="search" id="find" placeholder="Find an athlete, academy or event" autocomplete="off" aria-label="Find" aria-controls="found" aria-expanded="false">
+        <div id="found" class="found" role="listbox" hidden></div>
+      </div>
+      <label class="site-pick"><span class="sr">Site</span>
+        <select id="site">
+          <option value="smoothcomp.com">Smoothcomp</option>
+          <option value="ajptour.com">AJP Tour</option>
+        </select>
+      </label>
+    </div>
+  </header>
+  <main id="main" tabindex="-1"></main>
+  <footer class="foot">
+    <p>Recounted by <a href="https://chromewebstore.google.com/detail/foadjommplmenhenheolmdmkfmhjflpf">Mat Stats for Smoothcomp</a>: every install shares the careers and results it reads on Smoothcomp. Careers older than 30 days drop out until someone reads them again. Smoothcomp serves no career for a profile it marks not public; those athletes still show with their event results.</p>
+  </footer>
+</body>
+</html>

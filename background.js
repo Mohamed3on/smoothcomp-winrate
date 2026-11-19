@@ -142,10 +142,12 @@ async function handle(message, sender) {
   return {};
 }
 
-// A results page's records go straight to the shared cache; none are kept here.
-function record({ event, records }, sender) {
+// A results page's records, a registration list and a profile go straight to the
+// shared cache, with who each athlete is; none are kept here.
+function record({ op, event, records, meta, athletes }, sender) {
   const site = siteFor(sender);
-  if (site && /^\d{1,9}$/.test(event) && records && typeof records === 'object') fetch(`${SERVER}/record`, { method: 'POST', body: JSON.stringify({ site, event, records }) }).catch(() => {});
+  if (!site || (op !== 'people' && !/^\d{1,9}$/.test(event)) || (op === 'record' && (!records || typeof records !== 'object'))) return;
+  fetch(`${SERVER}/${op}`, { method: 'POST', body: JSON.stringify({ site, event, records, meta, athletes }) }).catch(() => {});
 }
 
 // A lookup waits on the network, so only its write joins the serial line.
@@ -167,7 +169,7 @@ async function lookup({ users }, sender) {
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message?.channel !== 'scwr') return;
-  if (message.op === 'record') { record(message, sender); reply({}); return; }
+  if (message.op === 'record' || message.op === 'roster' || message.op === 'people') { record(message, sender); reply({}); return; }
   if (message.op === 'shared') { lookup(message, sender).then(reply, () => reply({})); return true; }
   // Storage has no compare-and-swap. Serialise claims, slots and writes here.
   serial = serial.then(() => handle(message, sender)).then(reply, error => reply({ error: error.message }));

@@ -16,3 +16,50 @@ CREATE TABLE IF NOT EXISTS records (
   PRIMARY KEY (site, event, user)
 );
 CREATE INDEX IF NOT EXISTS records_user ON records (site, user);
+-- Who an athlete is, as the latest event that showed them says.
+CREATE TABLE IF NOT EXISTS people (
+  site TEXT NOT NULL,
+  user TEXT NOT NULL,
+  name TEXT,
+  club TEXT,
+  club_id TEXT,
+  country TEXT,
+  country_name TEXT,
+  photo TEXT,
+  belt TEXT,
+  born INTEGER,
+  hidden INTEGER,
+  seen TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, user)
+);
+CREATE INDEX IF NOT EXISTS people_club ON people (site, club_id);
+CREATE TABLE IF NOT EXISTS events (
+  site TEXT NOT NULL,
+  event TEXT NOT NULL,
+  title TEXT,
+  start TEXT,
+  city TEXT,
+  country TEXT,
+  organiser TEXT,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, event)
+);
+-- One row per athlete per division. A results page's rows (fought = 1) replace
+-- the registration list's (fought = 0), which only say who entered.
+CREATE TABLE IF NOT EXISTS entries (
+  site TEXT NOT NULL,
+  event TEXT NOT NULL,
+  user TEXT NOT NULL,
+  division TEXT NOT NULL,
+  club TEXT,
+  club_id TEXT,
+  place INTEGER,
+  wins TEXT,
+  losses TEXT,
+  fought INTEGER NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, event, user, division)
+);
+CREATE INDEX IF NOT EXISTS entries_user ON entries (site, user);
+CREATE INDEX IF NOT EXISTS entries_club ON entries (site, club_id);

@@ -126,5 +126,18 @@ const SCWRSite = (() => {
     },
   };
 
-  return { WIN_TYPES, flag, locale, url, store, theme, vm, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href) };
+  // The event this page belongs to, for the public site. The results page's bootstrap
+  // describes it; the participants page's doesn't, so it reads the results page's.
+  const event = async () => {
+    const pick = (e) => (e && String(e.id) === id('event') ? { title: e.title, start: e.event_start, city: e.location_city, country: e.location_country, organiser: e.organization?.name } : null);
+    if (window.sc?.event) return pick(window.sc.event);
+    try {
+      const page = await fetch(url.data(id('event'), 'results'), { credentials: 'same-origin' }).then((r) => r.text());
+      return pick(JSON.parse(page.match(/^\s*event:\s*(\{.*\}),?\s*$/m)?.[1] ?? 'null'));
+    } catch {
+      return null;
+    }
+  };
+
+  return { WIN_TYPES, flag, locale, url, store, theme, vm, event, eventId: () => id('event'), bracketId: (href) => id('bracket', href), profileId: (href) => id('profile', href) };
 })();

@@ -156,6 +156,14 @@ const SCWRCareers = (() => {
     }
   }
 
+  // Who the athlete is rides along with their career, for the public site.
+  function shareProfile(user, html) {
+    try {
+      const p = JSON.parse(html.match(/data-profile="([^"]*)"/)[1].replaceAll('&quot;', '"').replaceAll('&amp;', '&'));
+      const photo = /placeholder|default/i.test(p.profile_image_url ?? '') ? null : p.profile_image_url;
+      ask({ op: 'people', athletes: { [user]: { name: p.name, country: p.country_code?.toLowerCase(), countryName: p.nationality, age: p.age, photo } } }).catch(() => {});
+    } catch {}
+  }
   function signature(user) {
     if (!signatures.has(user)) {
       const pending = job('signatures', user, async () => {
@@ -163,6 +171,7 @@ const SCWRCareers = (() => {
         if (!response.ok) throw new Error('Profile unavailable');
         const html = await response.text();
         if (/<h[1-6][^>]*>\s*This profile is not public\.\s*<\/h[1-6]>/i.test(html)) return { at: Date.now(), hidden: true };
+        shareProfile(user, html);
         const encoded = html.match(/data-data-signature="([^"]*)"/)?.[1];
         if (encoded) {
           const signed = JSON.parse(encoded.replaceAll('&quot;', '"'));

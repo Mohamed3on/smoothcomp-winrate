@@ -42,6 +42,15 @@ discipline, every age group you're old enough for, and every absolute. Brackets 
 own labels, and one whose label says nothing readable counts only if you entered under it. With nothing to top,
 the panel names the bracket you fall the fewest wins short of.
 
+**Stats site** — [mat-stats.mohamed3on.workers.dev](https://mat-stats.mohamed3on.workers.dev) shows the shared cache outside
+Smoothcomp: athletes pooled into one ranking, academies ranked by their athletes' careers with their top athletes,
+and a page for every athlete, academy and event. An athlete with no readable Smoothcomp career, a profile it marks not public included, ranks on their results at the events read.
+The rankings take the extension's filters: which finish types count (walkovers off to start), belt, an age range, country,
+and minimum wins and events, and the URL keeps them. Every row loads; academy rows open onto every athlete behind them. Results pages
+upload each athlete's name, academy, country, photo, divisions, placements and
+records, and the event's title, date and place; participants pages upload who entered which division, with ages;
+every profile read for a career uploads the name, country, age and photo on it.
+
 ## Install
 
 From the [Chrome Web Store](https://chromewebstore.google.com/detail/foadjommplmenhenheolmdmkfmhjflpf).
@@ -61,7 +70,8 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `results.js` | The results page panel |
 | `career-cache.js` | Shared cache validation and expiry: three weeks for public records, 30 days for confirmed privacy |
 | `background.js` | Coordinates requests across tabs, saves each completed athlete in extension storage, and trades careers with the shared cache |
-| `server/` | The shared cache every install reads an event from first: a Cloudflare Worker over D1 (`wrangler deploy` from `server/`) |
+| `server/` | The shared cache every install reads an event from first: a Cloudflare Worker over D1 (`wrangler deploy` from `server/`); `stats.js` holds the stats site's read API |
+| `site/` | The stats site: static files the same Worker serves, no build step |
 | `shared.js` | Reads through the signed-in browser session and bridges cache updates to the page |
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |

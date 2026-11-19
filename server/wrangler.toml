@@ -10,3 +10,9 @@ database_id = "63a2b393-f89d-4642-9ad7-e578cb2638e9"
 
 [triggers]
 crons = ["17 4 * * *"]
+
+# The public stats site. The API and the extension's routes run before the files.
+[assets]
+directory = "../site"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/lookup", "/keep", "/record", "/roster", "/people"]

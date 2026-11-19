@@ -740,6 +740,19 @@ async function pick() {
       + (closest ? row(closest, gap ? `${plural(gap, 'win')} short` : 'level on wins') : ''));
 }
 
+// Who entered, in which divisions, for the public site.
+async function shareRoster() {
+  const athletes = {};
+  for (const g of vm.all) for (const r of g.registrations) {
+    if (!r.user_id) continue;
+    const a = athletes[r.user_id] ??= { name: `${r.firstname ?? ''} ${r.lastname ?? ''}`, club: r.clubName, clubId: r.club_id ? String(r.club_id) : null,
+      country: r.cn, countryName: r.country, belt: belt(r.user_id), age: r.age === '' || r.age == null ? null : Number(r.age),
+      photo: r.profile_image_id && !/placeholder/i.test(r.profile_image ?? '') ? r.profile_image : null, entries: [] };
+    a.entries.push({ division: g.name });
+  }
+  document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'roster', event: SCWRSite.eventId(), meta: await SCWRSite.event(), athletes }) }));
+}
+
 // The list is fetched after mount, so wait for it to land — a large entry list on
 // a slow connection takes a while, but not forever.
 SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000 }).then(async (found) => {
@@ -762,6 +775,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   // `participants` maps `all` in order, so sorting the source sorts the filtered
   // views too. The array is frozen; sort a copy.
   source = vm.all;
+  shareRoster();
   admit();
   vm.updateResults();
   readAll();

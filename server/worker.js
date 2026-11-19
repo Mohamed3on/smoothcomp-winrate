@@ -1,6 +1,8 @@
 // The career cache every install shares. Installs keep what they read here and
 // look up a whole event at once; each one cleans what it gets (career-cache.js),
 // so the worker only bounds what it stores.
+import { API } from './stats.js';
+
 const KEPT = 30 * 24 * 60 * 60 * 1000; // the longest career-cache.js keeps anything
 const SITES = ['smoothcomp.com', 'ajptour.com'];
 const KINDS = ['careers', 'ranks'];
@@ -34,23 +36,105 @@ async function keep(env, body) {
   return json({});
 }
 
+// What an event page shows of the event and of each athlete, for the public site.
+// Strings are capped and finish types follow the career cache's rule.
+const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
+const tally = (bucket) => Object.fromEntries(Object.entries(bucket && typeof bucket === 'object' ? bucket : {})
+  .filter(([type, n]) => /^[\w -]{1,40}$/.test(type) && Number.isSafeInteger(n) && n > 0 && n < 100));
+const photo = (url) => (typeof url === 'string' && /^https:\/\/[\w.-]+\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
+// A grade label names one belt, or none: "Purple/Brown" and "All belts" name none.
+const oneBelt = (label) => {
+  const named = typeof label === 'string' ? BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(label.replace(/gray/i, 'grey'))) : [];
+  return named.length === 1 ? named[0] : null;
+};
+const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
+
+async function identify(env, site, event, meta, athletes, fought) {
+  if (!athletes || typeof athletes !== 'object') return;
+  const start = typeof meta?.start === 'string' && ISO.test(meta.start) ? meta.start : null;
+  const now = Date.now();
+  const statements = [];
+  if (meta && typeof meta === 'object') {
+    statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+      ON CONFLICT (site, event) DO UPDATE SET title = coalesce(excluded.title, title), start = coalesce(excluded.start, start), city = coalesce(excluded.city, city),
+      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at`)
+      .bind(site, event, text(meta.title, 200), start, text(meta.city, 100), text(meta.country, 8), text(meta.organiser, 200), now));
+  }
+  const people = [];
+  const entries = [];
+  // An age is as of the event, or as of now for a profile; kept as the year it implies.
+  const year = new Date(start ?? now).getUTCFullYear();
+  for (const [user, a] of Object.entries(athletes).slice(0, 5000)) {
+    if (!validUser(user) || !a || typeof a !== 'object') continue;
+    const hidden = typeof a.hidden === 'boolean' ? Number(a.hidden) : null;
+    const club = text(a.club, 160);
+    const clubId = /^\d{1,12}$/.test(a.clubId) ? a.clubId : null;
+    people.push({ user, name: text(a.name, 120), club, clubId, country: /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
+      countryName: text(a.countryName, 80), photo: photo(a.photo), belt: oneBelt(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
+    for (const e of (event && Array.isArray(a.entries) ? a.entries : []).slice(0, 20)) {
+      const division = text(e?.division, 200);
+      if (!division) continue;
+      const place = Number.isSafeInteger(e.place) && e.place > 0 && e.place < 1000 ? e.place : null;
+      entries.push({ user, division, club, clubId, place, wins: JSON.stringify(tally(e.wins)), losses: JSON.stringify(tally(e.losses)) });
+    }
+  }
+  // A newer event's academy, photo and name replace an older one's; an older event only fills gaps.
+  const keep = (column) => `${column} = CASE WHEN excluded.seen >= people.seen THEN coalesce(excluded.${column}, people.${column}) ELSE coalesce(people.${column}, excluded.${column}) END`;
+  statements.push(env.DB.prepare(`INSERT INTO people (site, user, name, club, club_id, country, country_name, photo, belt, born, hidden, seen, at)
+    SELECT ?1, value ->> 'user', value ->> 'name', value ->> 'club', value ->> 'clubId', value ->> 'country', value ->> 'countryName', value ->> 'photo', value ->> 'belt', value ->> 'born', value ->> 'hidden', ?2, ?3 FROM json_each(?4) WHERE true
+    ON CONFLICT (site, user) DO UPDATE SET ${['name', 'club', 'club_id', 'country', 'country_name', 'photo', 'belt', 'born'].map(keep).join(', ')},
+    hidden = coalesce(excluded.hidden, people.hidden), seen = max(people.seen, excluded.seen), at = excluded.at`)
+    // A profile has no date: it fills gaps and never outranks an event.
+    .bind(site, start ?? (event ? new Date(now).toISOString() : ''), now, JSON.stringify(people)));
+  const insert = `INSERT OR REPLACE INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at)
+    SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4 FROM json_each(?5)`;
+  // A profile only says who the athlete is; an event also says who entered and how it went.
+  if (event && fought) {
+    statements.push(env.DB.prepare('DELETE FROM entries WHERE site = ?1 AND event = ?2').bind(site, event));
+    statements.push(env.DB.prepare(insert).bind(site, event, 1, now, JSON.stringify(entries)));
+  } else if (event) {
+    // Who entered, until a results page says how it went.
+    statements.push(env.DB.prepare('DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = 0').bind(site, event));
+    statements.push(env.DB.prepare(`${insert} WHERE NOT EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1)`).bind(site, event, 0, now, JSON.stringify(entries)));
+  }
+  await env.DB.batch(statements);
+}
+
+// Who an athlete is, from the profile page an install read their career from.
+async function people(env, { site, athletes }) {
+  if (!SITES.includes(site)) return json({ error: 'Bad people' }, 400);
+  await identify(env, site, null, null, athletes, false);
+  return json({});
+}
+
+// A registration list's athletes and the event they entered.
+async function roster(env, { site, event, meta, athletes }) {
+  if (!SITES.includes(site) || !/^\d{1,9}$/.test(event)) return json({ error: 'Bad roster' }, 400);
+  await identify(env, site, event, meta, athletes, false);
+  return json({});
+}
+
 // A results page's records for its event; the latest read of an event replaces the last.
-async function record(env, { site, event, records }) {
+async function record(env, { site, event, records, meta, athletes }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || typeof records !== 'object' || !records) return json({ error: 'Bad record' }, 400);
   const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
   if (rows.length > 5000) return json({ error: 'Too many' }, 413);
   await env.DB.prepare(`INSERT OR REPLACE INTO records (site, event, user, wins, losses, at)
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4)`)
     .bind(site, event, Date.now(), JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
+  await identify(env, site, event, meta, athletes, true);
   return json({});
 }
 
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record };
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people };
 
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
-    const { pathname } = new URL(request.url);
+    const { pathname, searchParams } = new URL(request.url);
+    const read = pathname.startsWith('/api/') && API[pathname.slice(5)];
+    if (read) return request.method === 'GET' ? read(env, searchParams) : json({ error: 'Not found' }, 404);
     if (request.method !== 'POST' || !ROUTES[pathname]) return json({ error: 'Not found' }, 404);
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
