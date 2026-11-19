@@ -15,6 +15,10 @@ const validUser = (user) => typeof user === 'string' && /^\d{1,12}$/.test(user);
 // Backoff doubles from 10 s to a minute. Refused this many times running, the
 // browser is challenged for good, so ask only once a quarter hour.
 const PAUSE = 5;
+// The cache every install shares: each keeps there what it reads, once its
+// whole cache, and looks up an event there before reading any profile.
+const SERVER = 'https://mat-stats.mohamed3on.workers.dev';
+const keep = (site, kept) => Object.values(kept).some(entries => Object.keys(entries).length) && fetch(`${SERVER}/keep`, { method: 'POST', body: JSON.stringify({ site, ...kept }) }).catch(() => {});
 
 function siteFor(sender) {
   try {
@@ -63,6 +67,10 @@ async function handle(message, sender) {
         if (validUser(id) && Number.isFinite(entry?.at) && entry.at >= (kept[name][id]?.at ?? 0)) kept[name][id] = clean ?? { at: entry.at };
       }
     }
+    if (!all[`scwr:kept:${site}`]) {
+      keep(site, Object.fromEntries(Object.entries(kept).map(([name, entries]) => [name, Object.fromEntries(Object.entries(entries).filter(([, e]) => SCWRCache.clean(name, e)))])));
+      await chrome.storage.local.set({ [`scwr:kept:${site}`]: true });
+    }
     return kept;
   }
   if (op === 'import') {
@@ -74,6 +82,11 @@ async function handle(message, sender) {
     const old = await chrome.storage.local.get(Object.keys(given));
     const newer = Object.fromEntries(Object.entries(given).filter(([name, entry]) => entry.at > (old[name]?.at ?? 0)));
     if (Object.keys(newer).length) await chrome.storage.local.set(newer);
+    if (!message.shared && Object.keys(newer).length) {
+      const kept = { careers: {}, ranks: {} };
+      for (const [name, entry] of Object.entries(newer)) { const [, , kind, id] = name.split(':'); kept[kind][id] = entry; }
+      keep(site, kept);
+    }
     return {};
   }
   if (op === 'peek' && KINDS.includes(kind) && validUser(user)) {
@@ -120,6 +133,7 @@ async function handle(message, sender) {
   if (op === 'renew') job.until = Date.now() + 120000;
   else if (op === 'complete') {
     const entry = await put(site, kind, user, message.entry);
+    if (kind !== 'signatures' && entry) keep(site, { [kind]: { [user]: entry } });
     delete data.jobs[name];
     await checkpoint();
     return { entry };
@@ -128,8 +142,25 @@ async function handle(message, sender) {
   return {};
 }
 
+// A lookup waits on the network, so only its write joins the serial line.
+async function lookup({ users }, sender) {
+  const site = siteFor(sender);
+  users = Array.isArray(users) ? users.filter(validUser).slice(0, 5000) : [];
+  if (!site || !users.length) return {};
+  const response = await fetch(`${SERVER}/lookup`, { method: 'POST', body: JSON.stringify({ site, users }), signal: AbortSignal.timeout(10000) });
+  const given = response.ok ? await response.json() : {};
+  const kept = { careers: {}, ranks: {} };
+  for (const name of Object.keys(kept)) for (const [id, entry] of Object.entries(given[name] ?? {})) {
+    const clean = SCWRCache.clean(name, entry);
+    if (validUser(id) && clean) kept[name][id] = clean;
+  }
+  await (serial = serial.then(() => handle({ op: 'import', careers: kept.careers, ranks: kept.ranks, shared: true }, sender)).catch(() => {}));
+  return kept;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message?.channel !== 'scwr') return;
+  if (message.op === 'shared') { lookup(message, sender).then(reply, () => reply({})); return true; }
   // Storage has no compare-and-swap. Serialise claims, slots and writes here.
   serial = serial.then(() => handle(message, sender)).then(reply, error => reply({ error: error.message }));
   return true;

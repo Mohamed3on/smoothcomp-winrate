@@ -73,6 +73,10 @@ const SCWRCareers = (() => {
     }
   })();
 
+  // The shared cache answers for the whole event at once, before any profile is read.
+  let looked = Promise.resolve();
+  const lookup = users => { looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users })).then(merge).catch(() => {})]); };
+
   async function job(kind, user, load, events) {
     for (;;) {
       const claim = await ask({ op: 'claim', kind, user, events });
@@ -131,6 +135,7 @@ const SCWRCareers = (() => {
   // checking availability never spends a slot, including cache-only work.
   async function next(pending, needed) {
     await ready;
+    await looked;
     while (pending.size) {
       const seen = priority();
       const user = [...pending].find(u => seen.has(u)) ?? pending.values().next().value;
@@ -174,7 +179,7 @@ const SCWRCareers = (() => {
     if (SCWRCache.fresh(entries[user], kind) && !(events && !entries[user].hidden && entries[user].events == null)) return Promise.resolve(entries[user]);
     const key = `${kind}:${user}`;
     if (!reading.has(key)) {
-      reading.set(key, ready.then(() => job(kind, user, async () => {
+      reading.set(key, ready.then(() => looked).then(() => job(kind, user, async () => {
         const signed = await signature(user);
         if (signed.hidden) return { at: signed.at, hidden: true };
         // The events an athlete entered ride on the same signature, beside the
@@ -197,7 +202,7 @@ const SCWRCareers = (() => {
     }
     return reading.get(key);
   }
-  return { careers, ranks, ready, save, signature, query, next,
+  return { careers, ranks, ready, save, signature, query, next, lookup,
     fresh: user => SCWRCache.fresh(careers[user]),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),

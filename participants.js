@@ -149,6 +149,7 @@ function arrange(groups) {
 // screen first, so a whole-event view opened later finds most of them read.
 function readAll() {
   for (const g of source) for (const r of g.registrations) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
+  SCWRCareers.lookup([...pending]);
   drain();
 }
 

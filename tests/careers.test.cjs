@@ -5,8 +5,14 @@ const { test } = require('node:test');
 
 // Two real content-script senders share one worker and Chrome's storage contract.
 // No Smoothcomp requests are sent by these concurrency and expiry checks.
-function worker(storage = { local: {}, session: {} }, now = 1800000000000) {
+function worker(storage = { local: {}, session: {} }, now = 1800000000000, shared = {}) {
   let listener;
+  // The shared cache: lookups answer with `shared`, shares are only recorded.
+  const posts = [];
+  const fetch = async (url, { body }) => {
+    posts.push({ url, ...JSON.parse(body) });
+    return new Response(JSON.stringify(url.endsWith('/lookup') ? shared : {}));
+  };
   const storageListeners = [];
   const replies = [];
   const area = (name) => ({
@@ -18,7 +24,7 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000) {
     },
     remove: async (keys) => { for (const key of keys) delete storage[name][key]; },
   });
-  const context = vm.createContext({ URL, importScripts() {}, crypto: require('node:crypto').webcrypto,
+  const context = vm.createContext({ URL, Response, AbortSignal, fetch, importScripts() {}, crypto: require('node:crypto').webcrypto,
     Date: class extends Date { static now() { return now; } },
     chrome: { storage: { local: area('local'), session: area('session') }, runtime: { onMessage: { addListener(fn) { listener = fn; } } } },
   });
@@ -26,6 +32,7 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000) {
   vm.runInContext(fs.readFileSync('background.js', 'utf8'), context);
   return {
     storage,
+    posts,
     now: () => now,
     replies,
     onStorageChange: fn => storageListeners.push(fn),
@@ -336,4 +343,29 @@ test('a career kept without its event count is read again only when the count is
   await p.api.readCareer('1', true);
   assert.equal(p.api.careers['1'].events, 12);
   assert.equal((await w.send({ op: 'claim', kind: 'careers', user: '1', events: true }, 2)).entry.events, 12);
+});
+
+test('the shared cache answers for the event before any profile is read, and keeps each new career', async () => {
+  const w = worker(undefined, undefined, { careers: { 1: { at: 1800000000000, wins: { points: 3 }, medals: [1, 0, 0], events: 2 } } });
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : url.includes('/past-events') ? events(4) : career());
+  await p.api.ready;
+  p.api.lookup(['1', '2']);
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.length, 0);
+  assert.equal(p.api.careers['1'].wins.points, 3);
+  assert.deepEqual(w.posts[0], { url: 'https://mat-stats.mohamed3on.workers.dev/lookup', site: 'smoothcomp.com', users: ['1', '2'] });
+  await p.api.readCareer('2');
+  const kept = w.posts.filter(post => post.url.endsWith('/keep'));
+  assert.equal(kept.length, 1);
+  assert.deepEqual(kept[0].careers['2'].wins, { submission: 7 });
+});
+
+test('a kept cache goes to the shared cache once, and careers it already had are not sent back', async () => {
+  const kept = { at: 1800000000000, wins: { points: 9 }, medals: [0, 0, 0] };
+  const w = worker({ local: { 'scwr2:smoothcomp.com:careers:1': kept }, session: {} }, undefined, { careers: { 2: { ...kept, at: 1800000000001 } } });
+  await w.send({ op: 'read' });
+  await w.send({ op: 'read' });
+  await w.send({ op: 'shared', users: ['2'] });
+  assert.deepEqual(w.posts.map(post => post.url.split('/').pop()), ['keep', 'lookup']);
+  assert.deepEqual(w.posts[0].careers, { 1: kept });
 });

@@ -60,7 +60,8 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
 | `career-cache.js` | Shared cache validation and expiry: three weeks for public records, 30 days for confirmed privacy |
-| `background.js` | Coordinates requests across tabs and saves each completed athlete in extension storage |
+| `background.js` | Coordinates requests across tabs, saves each completed athlete in extension storage, and trades careers with the shared cache |
+| `server/` | The shared cache every install reads an event from first: a Cloudflare Worker over D1 (`wrangler deploy` from `server/`) |
 | `shared.js` | Reads through the signed-in browser session and bridges cache updates to the page |
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |

@@ -1,0 +1,12 @@
+name = "mat-stats"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mat-stats-careers"
+database_id = "63a2b393-f89d-4642-9ad7-e578cb2638e9"
+
+[triggers]
+crons = ["17 4 * * *"]

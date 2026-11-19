@@ -1,7 +1,7 @@
 // The isolated script performs authenticated reads and reports real failures;
 // page events cannot manufacture a cooldown for every organiser tab.
 const send = message => chrome.runtime.sendMessage({ ...message, channel: 'scwr' });
-const OPS = ['read', 'import', 'claim', 'renew', 'complete', 'peek', 'available', 'delay'];
+const OPS = ['read', 'import', 'shared','claim', 'renew', 'complete', 'peek', 'available', 'delay'];
 async function fetchAthlete(request, started) {
   const { resource, user, signed = {} } = request;
   if (!['profile', 'career', 'events', 'skills'].includes(resource) || !/^\d{1,12}$/.test(user)) throw new Error('Invalid athlete request');
