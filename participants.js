@@ -551,7 +551,7 @@ function draw(cell, user) {
   } else if (state.startsWith('hidden')) {
     // What Mat Stats users' results pages have seen of them stands in, as a record, never as a career.
     const s = SCWRCareers.seen[user];
-    cell.innerHTML = (s ? column(s[0], `<b>${s[0]}–${s[1]}</b>`, `in ${plural(s[2], 'event')} seen`) : '') + '<div class="muted">Hidden profile</div>';
+    cell.innerHTML = (s ? column(s[0], `<b>${s[0]}–${s[1]}</b>`, `in ${plural(s[2], 'event')} seen`) : '<div></div>') + '<div class="muted">Hidden profile</div>';
     cell.title = (s ? `Wins–losses, walkovers aside, across ${plural(s[2], 'event')} whose results Mat Stats users have opened. ` : '')
       + 'Smoothcomp does not share a hidden profile\'s record.';
   } else {
