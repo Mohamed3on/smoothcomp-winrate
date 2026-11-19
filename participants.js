@@ -64,13 +64,11 @@ function tally(user) {
 }
 
 // Counted wins per event entered: how deep an athlete usually goes, whatever
-// the bracket sizes. Under three events it ranks after every steadier record,
-// as one good day is not a record yet. A career kept from before event counts
-// were read is read again for its count.
-const MIN_EVENTS = 3;
+// the bracket sizes. It ranks by the figure shown, and a tie goes to the longer
+// record. A career kept from before event counts were read is read again for its count.
 const eventsOf = (user) => (fresh(user) ? careers[user].events : undefined);
 const needsEvents = (user) => fresh(user) && !!careers[user].wins && careers[user].events == null;
-const perEvent = (user) => (tally(user) && eventsOf(user) ? [+(eventsOf(user) >= MIN_EVENTS), tally(user)[0] / eventsOf(user)] : [-1, -1]);
+const perEvent = (user) => (tally(user) && eventsOf(user) ? [tally(user)[0] / eventsOf(user)] : [-1]);
 const unread = (user) => !fresh(user) || (order === 'event' && needsEvents(user));
 
 // How much of a whole-event read is still to come: the athletes among these
