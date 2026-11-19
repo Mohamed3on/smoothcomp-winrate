@@ -45,7 +45,8 @@ const CAREERS = `seen_wins AS (
     SELECT user, at, entry FROM athletes WHERE site = ?1 AND kind = 'careers' AND at > ?3 AND entry ->> '$.wins' IS NOT NULL),
   base AS (
     SELECT user, at, 'career' AS source, entry ->> '$.wins' AS types, NULL AS losses,
-      coalesce(entry ->> '$.medals[0]', 0) AS gold, coalesce(entry ->> '$.medals[1]', 0) AS silver, coalesce(entry ->> '$.medals[2]', 0) AS bronze, entry ->> '$.events' AS events
+      coalesce(entry ->> '$.medals[0]', 0) AS gold, coalesce(entry ->> '$.medals[1]', 0) AS silver, coalesce(entry ->> '$.medals[2]', 0) AS bronze,
+      coalesce(entry ->> '$.events', (SELECT nullif(count(*), 0) FROM history h WHERE h.site = ?1 AND h.user = readable.user)) AS events
     FROM readable
     UNION ALL
     SELECT s.user, NULL, 'results', coalesce((SELECT json_group_object(type, n) FROM seen_wins w WHERE w.user = s.user), '{}'),
@@ -127,15 +128,18 @@ async function athlete(env, params) {
   const f = filters(params);
   const user = params.get('id') ?? '';
   if (!/^\d{1,12}$/.test(user)) return json({ error: 'Bad athlete' }, 400);
-  const [career, person, entries, seen] = await env.DB.batch([
+  const [career, person, entries, seen, history] = await env.DB.batch([
     env.DB.prepare(`WITH ${CAREERS} SELECT * FROM careers WHERE user = ?4`).bind(f.site, f.off, Date.now() - KEPT, user),
     env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, v.title, v.start, v.city, v.country
       FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 ORDER BY v.start DESC, e.event DESC`).bind(f.site, user),
     env.DB.prepare('SELECT sum(wins) AS wins, sum(losses) AS losses, count(*) AS events FROM records WHERE site = ?1 AND user = ?2').bind(f.site, user),
+    env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
+      FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(f.site, user),
   ]);
   if (!career.results.length && !person.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
   return json({
+    history: history.results,
     career: career.results[0] ? careerRow(career.results[0]) : null,
     person: person.results[0] ?? null,
     entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses) })),

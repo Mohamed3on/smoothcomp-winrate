@@ -408,6 +408,28 @@ async function eventsView() {
 
 const notFound = (what) => `${empty(`No ${what} here`, `Mat Stats has nothing under this ${what} on ${site() === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}. It may be on the other site, or nobody has read it yet.`)}`;
 
+// An athlete's events, newest first: the divisions Mat Stats read results for, and
+// every other event Smoothcomp lists with the wins and medals it gives.
+function eventRows(entries, history) {
+  const read = Map.groupBy(entries, (e) => e.event);
+  const listed = new Map(history.map((h) => [h.event, h]));
+  const ids = [...new Set([...read.keys(), ...listed.keys()])]
+    .sort((a, b) => String((read.get(b)?.[0] ?? listed.get(b)).start ?? '').localeCompare(String((read.get(a)?.[0] ?? listed.get(a)).start ?? '')));
+  if (!ids.length) return `<tr><td colspan="6">${empty('No events seen yet', 'Events appear once someone with Mat Stats opens a results or participants page this athlete is on, or reads their career.')}</td></tr>`;
+  const eventLink = (id, title, known) => (known ? `<a class="who-name" href="${link(`/event/${id}`)}">${esc(title ?? `Event ${id}`)}</a>`
+    : `<a class="who-name ext" href="${home()}/en/event/${id}" rel="noopener">${esc(title ?? `Event ${id}`)} ${EXT}</a>`);
+  return ids.map((id) => {
+    const h = listed.get(id);
+    const rows = read.get(id);
+    if (!rows) {
+      return `<tr><td class="start quiet">${date(h.start)}</td><td class="start">${eventLink(id, h.title, h.known)}</td><td class="start muted small">${esc(h.city ?? '')}</td><td class="start hide-narrow"></td>
+        <td>${h.gold || h.silver || h.bronze ? medals(h.gold, h.silver, h.bronze) : '<span class="muted">–</span>'}</td><td>${h.wins == null ? '' : `${num(h.wins)} <span class="muted small">${h.wins === 1 ? 'win' : 'wins'}</span>`}</td></tr>`;
+    }
+    return rows.map((e, k) => `<tr class="${k ? 'same' : ''}"><td class="start quiet">${k ? '' : date(e.start ?? h?.start)}</td><td class="start">${k ? '' : eventLink(id, e.title ?? h?.title, true)}</td><td class="start quiet">${esc(e.division)}</td>
+      <td class="start hide-narrow quiet">${e.club ? (e.club_id ? `<a href="${link(`/academy/${e.club_id}`)}">${esc(e.club)}</a>` : esc(e.club)) : ''}</td><td>${e.fought ? placeChip(e.place) : '<span class="muted small">Entered</span>'}</td><td>${e.fought ? record(countWins(e.wins), countWins(e.losses)) : ''}</td></tr>`).join('');
+  }).join('');
+}
+
 async function athleteView(user) {
   const main = page();
   main.innerHTML = `<div class="profile"><span class="avatar big"></span><div><span class="shimmer" style="width:240px;height:24px"></span></div></div>`;
@@ -416,7 +438,7 @@ async function athleteView(user) {
     main.innerHTML = e.status === 404 ? notFound('athlete') : failed(e);
     return;
   }
-  const { career, person, entries, seen } = data;
+  const { career, person, entries, seen, history = [] } = data;
   const a = { user, ...(person ?? {}), ...(career ?? {}), name: person?.name ?? career?.name, hidden: person?.hidden };
   document.title = `${a.name ?? `Athlete ${user}`} · Mat Stats`;
   const academy = a.club ? (a.club_id ? `<a href="${link(`/academy/${a.club_id}`)}">${esc(a.club)}</a>` : esc(a.club)) : null;
@@ -442,11 +464,10 @@ async function athleteView(user) {
         ? `From results: Smoothcomp serves no career for this ${a.hidden ? 'profile, which it marks not public' : 'athlete yet'}, so these are their wins, losses and placements at the ${plural(career.events, 'event')} Mat Stats has read.`
         : `Career as Smoothcomp lists it, read ${date(new Date(career.at).toISOString())}. Smoothcomp lists no career losses.`}</p></div>`
     : `<div class="panel"><p>${a.hidden ? 'Smoothcomp serves no career for this profile: its page says it is not public.' : 'No career read in the last 30 days. It arrives when someone with Mat Stats opens a participants page this athlete is on.'}${seen ? ` Results pages have shown ${record(seen.wins, seen.losses)} across ${plural(seen.events, 'event')}, walkovers aside.` : ''}</p></div>`}
-    <section><div class="head"><div><h2>Events</h2><p>${fought.length ? `${record(eventWins, eventLosses)} at the ${plural(new Set(fought.map((e) => e.event)).size, 'event')} with results here, counting the finishes switched on.` : 'Events this athlete entered that Mat Stats has seen.'}</p></div></div>
-    <div class="ledger"><table><thead><tr><th class="start" style="width:12%">Date</th><th class="start" style="width:28%">Event</th><th class="start">Division</th><th class="start hide-narrow" style="width:16%">Academy</th><th style="width:7%">Place</th><th style="width:7%">Record</th></tr></thead><tbody>
-    ${entries.length ? entries.map((e, i) => { const first = entries[i - 1]?.event !== e.event; return `<tr class="${first ? '' : 'same'}"><td class="start quiet">${first ? date(e.start) : ''}</td><td class="start">${first ? `<a class="who-name" href="${link(`/event/${e.event}`)}">${esc(e.title ?? `Event ${e.event}`)}</a>` : ''}</td><td class="start quiet">${esc(e.division)}</td>
-      <td class="start hide-narrow quiet">${e.club ? (e.club_id ? `<a href="${link(`/academy/${e.club_id}`)}">${esc(e.club)}</a>` : esc(e.club)) : ''}</td><td>${e.fought ? placeChip(e.place) : '<span class="muted small">Entered</span>'}</td><td>${e.fought ? record(countWins(e.wins), countWins(e.losses)) : ''}</td></tr>`; }).join('')
-    : `<tr><td colspan="6">${empty('No events seen yet', 'Events appear once someone with Mat Stats opens a results or participants page this athlete is on.')}</td></tr>`}
+    <section><div class="head"><div><h2>Events</h2><p>${[history.length ? `${plural(history.length, 'event')} entered, as Smoothcomp lists them, with the wins and medals it gives for each.` : '',
+      fought.length ? `${record(eventWins, eventLosses)} at the ${plural(new Set(fought.map((e) => e.event)).size, 'event')} whose results Mat Stats read, with divisions, places and losses.` : ''].filter(Boolean).join(' ') || 'Events this athlete entered that Mat Stats has seen.'}</p></div></div>
+    <div class="ledger"><table><thead><tr><th class="start" style="width:12%">Date</th><th class="start" style="width:28%">Event</th><th class="start">Division or city</th><th class="start hide-narrow" style="width:16%">Academy</th><th style="width:13%">Place or medals</th><th style="width:9%">Record</th></tr></thead><tbody>
+    ${eventRows(entries, history)}
     </tbody></table></div></section>`;
 }
 

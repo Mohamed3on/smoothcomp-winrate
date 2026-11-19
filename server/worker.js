@@ -65,6 +65,7 @@ async function identify(env, site, event, meta, athletes, fought) {
   }
   const people = [];
   const entries = [];
+  const history = {};
   // An age is as of the event, or as of now for a profile; kept as the year it implies.
   const year = new Date(start ?? now).getUTCFullYear();
   for (const [user, a] of Object.entries(athletes).slice(0, 5000)) {
@@ -74,6 +75,11 @@ async function identify(env, site, event, meta, athletes, fought) {
     const clubId = /^\d{1,12}$/.test(a.clubId) ? a.clubId : null;
     people.push({ user, name: text(a.name, 120), club, clubId, country: /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
       countryName: text(a.countryName, 80), photo: photo(a.photo), belt: oneBelt(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
+    if (Array.isArray(a.history)) history[user] = a.history.slice(0, 500).filter((e) => /^\d{1,9}$/.test(e?.event)).map((e) => ({
+      event: e.event, title: text(e.title, 200), start: typeof e.start === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(e.start) ? e.start : null, city: text(e.city, 100),
+      wins: Number.isSafeInteger(e.wins) && e.wins >= 0 && e.wins < 100 ? e.wins : null,
+      medals: [0, 1, 2].map((i) => (Number.isSafeInteger(e.medals?.[i]) && e.medals[i] >= 0 && e.medals[i] < 20 ? e.medals[i] : 0)),
+    }));
     for (const e of (event && Array.isArray(a.entries) ? a.entries : []).slice(0, 20)) {
       const division = text(e?.division, 200);
       if (!division) continue;
@@ -99,6 +105,13 @@ async function identify(env, site, event, meta, athletes, fought) {
     // Who entered, until a results page says how it went.
     statements.push(env.DB.prepare('DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = 0').bind(site, event));
     statements.push(env.DB.prepare(`${insert} WHERE NOT EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1)`).bind(site, event, 0, now, JSON.stringify(entries)));
+  }
+  // An athlete's event list, as Smoothcomp gives it, replaces the last one read.
+  for (const [user, rows] of Object.entries(history)) {
+    statements.push(env.DB.prepare('DELETE FROM history WHERE site = ?1 AND user = ?2').bind(site, user));
+    statements.push(env.DB.prepare(`INSERT OR REPLACE INTO history (site, user, event, title, start, city, wins, gold, silver, bronze, at)
+      SELECT ?1, ?2, value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'wins', value ->> '$.medals[0]', value ->> '$.medals[1]', value ->> '$.medals[2]', ?3 FROM json_each(?4)`)
+      .bind(site, user, now, JSON.stringify(rows)));
   }
   await env.DB.batch(statements);
 }

@@ -126,11 +126,11 @@ const SCWRCareers = (() => {
   }
   const turn = user => new Promise((resolve, reject) => { line.push({ user, resolve, reject }); turns(); });
 
-  async function request(resource, user, signed) {
+  async function request(resource, user, signed, page) {
     for (let attempt = 0; attempt < 3; attempt++) {
       let result;
       do {
-        result = resource === 'profile' ? await turn(user) : await ask({ op: 'fetch', resource, user, signed });
+        result = resource === 'profile' ? await turn(user) : await ask({ op: 'fetch', resource, user, signed, page });
         if (result.wait) await pause(Math.min(result.wait, 1000));
       } while (result.wait);
       if (!result.temporary) return new Response(result.body, { status: result.status, headers: result.headers });
@@ -156,6 +156,18 @@ const SCWRCareers = (() => {
     }
   }
 
+// Every event an athlete entered, five a page: its date, place, wins and medal. The
+  // public site shows them all; the career keeps only the count.
+  async function pastEvents(user, signed) {
+    const read = page => request('events', user, signed, page).then(r => r.ok ? r.json() : null).catch(() => null);
+    const first = await read(1);
+    if (!first) return null;
+    const list = (body) => (Array.isArray(body?.data) ? body.data : []);
+    const rows = list(first);
+    for (let page = 2; page <= Math.min(first.meta?.last_page ?? 1, 100); page++) rows.push(...list(await read(page)));
+    if (rows.length) ask({ op: 'people', athletes: { [user]: { history: rows.map(e => ({ event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
+    return first;
+  }
   // Who the athlete is rides along with their career, for the public site.
   function shareProfile(user, html) {
     try {
@@ -201,7 +213,7 @@ const SCWRCareers = (() => {
         // The events an athlete entered ride on the same signature, beside the
         // career; without them the career still counts.
         const [response, past] = await Promise.all([request(kind === 'careers' ? 'career' : 'skills', user, signed),
-          kind === 'careers' && request('events', user, signed).then(r => r.ok ? r.json() : null).catch(() => null)]);
+          kind === 'careers' && pastEvents(user, signed)]);
         if (!response.ok) throw new Error('Athlete data unavailable');
         const data = (await response.json()).data;
         if (kind === 'careers') {

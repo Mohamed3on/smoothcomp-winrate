@@ -42,7 +42,7 @@ discipline, every age group you're old enough for, and every absolute. Brackets 
 own labels, and one whose label says nothing readable counts only if you entered under it. With nothing to top,
 the panel names the bracket you fall the fewest wins short of.
 
-**Stats site** — [mat-stats.mohamed3on.workers.dev](https://mat-stats.mohamed3on.workers.dev) shows the shared cache outside
+**Stats site** — [matstats.mohamed3on.com](https://matstats.mohamed3on.com) shows the shared cache outside
 Smoothcomp: athletes pooled into one ranking, academies ranked by their athletes' careers with their top athletes,
 and a page for every athlete, academy and event. An athlete with no readable Smoothcomp career, a profile it marks not public included, ranks on their results at the events read.
 The rankings take the extension's filters: which finish types count (walkovers off to start), belt, an age range, country,

@@ -10,6 +10,7 @@ async function fetchAthlete(request, started) {
   const home = location.hostname === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com';
   const path = resource === 'profile' ? `profile/${user}` : `athlete/${user}/${{ career: 'wins-and-medals', events: 'past-events' }[resource] ?? 'skills'}`;
   const url = new URL(`/en/${path}`, home);
+  if (resource === 'events' && Number.isSafeInteger(request.page) && request.page > 1 && request.page <= 100) url.searchParams.set('page', request.page);
   if (resource !== 'profile' && typeof signed.signature === 'string' && /^[\w-]{1,256}$/.test(signed.signature) && Number.isSafeInteger(signed.expires)) {
     url.searchParams.set('signature', signed.signature);
     url.searchParams.set('expires', signed.expires);

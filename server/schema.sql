@@ -62,4 +62,19 @@ CREATE TABLE IF NOT EXISTS entries (
   PRIMARY KEY (site, event, user, division)
 );
 CREATE INDEX IF NOT EXISTS entries_user ON entries (site, user);
+-- Every event an athlete entered, as Smoothcomp's past-events list gives it.
+CREATE TABLE IF NOT EXISTS history (
+  site TEXT NOT NULL,
+  user TEXT NOT NULL,
+  event TEXT NOT NULL,
+  title TEXT,
+  start TEXT,
+  city TEXT,
+  wins INTEGER,
+  gold INTEGER,
+  silver INTEGER,
+  bronze INTEGER,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, user, event)
+);
 CREATE INDEX IF NOT EXISTS entries_club ON entries (site, club_id);

@@ -24,7 +24,7 @@ PARTICIPANTS PAGE
 • Signed in: every bracket you could enter and would top-seed, with the athlete you'd displace
 
 STATS SITE
-• Everything Mat Stats users read, browsable outside Smoothcomp at mat-stats.mohamed3on.workers.dev
+• Everything Mat Stats users read, browsable outside Smoothcomp at matstats.mohamed3on.com
 • Athletes pooled into one ranking: by wins, any finish type, submission rate, medals or wins per event, with the finish types that count, belt, age range, country, and minimum wins and events as filters; athletes whose profile isn't public rank on their results
 • Academies ranked by their athletes' careers added up, with their top athletes
 • A page for every athlete, academy and event: careers, event history, podiums, medal tables and entrants
