@@ -80,7 +80,8 @@ async function identify(env, site, event, meta, athletes, fought) {
     const clubId = /^\d{1,12}$/.test(a.clubId) ? a.clubId : null;
     people.push({ user, name: text(a.name, 120), club, clubId, country: /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
       countryName: text(a.countryName, 80), photo: photo(a.photo), belt: oneBelt(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
-    if (Array.isArray(a.history)) history[user] = a.history.slice(0, 500).filter((e) => /^\d{1,9}$/.test(e?.event)).map((e) => ({
+    // An install sends one athlete's list per career read, so a request carries a few lists at most.
+    if (Array.isArray(a.history) && Object.keys(history).length < 20 && Object.values(history).flat().length + a.history.length <= 2000) history[user] = a.history.slice(0, 500).filter((e) => /^\d{1,9}$/.test(e?.event)).map((e) => ({
       event: e.event, title: text(e.title, 200), start: typeof e.start === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(e.start) ? e.start : null, city: text(e.city, 100),
       wins: Number.isSafeInteger(e.wins) && e.wins >= 0 && e.wins < 100 ? e.wins : null,
       medals: [0, 1, 2].map((i) => (Number.isSafeInteger(e.medals?.[i]) && e.medals[i] >= 0 && e.medals[i] < 20 ? e.medals[i] : 0)),
