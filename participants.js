@@ -51,15 +51,25 @@ function tally(user) {
   return [Object.keys(career.wins).reduce((sum, type) => sum + n(type), 0), n('submission'), n('points')];
 }
 
+// Counted wins per event entered: how deep an athlete usually goes, whatever
+// the bracket sizes. Under three events it ranks after every steadier record,
+// as one good day is not a record yet. A career kept from before event counts
+// were read is read again for its count.
+const MIN_EVENTS = 3;
+const eventsOf = (user) => (fresh(user) ? careers[user].events : undefined);
+const needsEvents = (user) => fresh(user) && !!careers[user].wins && careers[user].events == null;
+const perEvent = (user) => (tally(user) && eventsOf(user) ? [+(eventsOf(user) >= MIN_EVENTS), tally(user)[0] / eventsOf(user)] : [-1, -1]);
+const unread = (user) => !fresh(user) || (order === 'event' && needsEvents(user));
+
 // How much of a whole-event read is still to come: the athletes among these
 // registrations whose career is not read yet. The progress bar fills from the
 // same count the heading gives.
 let done = 0;
 const left = (rows) => {
   const users = new Set(rows.filter((r) => r.user_id).map((r) => r.user_id));
-  const unread = [...users].filter((user) => !fresh(user)).length;
-  done = users.size ? 1 - unread / users.size : 0;
-  return `${plural(unread, 'career')} left to read${SCWRCareers.paused() ? ', paused while Smoothcomp refuses reads' : ''}`;
+  const count = [...users].filter(unread).length;
+  done = users.size ? 1 - count / users.size : 0;
+  return `${plural(count, 'career')} left to read${SCWRCareers.paused() ? ', paused while Smoothcomp refuses reads' : ''}`;
 };
 
 let vm;
@@ -69,12 +79,12 @@ const ranked = new Set();
 
 // Most wins first, then most by submission, most by points, and the younger
 // athlete; anything still level keeps Smoothcomp's own order. The athletes view
-// can lead with submissions instead. A career that is unread or hidden
+// can lead with submissions, or wins per event (lead 2), instead. A career that is unread or hidden
 // sorts after every known one, as does an unknown age.
 function rank(group, lead = 0) {
   const key = (r) => {
     const t = tally(r.user_id) ?? [-1, -1, -1];
-    return [t[lead], ...t, -(r.age ?? Infinity), -place.get(r.id)];
+    return [...(lead === 2 ? perEvent(r.user_id) : [t[lead]]), ...t, -(r.age ?? Infinity), -place.get(r.id)];
   };
   return group.registrations.map((r) => [r, key(r)])
     .sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0))
@@ -206,11 +216,11 @@ const watcher = new IntersectionObserver((entries) => {
 
 // Two lists in place of the brackets, over every athlete the filters and the age
 // range leave. Athletes, one row each, ranked across brackets by career wins, or
-// by wins by submission: a row is the athlete's first registration,
+// by wins by submission, or by wins per event: a row is the athlete's first registration,
 // with every division they entered as its registration. Academies, ranked by the
 // wins of their athletes' careers added up.
 let order = null; // null lists brackets; 'academies' ranks academies; a figure of LEADS ranks athletes
-const LEADS = ['wins', 'submission'];
+const LEADS = ['wins', 'submission', 'event'];
 let view; // the menu that picks it
 let youngest = 0;
 let oldest = Infinity;
@@ -468,7 +478,7 @@ function show() {
 const pending = new Set();
 let draining = null;
 function ranking() {
-  for (const r of people()) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
+  for (const r of people()) if (r.user_id && unread(r.user_id)) pending.add(String(r.user_id));
   for (const r of people(false)) if (r.user_id && needsRank(r.user_id)) pending.add(String(r.user_id));
   drain();
   show();
@@ -478,9 +488,9 @@ function drain() {
   if (pending.size) {
     draining ??= Promise.all(Array.from({ length: BURST }, async () => {
       while (pending.size) {
-        const user = await SCWRCareers.next(pending, u => !fresh(u) || (order !== null && needsRank(u)));
+        const user = await SCWRCareers.next(pending, u => unread(u) || (order !== null && needsRank(u)));
         if (!user) break;
-        if (!fresh(user)) await readCareer(user);
+        if (unread(user)) await readCareer(user, order === 'event');
         if (order !== null && needsRank(user)) await readRank(user);
         if (order === 'academies') glide ??= tops(box.querySelectorAll('.profile-card'), club);
         if (LEADS.includes(order) && Date.now() - shownAt > 15000) show(); else queue();
@@ -501,21 +511,24 @@ const plural = (n, word, words = `${word}s`) => `${n} ${n === 1 ? word : words}`
 // A zero steps back to Smoothcomp's muted ink, so the eye lands on the figures that count.
 const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${figure}</div><div class="muted font-size-tiny">${line}</div></div>`;
 const haul = ([gold, silver, bronze]) => (gold + silver + bronze ? column(gold, `${gold} gold`, `${silver} silver · ${bronze} bronze`) : '<div class="muted">No medals</div>');
-const figures = (t, medals) => column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`) + haul(medals);
+const figures = (t, medals, events) => (Number.isInteger(events)
+  ? column(t[0], events ? `<b>${(t[0] / events).toFixed(1)}</b> per event` : 'No events yet', `${plural(t[0], 'win')} in ${plural(events, 'event')}`)
+  : column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`)) + haul(medals);
 // The placeholder takes the shape of what replaces it, so nothing moves when it lands.
 const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-size-tiny"><i class="scwr-pulse"></i></div></div>';
 
 function draw(cell, user) {
   const t = user && tally(user);
   const medals = t && careers[user].medals;
-  const state = user === 'head' ? user : t ? `${t}|${medals}` : !user ? '' : fresh(user) ? 'hidden' : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
+  const events = t && order === 'event' && careers[user].events;
+  const state = user === 'head' ? user : t ? `${t}|${medals}|${events}` : !user ? '' : fresh(user) ? 'hidden' : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
   if (cell.dataset.state === state) return;
   cell.dataset.state = state;
   cell.title = '';
   if (state === 'head') {
     cell.innerHTML = COLUMNS.map((label) => `<span>${label}</span>`).join('');
   } else if (t) {
-    cell.innerHTML = figures(t, medals);
+    cell.innerHTML = figures(t, medals, events);
     const by =(keep) => Object.entries(careers[user].wins).filter(([type]) => counted(type) === keep)
       .map(([type, n]) => `${n} by ${type}`).join(', ');
     cell.title = `${plural(t[0], 'career win')}: ${by(true) || 'none'}${by(false) ? `, not counting ${by(false)}` : ''}.`;
@@ -744,6 +757,7 @@ SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000
   view.innerHTML = '<option value="">Brackets, biggest first</option><option value="stacked">Brackets, most wins</option>'
     + '<hr><option value="wins">Athletes, most wins</option>'
     + '<option value="submission">Athletes, most submission wins</option>'
+    + '<option value="event">Athletes, most wins per event</option>'
     + '<hr><option value="academies">Academies, most wins</option>';
   const ages = document.createElement('div');
   ages.className = 'scwr-ages';

@@ -73,9 +73,9 @@ const SCWRCareers = (() => {
     }
   })();
 
-  async function job(kind, user, load) {
+  async function job(kind, user, load, events) {
     for (;;) {
-      const claim = await ask({ op: 'claim', kind, user });
+      const claim = await ask({ op: 'claim', kind, user, events });
       if (claim.entry) return claim.entry;
       if (claim.wait) { await pause(claim.wait); continue; }
       const message = { kind, user, token: claim.token };
@@ -167,26 +167,30 @@ const SCWRCareers = (() => {
   }
   const query = signed => signed.signature ? `?signature=${signed.signature}&expires=${signed.expires}` : '';
 
-  function read(kind, user) {
+  // A career kept from before event counts were read is read again when `events` asks for one.
+  function read(kind, user, events = false) {
     user = String(user);
     const entries = kind === 'careers' ? careers : ranks;
-    if (SCWRCache.fresh(entries[user], kind)) return Promise.resolve(entries[user]);
+    if (SCWRCache.fresh(entries[user], kind) && !(events && !entries[user].hidden && entries[user].events == null)) return Promise.resolve(entries[user]);
     const key = `${kind}:${user}`;
     if (!reading.has(key)) {
       reading.set(key, ready.then(() => job(kind, user, async () => {
         const signed = await signature(user);
         if (signed.hidden) return { at: signed.at, hidden: true };
-        const response = await request(kind === 'careers' ? 'career' : 'skills', user, signed);
+        // The events an athlete entered ride on the same signature, beside the
+        // career; without them the career still counts.
+        const [response, past] = await Promise.all([request(kind === 'careers' ? 'career' : 'skills', user, signed),
+          kind === 'careers' && request('events', user, signed).then(r => r.ok ? r.json() : null).catch(() => null)]);
         if (!response.ok) throw new Error('Athlete data unavailable');
         const data = (await response.json()).data;
         if (kind === 'careers') {
           if (!Array.isArray(data?.win_method_breakdown) || !data.medals) throw new Error('Unreadable career');
-          return { at: Date.now(), wins: Object.fromEntries(data.win_method_breakdown.map(t => [t.won_by, t.count])), medals: [data.medals.gold, data.medals.silver, data.medals.bronze] };
+          return { at: Date.now(), wins: Object.fromEntries(data.win_method_breakdown.map(t => [t.won_by, t.count])), medals: [data.medals.gold, data.medals.silver, data.medals.bronze], events: past?.meta?.total };
         }
         if (!Array.isArray(data)) throw new Error('Unreadable belts');
         const latest = data.filter(skill => /jiu|bjj/i.test(skill.name)).sort((a, b) => b.sort_order - a.sort_order)[0];
         return { at: Date.now(), belt: SCWRCache.oneBelt(latest?.belt ?? '') };
-      })).then(entry => {
+      }, events)).then(entry => {
         if (entry) merge({ [kind]: { [user]: entry } });
         return entry;
       }).catch(() => {}).finally(() => { reading.delete(key); changed(); }));
@@ -196,7 +200,7 @@ const SCWRCareers = (() => {
   return { careers, ranks, ready, save, signature, query, next,
     fresh: user => SCWRCache.fresh(careers[user]),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
-    readCareer: user => read('careers', user), readRank: user => read('ranks', user),
+    readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),
     configure(options) { priority = options.priority; changed = options.changed; halted = options.halted ?? halted; },
   };
 })();

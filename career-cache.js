@@ -20,7 +20,8 @@ const SCWRCache = (() => {
     if (kind === 'careers' && entry.wins && typeof entry.wins === 'object' && !Array.isArray(entry.wins) && Array.isArray(entry.medals)) {
       return { at: entry.at,
         wins: Object.fromEntries(Object.entries(entry.wins).filter(([type, n]) => /^[\w -]{1,40}$/.test(type) && whole(n))),
-        medals: [0, 1, 2].map(i => whole(entry.medals[i]) ? entry.medals[i] : 0) };
+        medals: [0, 1, 2].map(i => whole(entry.medals[i]) ? entry.medals[i] : 0),
+        ...(whole(entry.events) && { events: entry.events }) };
     }
     if (kind === 'ranks' && (entry.belt == null || BELTS.includes(entry.belt))) return { at: entry.at, belt: entry.belt ?? null };
     if (kind === 'signatures') {

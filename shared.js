@@ -4,11 +4,11 @@ const send = message => chrome.runtime.sendMessage({ ...message, channel: 'scwr'
 const OPS = ['read', 'import', 'claim', 'renew', 'complete', 'peek', 'available', 'delay'];
 async function fetchAthlete(request, started) {
   const { resource, user, signed = {} } = request;
-  if (!['profile', 'career', 'skills'].includes(resource) || !/^\d{1,12}$/.test(user)) throw new Error('Invalid athlete request');
+  if (!['profile', 'career', 'events', 'skills'].includes(resource) || !/^\d{1,12}$/.test(user)) throw new Error('Invalid athlete request');
   const { wait, paused } = await send({ op: resource === 'profile' ? 'slot' : 'delay' });
   if (wait) return { wait, paused };
   const home = location.hostname === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com';
-  const path = resource === 'profile' ? `profile/${user}` : `athlete/${user}/${resource === 'career' ? 'wins-and-medals' : 'skills'}`;
+  const path = resource === 'profile' ? `profile/${user}` : `athlete/${user}/${{ career: 'wins-and-medals', events: 'past-events' }[resource] ?? 'skills'}`;
   const url = new URL(`/en/${path}`, home);
   if (resource !== 'profile' && typeof signed.signature === 'string' && /^[\w-]{1,256}$/.test(signed.signature) && Number.isSafeInteger(signed.expires)) {
     url.searchParams.set('signature', signed.signature);

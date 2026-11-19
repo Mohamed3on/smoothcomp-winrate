@@ -68,15 +68,17 @@ function page(w, fetcher, tab = 1) {
 }
 const json = data => new Response(JSON.stringify({ data }), { headers: { 'Content-Type': 'application/json' } });
 const career = () => json({ win_method_breakdown: [{ won_by: 'submission', count: 7 }], medals: { gold: 1, silver: 0, bronze: 0 } });
+const events = total => new Response(JSON.stringify({ data: [], meta: { total } }), { headers: { 'Content-Type': 'application/json' } });
 const profile = w => new Response(`<athlete-profile data-data-signature="{&quot;signature&quot;:&quot;abc&quot;,&quot;expires&quot;:${Math.floor(w.now() / 1000) + 900}}"></athlete-profile>`);
 
 test('career and belt readers share one profile request and persist without an event-wide save', async () => {
   const w = worker();
-  const p = page(w, url => url.includes('/profile/') ? profile(w) : url.includes('/skills') ? json([{ name: 'BJJ', belt: 'Purple', sort_order: 1 }]) : career());
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : url.includes('/skills') ? json([{ name: 'BJJ', belt: 'Purple', sort_order: 1 }]) : url.includes('/past-events') ? events(29) : career());
   await Promise.all([p.api.readCareer('1'), p.api.readCareer('1'), p.api.readRank('1')]);
   assert.equal(p.fetched.filter(url => url.includes('/profile/')).length, 1);
-  assert.equal(p.fetched.length, 3);
+  assert.equal(p.fetched.length, 4);
   assert.equal(p.api.careers['1'].wins.submission, 7);
+  assert.equal(p.api.careers['1'].events, 29);
   assert.equal(p.api.ranks['1'].belt, 'purple');
   assert.equal((await w.send({ op: 'claim', kind: 'careers', user: '1' }, 2)).entry.wins.submission, 7);
   assert.equal(w.storage.session['scwr:requests'].sites['smoothcomp.com'].asked.length, 1);
@@ -88,7 +90,7 @@ test('a second tab joins completed work instead of fetching the athlete twice', 
   const first = page(w, fetcher);
   const second = page(w, fetcher, 2);
   await Promise.all([first.api.readCareer('1'), second.api.readCareer('1')]);
-  assert.equal(first.fetched.length + second.fetched.length, 2);
+  assert.equal(first.fetched.length + second.fetched.length, 3);
   assert.equal(second.api.careers['1'].wins.submission, 7);
 });
 
@@ -104,7 +106,7 @@ test('confirmed privacy skips the career endpoint, then is rechecked after 30 da
   w.advance(30 * 24 * 60 * 60 * 1000 + 1);
   privateProfile = false;
   await p.api.readCareer('1');
-  assert.equal(p.fetched.length, 3);
+  assert.equal(p.fetched.length, 4);
   assert.equal(p.api.careers['1'].wins.submission, 7);
 });
 
@@ -214,7 +216,7 @@ test('expired privacy does not resurrect an older public cache from another orga
   await p.api.ready;
   assert.equal(p.api.fresh('1'), false);
   await p.api.readCareer('1');
-  assert.equal(p.fetched.length, 2);
+  assert.equal(p.fetched.length, 3);
   assert.equal(p.api.careers['1'].wins.submission, 7);
 });
 
@@ -316,4 +318,23 @@ test('another tab broadcasts completed careers through the isolated bridge', asy
   assert.equal(first.fetched.length, 0);
   assert.equal(first.api.careers['1'].wins.submission, 7);
   assert.deepEqual(updated, ['1']);
+});
+
+test('a career kept without its event count is read again only when the count is asked for', async () => {
+  const w = worker({ local: { 'scwr2:smoothcomp.com:careers:1': { at: 1800000000000, wins: { points: 9 }, medals: [0, 0, 0] } }, session: {} });
+  let failEvents = true;
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : url.includes('/past-events') ? (failEvents ? new Response('', { status: 404 }) : events(12)) : career());
+  await p.api.ready;
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.length, 0);
+  w.advance(1000);
+  await p.api.readCareer('1', true);
+  assert.equal(p.fetched.length, 3);
+  assert.equal(p.api.careers['1'].wins.submission, 7);
+  assert.equal(p.api.careers['1'].events, undefined);
+  failEvents = false;
+  w.advance(1000);
+  await p.api.readCareer('1', true);
+  assert.equal(p.api.careers['1'].events, 12);
+  assert.equal((await w.send({ op: 'claim', kind: 'careers', user: '1', events: true }, 2)).entry.events, 12);
 });

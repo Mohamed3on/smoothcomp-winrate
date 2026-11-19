@@ -17,7 +17,7 @@ PARTICIPANTS PAGE
 • Each athlete's career beside their name: wins, how many came by submission and on points, and medals
 • Careers shared across organiser sites and tabs, with progress saved as each athlete loads and a bar showing how much is left to read; private profiles are checked again after 30 days, and reading pauses on its own while Smoothcomp is refusing requests
 • Each bracket ranked by those careers, so you can size up your division before you compete, or the brackets sorted by how stacked they are
-• Athletes: everyone at the event in one list, ranked by career wins or submission wins, with their belt, age, divisions and the medal each bracket points to
+• Athletes: everyone at the event in one list, ranked by career wins, submission wins or wins per event entered, with their belt, age, divisions and the medal each bracket points to
 • Academies: every academy ranked by its athletes' combined career wins, with the athletes behind it and the medals they're on course for
 • Belt, age, country and approved-only filters
 • Signed in: every bracket you could enter and would top-seed, with the athlete you'd displace
