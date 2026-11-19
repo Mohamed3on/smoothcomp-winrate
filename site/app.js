@@ -8,8 +8,9 @@ const ALL = 2000; // every row a ranking has; nothing is paged away
 const FIRST = 100;
 const CHUNK = 200;
 const FILTERS = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'athletes'];
-const DEFAULTS = { off: 'walkover', wins: '5' };
-const PREFS = 'mat-stats:filters';
+// Nothing is filtered out until the reader sets a minimum; only walkovers start uncounted.
+const DEFAULTS = { off: 'walkover' };
+const PREFS = 'mat-stats:filters:2';
 
 // Each view draws into the main element current when it started; a view still
 // loading after the reader moved on writes into a detached one.
@@ -130,7 +131,7 @@ function keys(types) {
 }
 // No Smoothcomp career: the figures are this athlete's results at the events read, losses included.
 const fromResults = (a) => (a.source === 'results' ? `<div class="legend from" title="Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read">From results: ${record(a.wins, a.losses)} at ${plural(a.events, 'event')} read</div>` : '');
-const medals = (g, s, b) => `<span class="medals" aria-label="${g} gold, ${s} silver, ${b} bronze">${[['g', g], ['s', s], ['b', b]].map(([k, n]) => `<span class="${k}${n ? '' : ' none'}">${fmt(n)}</span>`).join('')}</span>`;
+const medals = (...counts) => { const [g, s, b] = counts.map((n) => Number(n) || 0); return `<span class="medals" aria-label="${g} gold, ${s} silver, ${b} bronze">${[['g', g], ['s', s], ['b', b]].map(([k, n]) => `<span class="${k}${n ? '' : ' none'}">${fmt(n)}</span>`).join('')}</span>`; };
 const num = (n) => `<span class="num${n ? '' : ' zero'}">${fmt(n)}</span>`;
 // What happened, whether or not it counts: a finish switched off reads dimmed, not zero.
 const raw = (n, type) => (counted(type) ? num(n) : `<span class="zero" title="${TYPE_NAMES[type]} wins are switched off in the filters">${fmt(n)}</span>`);

@@ -42,7 +42,8 @@ const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', '
 const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
 const tally = (bucket) => Object.fromEntries(Object.entries(bucket && typeof bucket === 'object' ? bucket : {})
   .filter(([type, n]) => /^[\w -]{1,40}$/.test(type) && Number.isSafeInteger(n) && n > 0 && n < 100));
-const photo = (url) => (typeof url === 'string' && /^https:\/\/[\w.-]+\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
+// Photos only from the sites' own hosts.
+const photo = (url) => (typeof url === 'string' && /^https:\/\/([\w-]+\.)*(smoothcomp\.com|ajptour\.com)\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
 // A grade label names one belt, or none: "Purple/Brown" and "All belts" name none.
 const oneBelt = (label) => {
   const named = typeof label === 'string' ? BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(label.replace(/gray/i, 'grey'))) : [];
@@ -52,7 +53,8 @@ const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 
 async function identify(env, site, event, meta, athletes, fought) {
   if (!athletes || typeof athletes !== 'object') return;
-  const start = typeof meta?.start === 'string' && ISO.test(meta.start) ? meta.start : null;
+  // A date decides whose academy and photo win, so none from the future.
+  const start = typeof meta?.start === 'string' && ISO.test(meta.start) && Date.parse(meta.start) < Date.now() + 366 * 24 * 60 * 60 * 1000 ? meta.start : null;
   const now = Date.now();
   const statements = [];
   if (meta && typeof meta === 'object') {
