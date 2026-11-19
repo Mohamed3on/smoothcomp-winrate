@@ -369,3 +369,13 @@ test('a kept cache goes to the shared cache once, and careers it already had are
   assert.deepEqual(w.posts.map(post => post.url.split('/').pop()), ['keep', 'lookup']);
   assert.deepEqual(w.posts[0].careers, { 1: kept });
 });
+
+test('a results page sends its records, and the lookup brings back what was seen of each athlete', async () => {
+  const w = worker(undefined, undefined, { careers: {}, ranks: {}, seen: { 3: [4, 1, 2], 4: [1, 'x', 1] } });
+  await w.send({ op: 'record', event: '25902', records: { 3: [2, 0] } }, 1, 'smoothcomp.com');
+  assert.deepEqual(w.posts[0], { url: 'https://mat-stats.mohamed3on.workers.dev/record', site: 'smoothcomp.com', event: '25902', records: { 3: [2, 0] } });
+  const p = page(w, () => { throw new Error('no reads'); });
+  p.api.lookup(['3', '4']);
+  await p.api.next(new Set(), () => true);
+  assert.equal(JSON.stringify(p.api.seen), '{"3":[4,1,2]}');
+});

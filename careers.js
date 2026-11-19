@@ -74,8 +74,14 @@ const SCWRCareers = (() => {
   })();
 
   // The shared cache answers for the whole event at once, before any profile is read.
+  // With it come the records results pages have seen: [wins, losses, events].
   let looked = Promise.resolve();
-  const lookup = users => { looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users })).then(merge).catch(() => {})]); };
+  const seen = {};
+  const lookup = users => { looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users })).then(kept => {
+    Object.assign(seen, kept.seen);
+    merge(kept);
+    if (Object.keys(kept.seen ?? {}).length) changed(new Set(Object.keys(kept.seen)));
+  }).catch(() => {})]); };
 
   async function job(kind, user, load, events) {
     for (;;) {
@@ -202,7 +208,7 @@ const SCWRCareers = (() => {
     }
     return reading.get(key);
   }
-  return { careers, ranks, ready, save, signature, query, next, lookup,
+  return { careers, ranks, ready, save, signature, query, next, lookup, seen,
     fresh: user => SCWRCache.fresh(careers[user]),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),

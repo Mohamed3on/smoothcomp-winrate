@@ -1288,6 +1288,19 @@
     if (!model) chips.replaceChildren(...Array.from({ length: 5 }, () => el('span', undefined, 'scwr-shimmer')));
   }
 
+  // Every athlete's record here, walkovers aside, goes to the shared cache, so the
+  // participants page can show something of a hidden profile.
+  function share(model) {
+    const records = {};
+    const count = (bucket) => Object.entries(bucket).reduce((n, [type, c]) => n + (type === 'walkover' ? 0 : c), 0);
+    for (const a of model.athletes.values()) {
+      const record = [0, 0];
+      for (const e of a.entries) { record[0] += count(e.wins); record[1] += count(e.losses); }
+      if (a.userId && record[0] + record[1]) records[a.userId] = record;
+    }
+    document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'record', event: SCWRSite.eventId(), records }) }));
+  }
+
   async function load(refresh = false) {
     if (busy) return;
     busy = true;
@@ -1302,6 +1315,7 @@
         fetchParticipants(),
       ]);
       model = SCWRModel.build(results, data.matches, participants);
+      share(model);
       eventMatches = model.matches;
       const seen = WIN_TYPES.filter((t) => eventMatches.some((m) => m.sides.some((s) => s.won === t)));
       eventTypes = seen.length ? seen : WIN_TYPES;

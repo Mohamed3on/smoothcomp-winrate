@@ -17,7 +17,10 @@
       "matches": [
         "https://*.smoothcomp.com/*/event/*/participants*",
         "https://smoothcomp.com/*/event/*/participants*",
-        "https://ajptour.com/*/event/*/participants*"
+        "https://ajptour.com/*/event/*/participants*",
+        "https://*.smoothcomp.com/*/event/*/results*",
+        "https://smoothcomp.com/*/event/*/results*",
+        "https://ajptour.com/*/event/*/results*"
       ],
       "js": [
         "shared.js"

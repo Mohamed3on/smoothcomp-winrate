@@ -142,6 +142,12 @@ async function handle(message, sender) {
   return {};
 }
 
+// A results page's records go straight to the shared cache; none are kept here.
+function record({ event, records }, sender) {
+  const site = siteFor(sender);
+  if (site && /^\d{1,9}$/.test(event) && records && typeof records === 'object') fetch(`${SERVER}/record`, { method: 'POST', body: JSON.stringify({ site, event, records }) }).catch(() => {});
+}
+
 // A lookup waits on the network, so only its write joins the serial line.
 async function lookup({ users }, sender) {
   const site = siteFor(sender);
@@ -149,8 +155,9 @@ async function lookup({ users }, sender) {
   if (!site || !users.length) return {};
   const response = await fetch(`${SERVER}/lookup`, { method: 'POST', body: JSON.stringify({ site, users }), signal: AbortSignal.timeout(10000) });
   const given = response.ok ? await response.json() : {};
-  const kept = { careers: {}, ranks: {} };
-  for (const name of Object.keys(kept)) for (const [id, entry] of Object.entries(given[name] ?? {})) {
+  const kept = { careers: {}, ranks: {}, seen: {} };
+  for (const [id, seen] of Object.entries(given.seen ?? {})) if (validUser(id) && Array.isArray(seen) && seen.length === 3 && seen.every(Number.isSafeInteger)) kept.seen[id] = seen;
+  for (const name of ['careers', 'ranks']) for (const [id, entry] of Object.entries(given[name] ?? {})) {
     const clean = SCWRCache.clean(name, entry);
     if (validUser(id) && clean) kept[name][id] = clean;
   }
@@ -160,6 +167,7 @@ async function lookup({ users }, sender) {
 
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message?.channel !== 'scwr') return;
+  if (message.op === 'record') { record(message, sender); reply({}); return; }
   if (message.op === 'shared') { lookup(message, sender).then(reply, () => reply({})); return true; }
   // Storage has no compare-and-swap. Serialise claims, slots and writes here.
   serial = serial.then(() => handle(message, sender)).then(reply, error => reply({ error: error.message }));

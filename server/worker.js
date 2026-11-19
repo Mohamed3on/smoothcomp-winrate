@@ -12,8 +12,12 @@ async function lookup(env, { site, users }) {
   if (!SITES.includes(site) || !Array.isArray(users) || users.length > 5000 || !users.every(u => typeof u === 'string' && validUser(u))) return json({ error: 'Bad lookup' }, 400);
   const { results } = await env.DB.prepare('SELECT user, kind, entry FROM athletes WHERE site = ?1 AND at > ?2 AND user IN (SELECT value FROM json_each(?3))')
     .bind(site, Date.now() - KEPT, JSON.stringify(users)).all();
-  const kept = { careers: {}, ranks: {} };
+  const kept = { careers: {}, ranks: {}, seen: {} };
   for (const row of results) kept[row.kind][row.user] = JSON.parse(row.entry);
+  // What results pages have shown of each athlete, event by event, walkovers aside.
+  const seen = await env.DB.prepare('SELECT user, sum(wins) wins, sum(losses) losses, count(*) events FROM records WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
+    .bind(site, JSON.stringify(users)).all();
+  for (const row of seen.results) kept.seen[row.user] = [row.wins, row.losses, row.events];
   return json(kept);
 }
 
@@ -30,14 +34,27 @@ async function keep(env, body) {
   return json({});
 }
 
+// A results page's records for its event; the latest read of an event replaces the last.
+async function record(env, { site, event, records }) {
+  if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || typeof records !== 'object' || !records) return json({ error: 'Bad record' }, 400);
+  const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
+  if (rows.length > 5000) return json({ error: 'Too many' }, 413);
+  await env.DB.prepare(`INSERT OR REPLACE INTO records (site, event, user, wins, losses, at)
+    SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4)`)
+    .bind(site, event, Date.now(), JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
+  return json({});
+}
+
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record };
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const { pathname } = new URL(request.url);
-    if (request.method !== 'POST' || !['/lookup', '/keep'].includes(pathname)) return json({ error: 'Not found' }, 404);
+    if (request.method !== 'POST' || !ROUTES[pathname]) return json({ error: 'Not found' }, 404);
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
-    return (pathname === '/lookup' ? lookup : keep)(env, body ?? {});
+    return ROUTES[pathname](env, body ?? {});
   },
   async scheduled(_, env) {
     await env.DB.prepare('DELETE FROM athletes WHERE at <= ?1').bind(Date.now() - KEPT).run();
