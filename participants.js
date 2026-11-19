@@ -20,7 +20,15 @@ function onScreen() {
   }
   return visibleUsers = seen;
 }
-SCWRCareers.configure({ priority: onScreen, changed: careerChanged, halted: () => {
+// Off screen, the athletes the filters leave come before the ones they hide.
+let wantedAt = 0;
+let wantedUsers = null;
+function filtered() {
+  if (Date.now() - wantedAt < 1000) return wantedUsers;
+  wantedAt = Date.now();
+  return wantedUsers = vm && order !== null ? new Set(people().map((r) => String(r.user_id))) : null;
+}
+SCWRCareers.configure({ priority: onScreen, wanted: filtered, changed: careerChanged, halted: () => {
   document.documentElement.toggleAttribute('data-scwr-paused', SCWRCareers.paused());
   if (!vm) return;
   if (LEADS.includes(order)) show(); else queue();

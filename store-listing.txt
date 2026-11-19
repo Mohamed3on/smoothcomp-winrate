@@ -16,6 +16,7 @@ PARTICIPANTS PAGE
 • Every bracket at once, biggest first, instead of a few at a time as you scroll, including athletes still waiting on approval
 • Each athlete's career beside their name: wins, how many came by submission and on points, and medals
 • Careers shared by everyone who uses Mat Stats, so an event someone has already opened loads in seconds; the rest are read with progress saved as each athlete loads and a bar showing how much is left to read; private profiles are checked again after 30 days, and reading pauses on its own while Smoothcomp is refusing requests
+• Hidden profiles show the wins and losses Mat Stats has seen on the results pages of their past events
 • Each bracket ranked by those careers, so you can size up your division before you compete, or the brackets sorted by how stacked they are
 • Athletes: everyone at the event in one list, ranked by career wins, submission wins or wins per event entered, with their belt, age, divisions and the medal each bracket points to
 • Academies: every academy ranked by its athletes' combined career wins, with the athletes behind it and the medals they're on course for
@@ -25,7 +26,7 @@ PARTICIPANTS PAGE
 Works on smoothcomp.com events and on AJP Tour events (ajptour.com).
 
 PRIVACY
-Mat Stats runs only on Smoothcomp and AJP Tour event pages. It reads what those sites already show you, keeps a cache in your browser so repeat visits make fewer requests, and shares athletes' public career figures (Smoothcomp athlete ID, wins, medals, events entered, belt) through Mat Stats' own cache, so no one has to read the same athlete twice. Nothing about you is sent: no accounts, no analytics, no tracking.
+Mat Stats runs only on Smoothcomp and AJP Tour event pages. It reads what those sites already show you, keeps a cache in your browser so repeat visits make fewer requests, and shares athletes' public career figures (Smoothcomp athlete ID, wins, medals, events entered, belt, and each event's wins and losses) through Mat Stats' own cache, so no one has to read the same athlete twice. Nothing about you is sent: no accounts, no analytics, no tracking.
 
 Mat Stats is independent and is not affiliated with or endorsed by Smoothcomp or AJP Tour.
 

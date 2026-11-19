@@ -8,6 +8,7 @@ const SCWRCareers = (() => {
   let nextId = 0;
   let turning = false;
   let priority = () => new Set();
+  let wanted = () => null; // the athletes the page shows, read before the rest
   let changed = () => {};
   let halted = () => {};
   const pause = (ms) => new Promise(done => setTimeout(done, ms));
@@ -144,7 +145,8 @@ const SCWRCareers = (() => {
     await looked;
     while (pending.size) {
       const seen = priority();
-      const user = [...pending].find(u => seen.has(u)) ?? pending.values().next().value;
+      const shown = wanted();
+      const user = [...pending].find(u => seen.has(u)) ?? (shown && [...pending].find(u => shown.has(u))) ?? pending.values().next().value;
       if (!needed(user)) { pending.delete(user); continue; }
       const { entry } = await ask({ op: 'peek', kind: 'signatures', user });
       if (!entry) {
@@ -212,6 +214,6 @@ const SCWRCareers = (() => {
     fresh: user => SCWRCache.fresh(careers[user]),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),
-    configure(options) { priority = options.priority; changed = options.changed; halted = options.halted ?? halted; },
+    configure(options) { priority = options.priority; wanted = options.wanted ?? wanted; changed = options.changed; halted = options.halted ?? halted; },
   };
 })();
