@@ -85,7 +85,9 @@ async function handle(message, sender) {
   const limit = data.sites[site] ??= { asked: [], held: 0, strikes: 0 };
   if (op === 'slot' || op === 'available' || op === 'delay') {
     limit.asked = limit.asked.filter(at => at + 10500 > Date.now());
-    const wait = Math.max(0, limit.held - Date.now(), op !== 'delay' && limit.asked.length >= 5 ? limit.asked[0] + 10500 - Date.now() : 0);
+    // Five profile pages per 10.5 s, spread evenly: five at once trip Cloudflare's
+    // approximate counter now and then, and each refusal costs a 10 s backoff.
+    const wait = Math.max(0, limit.held - Date.now(), op !== 'delay' && limit.asked.length ? limit.asked.at(-1) + 2100 - Date.now() : 0);
     if (op === 'slot' && !wait) { limit.asked.push(Date.now()); await checkpoint(); }
     return { wait, paused: limit.strikes >= PAUSE };
   }

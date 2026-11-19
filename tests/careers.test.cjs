@@ -36,14 +36,13 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000) {
   };
 }
 
-test('tabs share five profile slots, including after the worker restarts', async () => {
+test('tabs share profile slots spread 2.1 s apart, including after the worker restarts', async () => {
   const w = worker();
-  const slots = await Promise.all(Array.from({ length: 6 }, (_, i) => w.send({ op: 'slot' }, i + 1)));
-  assert.equal(slots.filter(s => s.wait === 0).length, 5);
-  assert.equal(slots[5].wait, 10500);
+  const slots = await Promise.all(Array.from({ length: 3 }, (_, i) => w.send({ op: 'slot' }, i + 1)));
+  assert.deepEqual(slots.map(s => s.wait), [0, 2100, 2100]);
   const restarted = worker(w.storage);
-  assert.equal((await restarted.send({ op: 'slot' })).wait, 10500);
-  restarted.advance(10500);
+  assert.equal((await restarted.send({ op: 'slot' })).wait, 2100);
+  restarted.advance(2100);
   assert.equal((await restarted.send({ op: 'slot' })).wait, 0);
 });
 
@@ -193,7 +192,7 @@ test('refusals in flight count once, and five running pause reading for a quarte
   w.advance(15 * 60000);
   assert.deepEqual(await w.send({ op: 'slot' }), { wait: 0, paused: true });
   await w.send({ op: 'healthy' });
-  assert.deepEqual(await w.send({ op: 'available' }), { wait: 0, paused: false });
+  assert.deepEqual(await w.send({ op: 'available' }), { wait: 2100, paused: false });
 });
 
 test('old ambiguous hidden entries are discarded and simultaneous saves survive', async () => {
@@ -304,7 +303,7 @@ test('scrolling during a slot wait selects the newly visible pending athlete wit
   assert.deepEqual([...pending], ['1']);
   assert.equal(p.fetched.length, 0);
   const slots = await Promise.all(Array.from({ length: 6 }, () => w.send({ op: 'slot' })));
-  assert.equal(slots.filter(r => r.wait === 0).length, 5);
+  assert.equal(slots.filter(r => r.wait === 0).length, 1);
 });
 
 test('another tab broadcasts completed careers through the isolated bridge', async () => {
