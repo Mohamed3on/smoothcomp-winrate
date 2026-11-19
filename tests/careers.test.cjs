@@ -379,3 +379,14 @@ test('a results page sends its records, and the lookup brings back what was seen
   await p.api.next(new Set(), () => true);
   assert.equal(JSON.stringify(p.api.seen), '{"3":[4,1,2]}');
 });
+
+test('off screen, an athlete the filters show is read before one they hide', async () => {
+  const w = worker();
+  const p = page(w, () => career());
+  p.api.configure({ priority: () => new Set(['9']), wanted: () => new Set(['3']), changed() {} });
+  const pending = new Set(['1', '2', '3']);
+  assert.equal(await p.api.next(pending, () => true), '3');
+  p.api.configure({ priority: () => new Set(['2']), changed() {} });
+  w.advance(2100);
+  assert.equal(await p.api.next(pending, () => true), '2');
+});
