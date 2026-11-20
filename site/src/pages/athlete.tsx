@@ -91,20 +91,25 @@ function Upcoming({ list, f }: { list: Row[]; f: Filters }) {
 // Wins at each past event Smoothcomp lists, oldest first, coloured by the best medal there.
 function Form({ list }: { list: Row[] }) {
   const points = list.filter((r) => r.listed?.wins != null).reverse().map((r) => ({
-    name: r.title ?? '', date: date(r.start), wins: r.listed!.wins!, medal: r.listed!.gold ? 'var(--color-gold)' : r.listed!.silver ? 'var(--color-silver)' : r.listed!.bronze ? 'var(--color-bronze)' : 'var(--color-win-decision)',
+    name: r.title ?? '', date: date(r.start), tick: r.start ? new Date(r.start).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }) : '–', wins: r.listed!.wins!, medal: r.listed!.gold ? 'var(--color-gold)' : r.listed!.silver ? 'var(--color-silver)' : r.listed!.bronze ? 'var(--color-bronze)' : 'var(--color-win-decision)',
   }));
   if (points.length < 2) return null;
   return (
     <Card className="gap-3 px-5 py-4">
-      <div className="flex items-baseline justify-between"><h3 className="text-sm font-medium">Wins per event</h3><span className="text-xs text-muted-foreground">Coloured by the best medal won there</span></div>
-      <div className="h-40">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
+        <h3 className="text-sm font-medium">Wins per event</h3>
+        <ul className="flex gap-4 text-xs text-muted-foreground" aria-label="Bar colour: the best medal won there">
+          {[['bg-gold', 'Gold'], ['bg-silver', 'Silver'], ['bg-bronze', 'Bronze'], ['bg-win-decision', 'No medal']].map(([bg, label]) => <li key={label} className="inline-flex items-center gap-1.5"><i className={`size-2 rounded-sm ${bg}`} />{label}</li>)}
+        </ul>
+      </div>
+      <div className="h-44 max-w-full" style={{ width: Math.max(points.length * 52 + 40, 280) }}>
         <ResponsiveContainer>
           <BarChart data={points} margin={{ top: 4, right: 0, bottom: 0, left: -28 }}>
-            <XAxis dataKey="date" tick={false} axisLine={{ stroke: 'oklch(1 0 0 / 10%)' }} tickLine={false} />
+            <XAxis dataKey="tick" interval="preserveStartEnd" minTickGap={8} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={{ stroke: 'oklch(1 0 0 / 10%)' }} tickLine={false} />
             <YAxis allowDecimals={false} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
             <Tooltip cursor={{ fill: 'oklch(1 0 0 / 5%)' }} contentStyle={{ background: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
               labelFormatter={(_, p) => (p[0] ? `${p[0].payload.name} · ${p[0].payload.date}` : '')} formatter={(v) => [v, 'Wins']} />
-            <Bar dataKey="wins" radius={[3, 3, 0, 0]} maxBarSize={28}>{points.map((p, i) => <Cell key={i} fill={p.medal} />)}</Bar>
+            <Bar dataKey="wins" radius={[3, 3, 0, 0]} maxBarSize={32}>{points.map((p, i) => <Cell key={i} fill={p.medal} />)}</Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
