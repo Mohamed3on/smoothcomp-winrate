@@ -57,7 +57,7 @@ const oneBelt = (label) => {
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 // When the page read what it sends: an upload read before the one kept is dropped, so a
 // late arrival never undoes a newer read. Older installs send none and count as read now.
-const readAt = (read, now = Date.now()) => (Number.isSafeInteger(read) && read <= now + 60000 && read > now - 60 * 60 * 1000 ? read : now);
+const readAt = (read, now = Date.now()) => (Number.isSafeInteger(read) && read > now - 60 * 60 * 1000 ? Math.min(read, now) : now);
 
 async function identify(env, site, event, meta, athletes, fought, read = Date.now()) {
   if (!athletes || typeof athletes !== 'object') return;
