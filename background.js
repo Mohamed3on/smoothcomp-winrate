@@ -144,10 +144,10 @@ async function handle(message, sender) {
 
 // A results page's records, a registration list and a profile go straight to the
 // shared cache, with who each athlete is; none are kept here.
-function record({ op, event, records, meta, athletes }, sender) {
+function record({ op, event, records, meta, athletes, read }, sender) {
   const site = siteFor(sender);
   if (!site || (op !== 'people' && !/^\d{1,9}$/.test(event)) || (op === 'record' && (!records || typeof records !== 'object'))) return;
-  fetch(`${SERVER}/${op}`, { method: 'POST', body: JSON.stringify({ site, event, records, meta, athletes }) }).catch(() => {});
+  fetch(`${SERVER}/${op}`, { method: 'POST', body: JSON.stringify({ site, event, records, meta, athletes, read }) }).catch(() => {});
 }
 
 // A lookup waits on the network, so only its write joins the serial line.

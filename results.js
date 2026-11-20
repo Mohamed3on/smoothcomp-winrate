@@ -1291,7 +1291,7 @@
   // Every athlete's record here, walkovers aside, goes to the shared cache, so the
   // participants page can show something of a hidden profile. Who they are and how
   // each division went goes with it, for the public site.
-  async function share(model) {
+  async function share(model, read = Date.now()) {
     const records = {};
     const athletes = {};
     const count = (bucket) => Object.entries(bucket).reduce((n, [type, c]) => n + (type === 'walkover' ? 0 : c), 0);
@@ -1302,7 +1302,7 @@
       if (a.userId) athletes[a.userId] = { name: a.name, club: a.club, clubId: a.clubId, country: a.country, countryName: a.countryName, belt: a.belt, age: a.age, photo: a.logo, hidden: a.hidden ?? undefined,
         entries: a.entries.map((e) => ({ division: model.brackets.get(e.bracketId)?.name, place: e.placement, wins: e.wins, losses: e.losses })) };
     }
-    document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'record', event: SCWRSite.eventId(), records, meta: await SCWRSite.event(), athletes }) }));
+    document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'record', event: SCWRSite.eventId(), records, meta: await SCWRSite.event(), athletes, read }) }));
   }
 
   async function load(refresh = false) {

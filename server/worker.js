@@ -55,8 +55,11 @@ const oneBelt = (label) => {
   return named.length === 1 ? named[0] : null;
 };
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
+// When the page read what it sends: an upload read before the one kept is dropped, so a
+// late arrival never undoes a newer read. Older installs send none and count as read now.
+const readAt = (read, now = Date.now()) => (Number.isSafeInteger(read) && read <= now + 60000 && read > now - 60 * 60 * 1000 ? read : now);
 
-async function identify(env, site, event, meta, athletes, fought) {
+async function identify(env, site, event, meta, athletes, fought, read = Date.now()) {
   if (!athletes || typeof athletes !== 'object') return;
   // A date decides whose academy and photo win, so none from the future.
   const start = typeof meta?.start === 'string' && ISO.test(meta.start) && Date.parse(meta.start) < Date.now() + 366 * 24 * 60 * 60 * 1000 ? meta.start : null;
@@ -101,16 +104,17 @@ async function identify(env, site, event, meta, athletes, fought) {
     hidden = coalesce(excluded.hidden, people.hidden), seen = max(people.seen, excluded.seen), at = excluded.at`)
     // A profile has no date: it fills gaps and never outranks an event.
     .bind(site, start ?? (event ? new Date(now).toISOString() : ''), now, JSON.stringify(people)));
-  const insert = `INSERT OR REPLACE INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at)
-    SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4 FROM json_each(?5)`;
   // A profile only says who the athlete is; an event also says who entered and how it went.
-  if (event && fought) {
-    statements.push(env.DB.prepare('DELETE FROM entries WHERE site = ?1 AND event = ?2').bind(site, event));
-    statements.push(env.DB.prepare(insert).bind(site, event, 1, now, JSON.stringify(entries)));
-  } else if (event) {
-    // Who entered, until a results page says how it went.
-    statements.push(env.DB.prepare('DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = 0').bind(site, event));
-    statements.push(env.DB.prepare(`${insert} WHERE NOT EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1)`).bind(site, event, 0, now, JSON.stringify(entries)));
+  // The registration list (fought = 0) and the results (fought = 1) are two layers, each
+  // replaced whole by its own page's next read, so who entered survives while results arrive.
+  // A results row outranks a registration row under the same athlete and division.
+  if (event) {
+    const layer = Number(fought);
+    const newer = 'NOT EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND at > ?4)';
+    statements.push(env.DB.prepare(`DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND ${newer}`).bind(site, event, layer, read));
+    statements.push(env.DB.prepare(`INSERT OR ${fought ? 'REPLACE' : 'IGNORE'} INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at)
+      SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4 FROM json_each(?5) WHERE ${newer}`)
+      .bind(site, event, layer, read, JSON.stringify(entries)));
   }
   // An athlete's event list, as Smoothcomp gives it, replaces the last one read.
   for (const [user, rows] of Object.entries(history)) {
@@ -130,21 +134,22 @@ async function people(env, { site, athletes }) {
 }
 
 // A registration list's athletes and the event they entered.
-async function roster(env, { site, event, meta, athletes }) {
+async function roster(env, { site, event, meta, athletes, read }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event)) return json({ error: 'Bad roster' }, 400);
-  await identify(env, site, event, meta, athletes, false);
+  await identify(env, site, event, meta, athletes, false, readAt(read));
   return json({});
 }
 
 // A results page's records for its event; the latest read of an event replaces the last.
-async function record(env, { site, event, records, meta, athletes }) {
+async function record(env, { site, event, records, meta, athletes, read }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || typeof records !== 'object' || !records) return json({ error: 'Bad record' }, 400);
   const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
   if (rows.length > 5000) return json({ error: 'Too many' }, 413);
+  const at = readAt(read);
   await env.DB.prepare(`INSERT OR REPLACE INTO records (site, event, user, wins, losses, at)
-    SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4)`)
-    .bind(site, event, Date.now(), JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
-  await identify(env, site, event, meta, athletes, true);
+    SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4) WHERE NOT EXISTS (SELECT 1 FROM records WHERE site = ?1 AND event = ?2 AND at > ?3)`)
+    .bind(site, event, at, JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
+  await identify(env, site, event, meta, athletes, true, at);
   return json({});
 }
 

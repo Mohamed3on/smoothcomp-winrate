@@ -41,10 +41,17 @@ export function EventPage({ id }: { id: string }) {
   const { data, isLoading } = useApi<{ event: EventMeta; entries: EventEntry[] }>('event', { site: f.site, off: f.query.off, id });
   if (isLoading) return <Skeleton className="h-9 w-96" />;
   if (!data) return <Empty title="No event here" text="Mat Stats has nothing under this event on this site. Nobody has opened it with Mat Stats yet." />;
-  const { event, entries } = data;
+  const { event } = data;
+  const read = (rows: EventEntry[]) => Math.max(0, ...rows.map((e) => e.at ?? 0));
+  const results = data.entries.filter((e) => e.fought), registered = data.entries.filter((e) => !e.fought);
+  // Results arrive while the registration list still stands: until the event is a few days
+  // past, registrants without a result are still to fight; after that they didn't show.
+  const live = results.length > 0 && registered.length > 0 && !!event.start && Date.parse(event.start) > Date.now() - 3 * 864e5;
+  const entries = results.length && !live ? results : data.entries;
   const title = event.title ?? `Event ${id}`;
   document.title = `${title} · Mat Stats`;
-  const fought = entries.some((e) => e.fought);
+  const fought = results.length > 0;
+  const stamp = (t: number) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   // Most counted wins first, then most by submission, most on points, the younger athlete; unknown careers last.
   const tallyOf = (e: EventEntry) => {
     if (e.career_wins == null) return null;
@@ -55,8 +62,10 @@ export function EventPage({ id }: { id: string }) {
   const byCareer = (a: Ranked, b: Ranked) => key(a).reduce((o, x, i) => o || key(b)[i] - x, 0) || a.user.localeCompare(b.user);
   const divisions: Division[] = [...Map.groupBy(entries, (e) => e.division.trim())].map(([name, list]) => {
     const rows: Ranked[] = list.map((r) => ({ ...r, tally: tallyOf(r), career: tallyOf(r)?.[0] ?? null, call: null })).sort(byCareer);
+    const decided = rows.some((r) => r.place != null);
+    if (decided) rows.sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || byCareer(a, b));
     rows.forEach((r, i) => {
-      if (i < 3) r.call = { medal: i, bracket: name, seed: i + 1, of: rows.length, sure: rows.length === 1 || (r.career != null && rows.every((o, j) => j === i || o.career !== r.career)) };
+      if (i < 3 && !decided && (!fought || live)) r.call = { medal: i, bracket: name, seed: i + 1, of: rows.length, sure: rows.length === 1 || (r.career != null && rows.every((o, j) => j === i || o.career !== r.career)) };
     });
     return { name, rows, wins: rows.reduce((n, r) => n + (r.career ?? 0), 0) };
   });
@@ -93,7 +102,7 @@ export function EventPage({ id }: { id: string }) {
       { key: 'place', label: 'Place', width: '6rem', cell: (p: Person) => <Place p={p.best < 999 ? p.best : null} /> },
       { key: 'record', label: 'Record', width: '7rem', cell: (p: Person) => <Record w={p.w} l={p.l} /> },
     ] : []),
-    ...(fought ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', title: 'Medals their brackets point to, by career wins', cell: (p: Person) => <Expected e={[0, 1, 2].map((m) => p.calls.filter((c) => c.medal === m).length)} /> }]),
+    ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', title: 'Medals their brackets point to, by career wins', cell: (p: Person) => <Expected e={[0, 1, 2].map((m) => p.calls.filter((c) => c.medal === m).length)} /> }]),
     { key: 'career', label: 'Career wins', width: '8rem', title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },
   ];
   const academyColumns: Column<Academy>[] = [
@@ -103,6 +112,7 @@ export function EventPage({ id }: { id: string }) {
     ...(fought ? [
       { key: 'medals', label: 'Medals', width: '12rem', cell: (t: Academy) => <Medals g={t.g} s={t.s} b={t.b} /> },
       { key: 'record', label: 'Record', width: '8rem', cell: (t: Academy) => <Record w={t.w} l={t.l} /> },
+      ...(live ? [{ key: 'expected', label: 'Still expected', width: '12rem', title: 'Medals the brackets not yet decided point to, by career wins', cell: (t: Academy) => <Expected e={t.expected} /> }] : []),
     ] : [
       { key: 'expected', label: 'Expected medals', width: '12rem', sort: 'expected', title: 'Rank by the medals their brackets point to, by career wins', cell: (t: Academy) => <Expected e={t.expected} /> },
       { key: 'career', label: 'Career wins', width: '9rem', sort: 'career', title: "Rank by their entrants' career wins added up", cell: (t: Academy) => <Num n={t.career} /> },
@@ -147,12 +157,12 @@ export function EventPage({ id }: { id: string }) {
     { key: 'name', label: 'Division', width: '40%', align: 'start', cell: (d) => <span className="font-medium">{d.name}</span> },
     { key: 'size', label: 'Athletes', width: '7rem', sort: 'athletes', cell: (d) => <Num n={d.rows.length} /> },
     { key: 'wins', label: 'Career wins', width: '9rem', sort: 'wins', title: "Rank by the entrants' career wins added up", cell: (d) => <div className="flex flex-col items-end"><Num n={d.wins} /><span className="text-xs text-muted-foreground">{fmt(Math.round(d.wins / d.rows.length))} per athlete</span></div> },
-    { key: 'top', label: 'Expected podium, by career wins', align: 'start', cell: (d) => (
-      <div className="flex flex-col gap-1">{d.rows.slice(0, 3).map((r) => <span key={r.user} className="flex items-center gap-2 text-xs"><Dot call={r.call} /><Photo name={r.name} photo={r.photo} className="size-5" /><NameLink e={r} f={f} /><b className="ml-auto font-semibold">{r.career ?? '–'}</b></span>)}</div>
+    { key: 'top', label: fought ? 'Podium, or the expected one by career wins' : 'Expected podium, by career wins', align: 'start', cell: (d) => (
+      <div className="flex flex-col gap-1">{d.rows.slice(0, 3).map((r) => <span key={r.user} className="flex items-center gap-2 text-xs">{r.place != null ? <Place p={r.place} /> : <Dot call={r.call} />}<Photo name={r.name} photo={r.photo} className="size-5" /><NameLink e={r} f={f} /><b className="ml-auto font-semibold">{r.career ?? '–'}</b></span>)}</div>
     ) },
   ];
   const tabs = fought
-    ? [['podiums', 'Podiums', divisions.length], ['academies', 'Academies', academies.length], ['athletes', 'Athletes', people.length]] as const
+    ? [['podiums', 'Podiums', divisions.length], ['academies', 'Academies', academies.length], ['athletes', 'Athletes', people.length], ...(live ? [['divisions', 'Brackets', divisions.length] as const] : [])] as const
     : [['athletes', 'Athletes', people.length], ['divisions', 'Brackets', divisions.length], ['academies', 'Academies', academies.length]] as const;
   const empty = <Empty title="Nothing here" text="Nothing to show for this event yet." />;
   return (
@@ -163,7 +173,10 @@ export function EventPage({ id }: { id: string }) {
           <span>{date(event.start)}</span>
           {event.city && <span className="inline-flex items-center gap-1.5">{event.city}<Flag code={event.country} /></span>}
           {event.organiser && <span>{event.organiser}</span>}
-          <span>{fought ? `${fmt(matches)} matches won, counted finishes` : 'Entrants only, no results read yet'}</span>
+          <span>{fought ? `${fmt(matches)} matches won, counted finishes${live ? `; ${plural(new Set(registered.filter((e) => !results.some((r) => r.user === e.user)).map((e) => e.user)).size, 'athlete')} still to fight` : ''}` : 'Entrants only, no results read yet'}</span>
+          <span title="When someone with Mat Stats last opened the event's pages">
+            {fought && <>Results as of {stamp(read(results))}</>}{fought && live && ' · '}{(!fought || live) && registered.length > 0 && <>Entrants as of {stamp(read(registered))}</>}
+          </span>
           <a href={`${f.home}/en/event/${id}/${fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
         </div>
       </header>

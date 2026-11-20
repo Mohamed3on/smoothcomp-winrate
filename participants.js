@@ -742,6 +742,7 @@ async function pick() {
 
 // Who entered, in which divisions, for the public site.
 async function shareRoster() {
+  const read = Date.now();
   const athletes = {};
   for (const g of vm.all) for (const r of g.registrations) {
     if (!r.user_id) continue;
@@ -750,7 +751,7 @@ async function shareRoster() {
       photo: r.profile_image_id && !/placeholder/i.test(r.profile_image ?? '') ? r.profile_image : null, entries: [] };
     a.entries.push({ division: g.name });
   }
-  document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'roster', event: SCWRSite.eventId(), meta: await SCWRSite.event(), athletes }) }));
+  document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'roster', event: SCWRSite.eventId(), meta: await SCWRSite.event(), athletes, read }) }));
 }
 
 // The list is fetched after mount, so wait for it to land — a large entry list on

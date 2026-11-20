@@ -12,7 +12,7 @@ export interface Team {
   top: { user: string; name: string | null; wins: number; belt: string | null; photo: string | null; born: number | null }[];
 }
 export interface Entry {
-  event: string; user: string; division: string; club: string | null; club_id: string | null; place: number | null; wins: Types; losses: Types; fought: number;
+  event: string; user: string; division: string; club: string | null; club_id: string | null; place: number | null; wins: Types; losses: Types; fought: number; at?: number;
   title?: string | null; start?: string | null; city?: string | null;
 }
 export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number }
