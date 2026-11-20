@@ -3,7 +3,7 @@ import { useSearchParams } from 'wouter';
 export const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'] as const;
 export const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'] as const;
 // The keys that travel with every link, so following one keeps the ranking's terms.
-export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'athletes'] as const;
+export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'athletes', 'active'] as const;
 
 export function useFilters() {
   const [params, setParams] = useSearchParams();
@@ -18,7 +18,7 @@ export function useFilters() {
   }, { replace: true });
   const query = {
     site, off: [...off].join(','), belt: get('belt'), wins: get('wins'), events: get('events'), agemin: get('agemin'), agemax: get('agemax'),
-    country: get('country'), sort: get('sort') || 'wins', q: get('q'),
+    country: get('country'), active: get('active'), sort: get('sort') || 'wins', q: get('q'),
   };
   const link = (path: string) => {
     const keep = new URLSearchParams();

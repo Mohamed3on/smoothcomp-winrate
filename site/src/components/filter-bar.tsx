@@ -43,6 +43,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
     f.set({ belt: [...next].join(',') });
   };
   const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()} (${c.athletes})` }))];
+  const activeItems = [['', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
   return (
     <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4">
@@ -77,6 +78,12 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
       <Field label="Min. wins"><Debounced f={f} name="wins" label="Minimum wins" placeholder="Any" className="w-20" /></Field>
       <Field label="Min. events"><Debounced f={f} name="events" label="Minimum events" placeholder="Any" className="w-20" /></Field>
       {minimumAthletes && <Field label="Min. athletes"><Debounced f={f} name="athletes" label="Minimum athletes" placeholder="3" className="w-20" /></Field>}
+      <Field label="Competed">
+        <Select items={activeItems} value={f.get('active')} onValueChange={(v) => f.set({ active: (v as string) || null })}>
+          <SelectTrigger className={cn('w-40', f.get('active') && 'border-primary/60 bg-primary/8')}><SelectValue /></SelectTrigger>
+          <SelectContent>{activeItems.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+        </Select>
+      </Field>
       <Field label="Country">
         <Select items={countryItems} value={f.get('country')} onValueChange={(v) => f.set({ country: (v as string) || null })}>
           <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
@@ -90,7 +97,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
         </Select>
       </Field>
       <Field label="Name"><Debounced f={f} name="q" type="search" label="Filter by name" placeholder="Filter by name" className="w-44" /></Field>
-      <Button variant="ghost" className="ml-auto text-muted-foreground" onClick={() => f.set(Object.fromEntries(['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'q', 'athletes'].map((k) => [k, null])))}>Reset</Button>
+      <Button variant="ghost" className="ml-auto text-muted-foreground" onClick={() => f.set(Object.fromEntries(['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'q', 'athletes', 'active'].map((k) => [k, null])))}>Reset</Button>
     </div>
   );
 }

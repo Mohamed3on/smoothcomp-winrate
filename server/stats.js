@@ -24,6 +24,8 @@ function filters(params) {
     // An age range, open at either end, as birth years.
     bornFrom: params.get('agemax') ? new Date().getUTCFullYear() - whole(params.get('agemax'), 200, 200) - 1 : 0,
     bornTo: params.get('agemin') ? new Date().getUTCFullYear() - whole(params.get('agemin'), 0, 200) : 9999,
+    // Competed within this many months: the earliest event date that still counts.
+    since: whole(params.get('active'), 0, 600) ? new Date(Date.now() - whole(params.get('active'), 0, 600) * 30.44 * 864e5).toISOString().slice(0, 10) : '',
     limit: whole(params.get('limit'), 50, 2000),
     offset: whole(params.get('offset'), 0),
   };
@@ -52,6 +54,11 @@ const CAREERS = `seen_wins AS (
     SELECT s.user, NULL, 'results', coalesce((SELECT json_group_object(type, n) FROM seen_wins w WHERE w.user = s.user), '{}'),
       coalesce((SELECT n FROM seen_losses l WHERE l.user = s.user), 0), s.gold, s.silver, s.bronze, s.events
     FROM seen s WHERE s.user NOT IN (SELECT user FROM readable)),
+  lasts AS (
+    SELECT user, max(substr(start, 1, 10)) AS last FROM (
+      SELECT user, start FROM history WHERE site = ?1
+      UNION ALL SELECT e.user, v.start FROM entries e JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.fought = 1)
+    GROUP BY user),
   careers AS (
   SELECT b.user, b.at, b.source, b.losses,
     (SELECT total(value) FROM json_each(b.types) WHERE key NOT IN (SELECT value FROM json_each(?2))) AS wins,
@@ -59,8 +66,9 @@ const CAREERS = `seen_wins AS (
     coalesce(b.types ->> '$.submission', 0) AS submission,
     coalesce(b.types ->> '$.points', 0) AS points,
     b.types, b.gold, b.silver, b.bronze, b.events,
-    p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt) AS belt
+    p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt) AS belt, ls.last
   FROM base b
+  LEFT JOIN lasts ls ON ls.user = b.user
   LEFT JOIN people p ON p.site = ?1 AND p.user = b.user
   LEFT JOIN athletes r ON r.site = ?1 AND r.user = b.user AND r.kind = 'ranks')`;
 
@@ -75,6 +83,7 @@ const ATHLETE_SORTS = {
   rate: 'submission * 1.0 / wins DESC, wins DESC',
   medals: 'gold DESC, silver DESC, bronze DESC, wins DESC',
   perEvent: 'wins * 1.0 / events DESC, wins DESC',
+  last: 'last DESC, wins DESC',
 };
 
 async function athletes(env, params) {
@@ -84,9 +93,9 @@ async function athletes(env, params) {
   const { results } = await env.DB.prepare(`WITH ${CAREERS}
     SELECT *, count(*) OVER () AS total FROM careers
     WHERE wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?7 = '' OR name LIKE '%' || ?7 || '%' OR club LIKE '%' || ?7 || '%')
-      AND (?8 = '' OR club_id = ?8) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13)
+      AND (?8 = '' OR club_id = ?8) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)
     ORDER BY ${sort}, user LIMIT ?9 OFFSET ?10`)
-    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, club, f.limit, f.offset, f.country, f.bornFrom, f.bornTo).all();
+    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, club, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
 }
 
@@ -107,7 +116,7 @@ async function teams(env, params) {
   const least = whole(params.get('athletes'), 3, 1000);
   const { results } = await env.DB.prepare(`WITH ${CAREERS},
     members AS (SELECT *, row_number() OVER (PARTITION BY club_id ORDER BY wins DESC) AS place FROM careers
-      WHERE club_id IS NOT NULL AND wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13)),
+      WHERE club_id IS NOT NULL AND wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)),
     podiums AS (SELECT club_id, sum(place = 1) AS podium_gold, sum(place = 2) AS podium_silver, sum(place = 3) AS podium_bronze, count(DISTINCT event) AS entered
       FROM entries WHERE site = ?1 AND fought = 1 AND club_id IS NOT NULL GROUP BY club_id),
     names AS (SELECT club_id, club FROM (SELECT club_id, club, row_number() OVER (PARTITION BY club_id ORDER BY seen DESC) AS latest FROM people WHERE site = ?1 AND club_id IS NOT NULL AND club IS NOT NULL) WHERE latest = 1)
@@ -120,7 +129,7 @@ async function teams(env, params) {
     WHERE ?7 = '' OR n.club LIKE '%' || ?7 || '%'
     GROUP BY m.club_id HAVING count(*) >= ?8
     ORDER BY ${sort}, m.club_id LIMIT ?9 OFFSET ?10`)
-    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo).all();
+    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });
 }
 
