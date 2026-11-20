@@ -155,12 +155,26 @@ async function record(env, { site, event, records, meta, athletes, read }) {
 
 const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people };
 
+// A page of the site, with a CSP nonce made for this response alone. Cloudflare's bot
+// detection injects an inline script and signs it with the nonce it finds in this header.
+async function page(request, env) {
+  const response = await env.ASSETS.fetch(request);
+  if (!response.headers.get('Content-Type')?.includes('text/html')) return response;
+  const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
+  const headers = new Headers(response.headers);
+  headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  return new Response(response.body, { status: response.status, headers });
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const { pathname, searchParams } = new URL(request.url);
     const read = pathname.startsWith('/api/') && API[pathname.slice(5)];
     if (read) return request.method === 'GET' ? read(env, searchParams) : json({ error: 'Not found' }, 404);
+    if ((request.method === 'GET' || request.method === 'HEAD') && !pathname.startsWith('/api/')) return page(request, env);
     if (request.method !== 'POST' || !ROUTES[pathname]) return json({ error: 'Not found' }, 404);
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
