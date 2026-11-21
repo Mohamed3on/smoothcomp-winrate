@@ -122,7 +122,8 @@ async function handle(message, sender) {
     const area = kind === 'signatures' ? chrome.storage.session : chrome.storage.local;
     const entry = SCWRCache.clean(kind, (await area.get([name]))[name]);
     // A career asked for its event count passes over one kept without it.
-    if (entry && !(message.events && !entry.hidden && entry.events == null)) return { entry };
+    // So does a career read before the event being shown ended.
+    if (entry && !(message.events && !entry.hidden && entry.events == null) && !(!entry.hidden && entry.at < message.since)) return { entry };
     if (job?.until > Date.now()) return { wait: 500 };
     const claim = { owner, token: crypto.randomUUID(), until: Date.now() + 120000 };
     data.jobs[name] = claim;

@@ -53,7 +53,7 @@ test('tabs share profile slots spread 2.1 s apart, including after the worker re
   assert.equal((await restarted.send({ op: 'slot' })).wait, 0);
 });
 
-function page(w, fetcher, tab = 1) {
+function page(w, fetcher, tab = 1, event) {
   class CustomEvent extends Event { constructor(name, options) { super(name); this.detail = options.detail; } }
   const document = new EventTarget();
   const stored = {};
@@ -61,7 +61,7 @@ function page(w, fetcher, tab = 1) {
   const context = vm.createContext({ document, CustomEvent, setTimeout, clearTimeout, setInterval, clearInterval, AbortSignal, Response,
     Date: class extends Date { static now() { return w.now(); } },
     location: { hostname: 'grapplingindustries.smoothcomp.com' },
-    SCWRSite: { store: { get: (key, fallback) => stored[key] ?? fallback, set: (key, value) => { stored[key] = value; } },
+    SCWRSite: { event: async () => event, store: { get: (key, fallback) => stored[key] ?? fallback, set: (key, value) => { stored[key] = value; } },
       url: { page: u => `https://smoothcomp.com/en/profile/${u}`, career: (u, s) => `https://smoothcomp.com/en/athlete/${u}/wins-and-medals${s}`, skills: (u, s) => `https://smoothcomp.com/en/athlete/${u}/skills${s}` } },
     fetch: async url => { fetched.push(url); return fetcher(url); },
   });
@@ -88,6 +88,22 @@ test('career and belt readers share one profile request and persist without an e
   assert.equal(p.api.ranks['1'].belt, 'purple');
   assert.equal((await w.send({ op: 'claim', kind: 'careers', user: '1' }, 2)).entry.wins.submission, 7);
   assert.equal(w.storage.session['scwr:requests'].sites['smoothcomp.com'].asked.length, 1);
+});
+
+test('a career read before the shown event ended is read again there, and kept elsewhere', async () => {
+  const w = worker();
+  const fetcher = url => url.includes('/profile/') ? profile(w) : career();
+  await page(w, fetcher).api.readCareer('1');
+  w.advance(24 * 60 * 60 * 1000);
+  const upcoming = page(w, fetcher, 2, { end: new Date(w.now() + 1000).toISOString() });
+  await upcoming.api.readCareer('1');
+  assert.equal(upcoming.fetched.length, 0);
+  const ended = page(w, fetcher, 3, { end: new Date(w.now() - 1000).toISOString() });
+  await ended.api.ready;
+  assert.equal(ended.api.fresh('1'), false);
+  await ended.api.readCareer('1');
+  assert.equal(ended.fetched.filter(url => url.includes('/profile/')).length, 1);
+  assert.equal(ended.api.fresh('1'), true);
 });
 
 test('a second tab joins completed work instead of fetching the athlete twice', async () => {

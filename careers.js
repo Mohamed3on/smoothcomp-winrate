@@ -64,7 +64,12 @@ const SCWRCareers = (() => {
   }
   function saveSoon() { clearTimeout(saving); saving = setTimeout(save, 250); }
   merge({ careers: SCWRSite.store.get('careers', {}), ranks: SCWRSite.store.get('ranks', {}) });
+  // Once the event is over, a career read before it ended misses it, so it is read again.
+  let since = 0;
+  const ended = Promise.resolve(SCWRSite.event?.()).then(e => { const end = Date.parse(e?.end); if (end <= Date.now()) since = end; }).catch(() => {});
+  const current = (entry, kind = 'careers') => SCWRCache.fresh(entry, kind) && (kind !== 'careers' || entry.hidden || entry.at >= since);
   const ready = (async () => {
+    await ended;
     for (;;) {
       try {
         merge(await ask({ op: 'read' }));
@@ -86,7 +91,7 @@ const SCWRCareers = (() => {
 
   async function job(kind, user, load, events) {
     for (;;) {
-      const claim = await ask({ op: 'claim', kind, user, events });
+      const claim = await ask({ op: 'claim', kind, user, events, since: kind === 'careers' ? since : 0 });
       if (claim.entry) return claim.entry;
       if (claim.wait) { await pause(claim.wait); continue; }
       const message = { kind, user, token: claim.token };
@@ -204,7 +209,7 @@ const SCWRCareers = (() => {
   function read(kind, user, events = false) {
     user = String(user);
     const entries = kind === 'careers' ? careers : ranks;
-    if (SCWRCache.fresh(entries[user], kind) && !(events && !entries[user].hidden && entries[user].events == null)) return Promise.resolve(entries[user]);
+    if (current(entries[user], kind) && !(events && !entries[user].hidden && entries[user].events == null)) return Promise.resolve(entries[user]);
     const key = `${kind}:${user}`;
     if (!reading.has(key)) {
       reading.set(key, ready.then(() => looked).then(() => job(kind, user, async () => {
@@ -231,7 +236,7 @@ const SCWRCareers = (() => {
     return reading.get(key);
   }
   return { careers, ranks, ready, save, signature, query, next, lookup, seen,
-    fresh: user => SCWRCache.fresh(careers[user]),
+    fresh: user => current(careers[user]),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),
     configure(options) { priority = options.priority; listed = options.listed ?? listed; changed = options.changed; halted = options.halted ?? halted; },
