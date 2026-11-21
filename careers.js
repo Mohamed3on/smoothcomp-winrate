@@ -181,7 +181,11 @@ const SCWRCareers = (() => {
       ask({ op: 'people', athletes: { [user]: { name: p.name, country: p.country_code?.toLowerCase(), countryName: p.nationality, age: p.age, photo } } }).catch(() => {});
     } catch {}
   }
+  // AJP's athlete routes answer unsigned and unthrottled; only its profile pages sit
+  // behind Cloudflare's limit, so AJP never reads them.
+  const ajp = location.hostname === 'ajptour.com';
   function signature(user) {
+    if (ajp) return Promise.resolve({ at: Date.now(), unsigned: true });
     if (!signatures.has(user)) {
       const pending = job('signatures', user, async () => {
         const response = await request('profile', user);
@@ -194,10 +198,6 @@ const SCWRCareers = (() => {
           const signed = JSON.parse(encoded.replaceAll('&quot;', '"'));
           return { at: Date.now(), signature: signed.signature, expires: signed.expires };
         }
-        // AJP serves profiles (no longer carrying data-profile) without signing and
-        // its routes answer unsigned, but a missing signature on Smoothcomp is an
-        // unexpected page, not evidence of privacy.
-        if (location.hostname === 'ajptour.com') return { at: Date.now(), unsigned: true };
         throw new Error('Unreadable profile');
       }).finally(() => signatures.delete(user));
       signatures.set(user, pending);
@@ -220,6 +220,8 @@ const SCWRCareers = (() => {
         // career; without them the career still counts.
         const [response, past] = await Promise.all([request(kind === 'careers' ? 'career' : 'skills', user, signed),
           kind === 'careers' && pastEvents(user, signed)]);
+        // Without a profile page to say so, AJP's refusal is the hidden profile.
+        if (ajp && response.status === 403) return { at: Date.now(), hidden: true };
         if (!response.ok) throw new Error('Athlete data unavailable');
         const data = (await response.json()).data;
         if (kind === 'careers') {
