@@ -519,7 +519,10 @@
     const ranked = academies.map((academy) => academy.name);
     const seen = new Set(ranked.map(normalize));
     const extras = [];
-    for (const name of eventMatches.flatMap((match) => match.sides ?? []).map((side) => side.club).filter(Boolean)) {
+    // Only clubs with a match the filters let through: anything else could only
+    // ever open on 0–0.
+    const counted = eventMatches.filter((match) => (match.sides ?? []).every(matchupSideAllowed));
+    for (const name of counted.flatMap((match) => match.sides).map((side) => side.club).filter(Boolean)) {
       const key = normalize(name);
       if (seen.has(key)) continue;
       seen.add(key);
