@@ -194,9 +194,10 @@ const SCWRCareers = (() => {
           const signed = JSON.parse(encoded.replaceAll('&quot;', '"'));
           return { at: Date.now(), signature: signed.signature, expires: signed.expires };
         }
-        // AJP may serve profiles without signing, but a missing signature on
-        // Smoothcomp is an unexpected page, not evidence of privacy.
-        if (location.hostname === 'ajptour.com' && /data-profile=/.test(html)) return { at: Date.now(), unsigned: true };
+        // AJP serves profiles (no longer carrying data-profile) without signing and
+        // its routes answer unsigned, but a missing signature on Smoothcomp is an
+        // unexpected page, not evidence of privacy.
+        if (location.hostname === 'ajptour.com') return { at: Date.now(), unsigned: true };
         throw new Error('Unreadable profile');
       }).finally(() => signatures.delete(user));
       signatures.set(user, pending);
