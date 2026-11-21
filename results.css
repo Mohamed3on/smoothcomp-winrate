@@ -409,10 +409,8 @@
 .scwr-glyph { line-height: 1; letter-spacing: 0; }
 
 .scwr-row { cursor: pointer; }
-.scwr-row:hover > td { background: var(--hover); }
 .scwr-row.scwr-open > td { background: var(--accent-soft); border-bottom-color: transparent; }
 .scwr-table td.scwr-sorted { background: var(--accent-soft); }
-.scwr-row:hover > td.scwr-sorted { background: var(--hover); }
 .scwr-rank { color: var(--fg-3); }
 .scwr-top .scwr-rank { color: var(--fg); font-weight: 700; }
 .scwr-expand {
@@ -804,7 +802,7 @@ a.scwr-h2h-person:hover { color: var(--accent); text-decoration: underline; text
 @media (prefers-reduced-motion: no-preference) {
   .scwr-tab::after { transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: left; }
   .scwr-results :is(.scwr-btn, .scwr-tab, .scwr-sort, .scwr-name) { transition: color 0.15s ease, background-color 0.15s ease; }
-  .scwr-row > td { transition: background-color 0.15s ease; }
+  .scwr-row > td { transition: background-color 0.15s ease, box-shadow 0.15s ease; }
   .scwr-shimmer { animation: scwr-pulse 1.4s ease-in-out infinite; }
   .scwr-next-live > i { animation: scwr-pulse 2s ease-in-out infinite; }
   .scwr-h2h-lab { animation: scwr-h2h-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both; }
@@ -812,6 +810,9 @@ a.scwr-h2h-person:hover { color: var(--accent); text-decoration: underline; text
   @keyframes scwr-h2h-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
 }
 @media (hover: hover) and (pointer: fine) {
+  /* Hover is a wash over the cell's own tint, so open rows and the sorted
+     column keep theirs instead of all collapsing to one grey. */
+  .scwr-row:hover > td { box-shadow: inset 0 0 0 100vmax var(--hover); }
   .scwr-btn:hover:not(:disabled) { border-color: var(--fg-3); background: var(--hover); }
   .scwr-tab:hover { color: var(--fg); }
 }
