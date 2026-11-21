@@ -12,7 +12,7 @@
     beltsOff: [],
     // Every decided win type but walkovers, which are forfeits, not contests.
     types: WIN_TYPES.filter((t) => t !== 'walkover'),
-    limit: 25, bracketSort: 'placement', open: new Set(),
+    bracketSort: 'placement', open: new Set(),
     matchupOpen: false,
     academyA: '', academyB: '',
   };
@@ -21,6 +21,7 @@
   let eventMatches = [];
   let eventTypes = WIN_TYPES;
   let academyNames = [];
+  let academyRecords = new Map();
   const matchDetails = new Map();
   const DETAIL_KEY = `match-details:${EVENT_ID}`;
   let detailCache = null;
@@ -392,7 +393,6 @@
       </table>
     </div>
     <div class="scwr-foot">
-      <button type="button" class="scwr-btn" data-action="more" hidden>Show more</button>
       <p class="scwr-note"></p>
       <ul class="scwr-key" aria-label="How matches ended, most decisive first"></ul>
     </div>
@@ -415,7 +415,6 @@
   const head = table.querySelector('thead');
   const body = table.querySelector('tbody');
   const note = panel.querySelector('.scwr-note');
-  const more = panel.querySelector('[data-action="more"]');
   table.dataset.view = state.view;
   const chips = panel.querySelector('.scwr-type-chips');
   const key = panel.querySelector('.scwr-key');
@@ -512,10 +511,12 @@
 
   function syncAcademyNames() {
     if (!model) return;
-    const ranked = SCWRModel.leaderboard(model, {
-      table: 'academies', types: state.types, sort: 'wins', direction: -1,
+    const academies = SCWRModel.leaderboard(model, {
+      table: 'academies', types: state.types, sort: 'net', direction: -1,
       minimum: 0, minimumAge: state.minimumAge, maximumAge: state.maximumAge, belts: activeBelts(), search: '',
-    }).map((academy) => academy.name).filter((name) => name !== 'Unaffiliated');
+    }).filter((academy) => academy.name !== 'Unaffiliated');
+    academyRecords = new Map(academies.map((academy) => [academy.name, `${academy.wins}–${academy.losses}`]));
+    const ranked = academies.map((academy) => academy.name);
     const seen = new Set(ranked.map(normalize));
     const extras = [];
     for (const name of eventMatches.flatMap((match) => match.sides ?? []).map((side) => side.club).filter(Boolean)) {
@@ -570,7 +571,8 @@
   function academyOptions(key) {
     const other = key === 'academyA' ? state.academyB : state.academyA;
     return academyNames.map((name) => {
-      const option = new Option(name, name, false, state[key] === name);
+      const record = academyRecords.get(name);
+      const option = new Option(record ? `${name} (${record})` : name, name, false, state[key] === name);
       option.disabled = name === other;
       return option;
     });
@@ -980,14 +982,13 @@
 
   function renderBody() {
     const cols = columns();
-    const visible = rows.slice(0, state.limit);
     // One scale for every bar on screen, so lengths stay comparable.
     const ctx = {
       maxWins: Math.max(1, ...rows.map((r) => r.wins || 0)),
       maxLosses: Math.max(1, ...rows.map((r) => r.losses || 0)),
     };
     const nodes = [];
-    visible.forEach((row, index) => {
+    rows.forEach((row, index) => {
       const tr = el('tr', undefined, 'scwr-row');
       tr.dataset.key = row.key;
       if (index < 3 && state.direction === -1) tr.classList.add('scwr-top');
@@ -1013,7 +1014,7 @@
       nodes.push(tr);
       if (open) nodes.push(detailRow(row, cols.length + 1));
     });
-    if (!visible.length) {
+    if (!rows.length) {
       const tr = el('tr', undefined, 'scwr-empty-row');
       const cell = el('td');
       cell.colSpan = cols.length + 1;
@@ -1120,14 +1121,11 @@
     if (animate) flip(draw); else draw();
 
     const total = rows.length;
-    const shown = Math.min(total, state.limit);
     key.hidden = !columns().some((c) => c.key === 'finish');
-    more.hidden = total <= state.limit;
-    more.textContent = `Show ${Math.min(25, total - state.limit)} more`;
     const sorted = columns().find((c) => c.key === state.sort);
     const order = state.sort === 'name' ? (state.direction === 1 ? 'A–Z' : 'Z–A')
       : `${state.direction === -1 ? 'highest' : 'lowest'} first`;
-    note.textContent = `${shown === total ? total : `${shown} of ${total}`} ${unit(total, ...VIEWS[state.view].unit)}` +
+    note.textContent = `${total} ${unit(total, ...VIEWS[state.view].unit)}` +
       ` · sorted by ${sorted?.label ?? state.sort}, ${order}` +
       `${state.sort === 'name' ? '' : ` — ${TIEBREAK}`} · ${EXPLAIN[state.view]}`;
 
@@ -1356,7 +1354,6 @@
     if (state.view === view && !state.matchupOpen) return;
     state.matchupOpen = false;
     state.view = view;
-    state.limit = 25;
     state.open.clear();
     state.sort = DEFAULT_SORT[view];
     state.direction = -1;
@@ -1381,7 +1378,6 @@
     } else {
       state[key] = event.target.value;
     }
-    state.limit = 25;
     savePrefs();
     if (state.matchupOpen && age && event.target.closest('.scwr-h2h-age')) {
       renderMatchupResults();
@@ -1412,7 +1408,6 @@
       // empty with the filter itself as the only explanation.
       if (beltChoices.every((option) => off.has(option.key))) return;
       state.beltsOff = [...off];
-      state.limit = 25;
       savePrefs();
       paintChips();
       // Rebuilding the whole matchup surface would take the focus off the chip.
@@ -1426,7 +1421,6 @@
       const next = state.types.includes(type) ? state.types.filter((t) => t !== type) : [...state.types, type];
       if (!next.some((t) => eventTypes.includes(t))) return; // never leave every win type here off
       state.types = WIN_TYPES.filter((t) => next.includes(t));
-      state.limit = 25;
       savePrefs();
       if (model) rebuildSummaries();
       paintChips();
@@ -1454,14 +1448,12 @@
       const opening = key === 'name' || column?.reverse ? 1 : -1;
       state.direction = state.sort === key ? -state.direction : opening;
       state.sort = key;
-      state.limit = 25;
       savePrefs();
       return render({ animate: true });
     }
 
     const action = event.target.closest('[data-action]')?.dataset.action;
     if (action === 'refresh') return load(true);
-    if (action === 'more') { state.limit += 25; return render(); }
 
     const row = event.target.closest('.scwr-row');
     if (row && !event.target.closest('a')) {
