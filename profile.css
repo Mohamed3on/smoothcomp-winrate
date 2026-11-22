@@ -6,7 +6,11 @@
   width: min(100%, 300px);
   margin: 0 auto;
   padding: 2px 0 10px;
+  /* It lands after the card has drawn: it opens instead of shoving the card down. */
+  overflow: clip;
+  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
 }
+@starting-style { .scwr-belt-split { opacity: 0; } }
 .scwr-split-row {
   display: grid;
   grid-template-columns: 22px 3.2ch 1fr 5.2em;
@@ -64,7 +68,12 @@
 :is(.scwr-belt, .scwr-split-fill)[data-belt='brown'] { --belt: #79472f; }
 :is(.scwr-belt, .scwr-split-fill)[data-belt='black'] { --belt: #17191c; --belt-rank: #b53b42; }
 @media (prefers-reduced-motion: no-preference) {
-  .scwr-split-fill { animation: scwr-split-grow 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .scwr-belt-split {
+    interpolate-size: allow-keywords;
+    transition: height 260ms cubic-bezier(0.23, 1, 0.32, 1), padding 260ms cubic-bezier(0.23, 1, 0.32, 1), opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
+  }
+  @starting-style { .scwr-belt-split { height: 0; padding-block: 0; } }
+  .scwr-split-fill { animation: scwr-split-grow 350ms cubic-bezier(0.23, 1, 0.32, 1) both; }
   .scwr-split-row:nth-child(2) .scwr-split-fill { animation-delay: 60ms; }
   .scwr-split-row:nth-child(3) .scwr-split-fill { animation-delay: 120ms; }
   .scwr-split-row:nth-child(n + 4) .scwr-split-fill { animation-delay: 180ms; }

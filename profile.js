@@ -59,13 +59,13 @@
     const starts = worn.map((b, i) => (!i ? -Infinity : listed(b).every(s => (s.events?.length ?? 0) >= s.competed_count)
       ? Math.min(...times(b)) : Math.max(...times(worn[i - 1])) + 1));
     const beltOf = (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0];
-    // Every page of both lists at once; the first page says how many there are.
-    const all = async (kind, first) => {
-      first ??= await read(kind, 1);
-      const rest = Array.from({ length: Math.max(0, (first.meta?.last_page ?? 1) - 1) }, (_, i) => read(kind, i + 2));
-      return [first, ...await Promise.all(rest)].flatMap(body => body.data ?? []);
-    };
-    const [events, matches] = await Promise.all([all('past-events', got['past-events']), all('event-statistics')]);
+    // Every page of both lists at once. The page has the events' first page; the event
+    // count says how many match-list pages there are, at most, three events a page.
+    const past = got['past-events'];
+    const pages = (kind, count, from) => Promise.all(Array.from({ length: Math.max(0, count - from + 1) }, (_, i) => read(kind, from + i)))
+      .then(bodies => bodies.flatMap(body => body.data ?? []));
+    const [more, matches] = await Promise.all([pages('past-events', past.meta?.last_page ?? 1, 2), pages('event-statistics', Math.ceil((past.meta?.total ?? 0) / 3), 1)]);
+    const events = [...past.data, ...more];
     const given = new Map(matches.map(event => [event.id, walkovers(event)]));
     const tally = new Map([belt, ...worn].map(b => [b, { wins: 0, events: 0 }]));
     for (const e of events) {

@@ -431,6 +431,11 @@
   background: var(--accent-soft);
   transition: opacity 200ms ease;
 }
+/* Done, it lets the fill reach the end, then fades out rather than vanishing. */
+.scwr-progress[hidden] {
+  opacity: 0;
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1) 300ms, display 240ms allow-discrete 300ms;
+}
 .scwr-progress > i {
   display: block;
   height: 100%;
@@ -592,6 +597,7 @@
   .scwr-view::picker-icon { transition: none; }
   .scwr-progress,
   .scwr-progress > i { transition: none; }
+  .scwr-progress[hidden] { transition-delay: 0s; }
   .scwr-bracket:popover-open { animation-name: scwr-in; }
 }
 
