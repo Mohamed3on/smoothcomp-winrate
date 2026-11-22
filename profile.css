@@ -26,6 +26,14 @@
   :is(.scwr-type, .scwr-loss-filter, .scwr-losses-close):hover { background: color-mix(in srgb, currentColor 8%, transparent); }
   .scwr-losses-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
+/* Who beat them most: their photo, name and the whole head-to-head. */
+.scwr-nemesis { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px; margin-top: 14px; }
+.scwr-rival { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.scwr-rival .scwr-face { width: 24px; height: 24px; font-size: 9px; }
+.scwr-rival a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }
+.scwr-rival a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.scwr-rivals { display: grid; gap: 8px; padding: 0 20px 16px; }
+.scwr-rivals > div { display: flex; flex-wrap: wrap; gap: 10px 18px; }
 /* The way into the losses, set like Smoothcomp's own "See all wins". */
 .scwr-losses-open { display: flex; align-items: center; gap: 4px; margin: 14px auto 0; padding: 4px 8px; border: 0; border-radius: 6px; }
 /* Every loss, in a dialog dressed in the card's own colours. */
@@ -56,13 +64,29 @@
 }
 .scwr-loss {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: start;
   gap: 12px;
   padding: 10px 12px;
   border-top: 1px solid color-mix(in srgb, currentColor 8%, transparent);
 }
 .scwr-loss > .scwr-belt { margin-top: 6px; }
+/* The opponent's photo from the match list, or their initials. */
+.scwr-face {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  font-size: 11px;
+  font-weight: 600;
+  outline: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+  outline-offset: -1px;
+}
+.scwr-loss-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
+/* Names, academies and events share the row's faint underline, so each reads as a link. */
 .scwr-loss-how { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
 .scwr-loss-how > :first-child { flex: none; }
 .scwr-loss a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }

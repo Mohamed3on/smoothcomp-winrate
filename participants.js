@@ -764,6 +764,17 @@ async function shareRoster() {
 // a slow connection takes a while, but not forever.
 SCWRSite.vm.find('#registrations', (c) => c.proxy?.all?.length, { timeout: 60000 }).then(async (found) => {
   if (!found) return;
+  // A profile's losses link each opponent and academy here by registration
+  // (#scwr-find=<registration>-who or -club), as its match list names no account:
+  // this page knows whose each registration is, and goes straight on to them. A
+  // profile its owner hides stays unlinked, so the hop ends on this page.
+  const hop = location.hash.match(/^#scwr-find=(\d+)-(who|club)$/);
+  if (hop) {
+    const r = found.all.flatMap((g) => g.registrations).find((reg) => String(reg.id) === hop[1]);
+    const target = hop[2] === 'who' ? r?.user_id && Number(r.hide_public_profile) !== 1 && `profile/${Number(r.user_id)}` : r?.club_id && `club/${Number(r.club_id)}`;
+    const home = location.hostname.endsWith('smoothcomp.com') ? 'https://smoothcomp.com' : location.origin;
+    if (target) return location.replace(`${home}/${location.pathname.split('/')[1]}/${target}`);
+  }
   await shared;
   vm = found;
   place = new Map(vm.all.flatMap((g) => g.registrations.map((r, i) => [r.id, i])));

@@ -16,11 +16,12 @@
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
   // Smoothcomp's finishes come finer than its own chips name them ("submission_armbar",
-  // "decision_unanimous", "double-dq"); each counts under the chip it belongs to, in
-  // that chip's dot colour.
+  // "decision_unanimous", "double-dq"); each counts under the chip it belongs to. Each
+  // finish has its own hue: submission and points keep the green and blue of
+  // Smoothcomp's wins ring, which gives several finishes one colour.
   const FINISH = {
-    submission: ['Submission', 'rgb(121, 186, 33)'], stoppage: ['Stoppage', 'rgb(121, 186, 33)'], escape: ['Fastest escape', 'rgb(6, 114, 167)'], points: ['Points', 'rgb(6, 114, 167)'],
-    decision: ['Decision', 'rgb(6, 114, 167)'], disqualification: ['Disqualification', 'rgb(198, 52, 52)'],
+    submission: ['Submission', 'rgb(121, 186, 33)'], stoppage: ['Stoppage', 'oklch(0.8 0.15 75)'], escape: ['Fastest escape', 'oklch(0.75 0.12 195)'],
+    points: ['Points', 'rgb(6, 114, 167)'], decision: ['Decision', 'oklch(0.68 0.15 300)'], disqualification: ['Disqualification', 'rgb(198, 52, 52)'],
   };
   const finish = (wonBy) => {
     const w = String(wonBy ?? '').toLowerCase();
@@ -70,7 +71,7 @@
   // of its matches (a round robin lists others' too), the profile's name settling a tie.
   const outcomes = (event) => {
     const name = document.title.split(' - ')[0].trim().toLowerCase();
-    const out = { types: {}, losses: [] };
+    const out = { types: {}, losses: [], faced: [] };
     for (const group of Object.values(event.matches ?? {})) {
       const matches = group.matches ?? [];
       const seen = new Map();
@@ -89,7 +90,9 @@
         out.types[type] ??= [0, 0];
         out.types[type][seat.isWinner ? 0 : 1]++;
         const other = m.seats.find(s => s !== seat);
-        if (seat.isLoser) out.losses.push({ type, how: how(m.wonBy, type), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null });
+        if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner });
+        if (seat.isLoser) out.losses.push({ type, how: how(m.wonBy, type), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
+          reg: other?.event_registration_id ?? null, image: other?.image ?? null });
       }
     }
     return out;
@@ -113,7 +116,7 @@
     reading = true;
     const past = got['past-events'];
     // The number in the key retires what an older count kept.
-    const key = `scwr:profile:6:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
+    const key = `scwr:profile:8:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
     const print = JSON.stringify([past.meta?.total, got['wins-and-medals'].data.win_method_breakdown, got.skills.data.map(s => [s.belt, s.competed_count])]);
     try {
       const kept = JSON.parse(localStorage.getItem(key));
@@ -142,7 +145,17 @@
       // A lower belt no event fell to has nothing to show; the current one says it has no events yet.
       belts = [...tally].filter(([b, t]) => b === plan.belt || t.events).sort(([a], [b]) => BELTS.indexOf(b) - BELTS.indexOf(a));
     }
-    stats = { types, belts, losses };
+    // Everyone who beat them, with the whole head-to-head: opponents are known by name,
+    // as registrations change per event, and the newest meeting gives the club, photo
+    // and registration to link.
+    const met = new Map();
+    for (const event of matches) for (const f of results.get(event.id).faced) {
+      const who = f.name.trim().toLowerCase().replace(/\s+/g, ' ');
+      if (!met.has(who)) met.set(who, { name: f.name, club: f.club, image: f.image, reg: f.reg, event: event.id, w: 0, l: 0 });
+      met.get(who)[f.won ? 'w' : 'l']++;
+    }
+    const rivals = [...met.values()].filter(r => r.l > 1).sort((a, b) => b.l - a.l || a.w - b.w).slice(0, 5);
+    stats = { types, belts, losses, rivals };
     try { localStorage.setItem(key, JSON.stringify({ print, stats })); } catch {}
     draw();
   }
@@ -171,7 +184,8 @@
         + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
-    const more = stats.losses.length ? `<button type="button" class="scwr-losses-open gi-text-sm">See losses${CHEVRON}</button>` : '';
+    const more = (stats.rivals?.length ? `<div class="scwr-nemesis gi-text-sm"><span class="gi-text-secondary">Lost most to</span>${rival(stats.rivals[0])}</div>` : '')
+      + (stats.losses.length ? `<button type="button" class="scwr-losses-open gi-text-sm">See losses${CHEVRON}</button>` : '');
     if (!stats.belts) return html + more;
     // One bar per belt, highest first: its win rate, on a scale of all its matches.
     const row = ([b, t]) => {
@@ -190,16 +204,37 @@
   // Every loss, newest first, in a dialog dressed in the card's own colours; pills
   // narrow it to one finish. The belt beside each is the one worn on that date.
   let dialog, showing = 'all';
+  // One opponent who beat them more than once: photo, name and the whole head-to-head.
+  function rival(r) {
+    const face = avatar({ image: r.image, opponent: r.name });
+    const name = named({ opponent: r.name, reg: r.reg, event: r.event }, 'who');
+    return `<span class="scwr-rival" title="${esc(r.name)}${r.club ? `, ${esc(r.club)}` : ''}: ${r.w} won, ${r.l} lost against them">${face}${name}<span class="scwr-record">${wl(r.w, r.l)}</span></span>`;
+  }
+  // Who beat them and their academy link through the event's participants page: a
+  // match list names registrations, not accounts, and that page knows whose each is
+  // (participants.js goes on from there). It is a plain link, so a new tab works too.
+  const locale = () => location.pathname.split('/')[1] || 'en';
+  const avatar = (loss) => {
+    let photo = null;
+    try { photo = loss.image && /(^|\.)smoothcomp\.com$/.test(new URL(loss.image).hostname) ? loss.image : null; } catch {}
+    const initials = String(loss.opponent ?? '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+    return photo ? `<img class="scwr-face" src="${esc(photo)}" alt="" loading="lazy">` : `<span class="scwr-face" aria-hidden="true">${esc(initials)}</span>`;
+  };
+  const named = (loss, kind) => {
+    const text = esc(kind === 'who' ? loss.opponent ?? 'Unknown opponent' : loss.club);
+    const cls = kind === 'who' ? 'gi-font-medium' : 'gi-text-secondary gi-text-xs';
+    if (loss.reg == null) return `<span class="${cls}">${text}</span>`;
+    return `<a class="${cls}" href="/${esc(locale())}/event/${Number(loss.event)}/participants#scwr-find=${Number(loss.reg)}-${kind}">${text}</a>`;
+  };
   function lossList() {
     const shown = stats.losses.filter(loss => showing === 'all' || loss.type === showing);
-    const locale = location.pathname.split('/')[1] || 'en';
     const day = (date) => (Date.parse(date) ? new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
     return shown.map(loss => {
       const belt = plan.whole ? plan.belt : loss.date && plan.beltOf({ start_date: loss.date });
-      return `<li class="scwr-loss"${loss.division ? ` title="${esc(loss.division)}"` : ''}>${belt ? swatch(belt) : '<span></span>'}<div>`
-        + `<div><span class="gi-font-medium">${esc(loss.opponent ?? 'Unknown opponent')}</span>${loss.club ? ` <span class="gi-text-secondary gi-text-xs">${esc(loss.club)}</span>` : ''}</div>`
+      return `<li class="scwr-loss"${loss.division ? ` title="${esc(loss.division)}"` : ''}>${avatar(loss)}<div>`
+        + `<div class="scwr-loss-who">${named(loss, 'who')}${loss.club ? named(loss, 'club') : ''}</div>`
         + `<div class="scwr-loss-how gi-text-xs gi-text-secondary"><span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${FINISH[loss.type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
-        + `<span class="scwr-lost">${esc(loss.how)}</span><span>·</span><a href="/${esc(locale)}/event/${Number(loss.event)}">${esc(loss.title ?? 'Event')}</a>${loss.date ? `<span>·</span><span>${day(loss.date)}</span>` : ''}</div></div></li>`;
+        + `<span class="scwr-lost">${esc(loss.how)}</span><span>·</span><a href="/${esc(locale())}/event/${Number(loss.event)}">${esc(loss.title ?? 'Event')}</a>${loss.date ? `<span>·</span><span>${day(loss.date)}</span>` : ''}</div></div>${belt ? swatch(belt).replace('<i ', `<i title="${belt} belt then" `) : ''}</li>`;
     }).join('');
   }
   function filters() {
@@ -222,6 +257,7 @@
     showing = 'all';
     dialog.innerHTML = `<header><h2 id="scwr-losses-title">Losses</h2><span class="gi-text-secondary">${esc(document.title.split(' - ')[0].trim())}</span>`
       + `<button type="button" class="scwr-losses-close" aria-label="Close">${CROSS}</button></header>`
+      + (stats.rivals?.length ? `<section class="scwr-rivals" aria-label="Lost most to"><span class="gi-text-secondary gi-text-xs">Lost most to</span><div>${stats.rivals.map(rival).join('')}</div></section>` : '')
       + `<div class="scwr-loss-filters" role="group" aria-label="Show losses by">${filters()}</div><ol class="scwr-loss-list">${lossList()}</ol>`;
     dialog.showModal();
   }

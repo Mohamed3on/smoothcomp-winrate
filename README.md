@@ -44,8 +44,10 @@ the panel names the bracket you fall the fewest wins short of.
 
 **Profile page** — under Smoothcomp's wins chart, the athlete's win rate and record, then a belt-coloured bar
 with the win rate at each belt worn. Chips pick the finishes counted (submission, fastest escape and points until you pick others;
-walkovers never count), each showing its record. See losses lists every loss, newest first: who won, how,
-at which event, and the belt worn then, filtered by finish. Every page of the athlete's event and match lists is read at once,
+walkovers never count), each showing its record. See losses lists every loss, newest first: who won (photo, profile and academy linked),
+how, at which event, and the belt worn then, filtered by finish. Whoever beat them most shows with the whole
+head-to-head. A match list names registrations, not accounts, so those links pass through the event's participants
+page, which forwards to the profile or academy. Every page of the athlete's event and match lists is read at once,
 and kept until their events, wins or belts change.
 
 **Stats site** — [matstats.mohamed3on.com](https://matstats.mohamed3on.com) shows the shared cache outside
