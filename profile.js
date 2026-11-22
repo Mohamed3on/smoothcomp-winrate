@@ -112,51 +112,137 @@
       ? Math.min(...times(b)) : Math.max(...times(worn[i - 1])) + 1));
     return { belt, worn, shown: new Set([belt, ...worn]).size, beltOf: (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0] };
   }
-  async function readStats() {
-    reading = true;
-    const past = got['past-events'];
-    // The number in the key retires what an older count kept.
-    const key = `scwr:profile:9:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
-    const print = JSON.stringify([past.meta?.total, got['wins-and-medals'].data.win_method_breakdown, got.skills.data.map(s => [s.belt, s.competed_count])]);
-    try {
-      const kept = JSON.parse(localStorage.getItem(key));
-      if (kept?.print === print) return (stats = kept.stats), draw();
-    } catch {}
-    plan.loading = true;
-    draw();
-    // Every page of both lists at once. The page has the events' first page; the event
-    // count says how many match-list pages there are, at most, three events a page.
-    // The events give each loss its date, and each event its belt.
-    const [more, matches] = await Promise.all([pages('past-events', past.meta?.last_page ?? 1, 2),
-      pages('event-statistics', Math.ceil((past.meta?.total ?? 0) / 3), 1)]);
-    const results = new Map(matches.map(event => [event.id, outcomes(event)]));
-    const types = [...results.values()].map(r => r.types).reduce(add, {});
-    const dates = new Map([...past.data, ...more].map(e => [e.id, e.start_date]));
-    const losses = matches.flatMap(event => results.get(event.id).losses.map(loss => ({ ...loss, event: event.id, title: event.title ?? null, date: dates.get(event.id) ?? null })))
-      .sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
+  // Each event's result is kept for good once it is settled (started a week ago or
+  // more), so a visit draws at once from what is kept and reads only what is new: both
+  // lists run newest first, so reading stops at the first event already kept. If the
+  // kept events and Smoothcomp's count stop agreeing, the whole history is read again.
+  const STORE = 'scwr:profile:11:';
+  const WEEK = 7 * 864e5;
+  for (const k of Object.keys(localStorage)) if (/^scwr:profile:\d+:/.test(k) && !k.startsWith(STORE)) localStorage.removeItem(k);
+  // Storage full: the athletes looked at longest ago give way.
+  const keep = (key, value) => {
+    for (let tries = 0; tries < 8; tries++) {
+      try { return localStorage.setItem(key, JSON.stringify(value)); } catch {}
+      const kept = Object.keys(localStorage).filter(k => k.startsWith(STORE) && k !== key)
+        .map(k => { try { return [k, JSON.parse(localStorage.getItem(k)).seen ?? 0]; } catch { return [k, 0]; } }).sort((a, b) => a[1] - b[1]);
+      if (!kept.length) return;
+      for (const [k] of kept.slice(0, Math.ceil(kept.length / 2))) localStorage.removeItem(k);
+    }
+  };
+  // Settled events are shared through Mat Stats' own server, so whoever opens a profile
+  // first reads its history for everyone after.
+  const SERVER = 'https://mat-stats.mohamed3on.workers.dev';
+  const ask = (path, body) => fetch(SERVER + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    .then(r => (r.ok ? r.json() : Promise.reject(new Error(path))));
+  // What is read back, kept here or shared, keeps only the shape this script makes.
+  const finishes = [...Object.keys(FINISH), 'other'];
+  const clean = (out) => {
+    const types = {};
+    for (const type of finishes) {
+      const pair = out?.types?.[type];
+      if (Array.isArray(pair)) types[type] = [Number(pair[0]) || 0, Number(pair[1]) || 0];
+    }
+    return { types, losses: (Array.isArray(out?.losses) ? out.losses : []).filter(l => finishes.includes(l?.type)),
+      faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string'), ...(out?.extra === true ? { extra: true } : {}) };
+  };
+  // Everything shown, worked out from the kept events with no request; newest first, so
+  // each rival takes the club and photo of the latest meeting.
+  function tally(events) {
+    events = [...events].sort((a, b) => (Date.parse(b.start_date) || 0) - (Date.parse(a.start_date) || 0));
+    const types = events.map(e => e.out.types).reduce(add, {});
+    const losses = events.flatMap(e => e.out.losses.map(loss => ({ ...loss, event: e.id, title: e.title, date: e.start_date })));
     let belts = null;
     if (!plan.whole) {
-      const tally = new Map([plan.belt, ...plan.worn].map(b => [b, { events: 0, types: {} }]));
-      for (const e of [...past.data, ...more]) {
-        const t = tally.get(plan.beltOf(e));
-        add(t.types, results.get(e.id)?.types ?? {});
+      const by = new Map([plan.belt, ...plan.worn].map(b => [b, { events: 0, types: {} }]));
+      for (const e of events) {
+        if (!Date.parse(e.start_date)) continue;
+        const t = by.get(plan.beltOf(e));
+        add(t.types, e.out.types);
         t.events++;
       }
       // A lower belt no event fell to has nothing to show; the current one says it has no events yet.
-      belts = [...tally].filter(([b, t]) => b === plan.belt || t.events).sort(([a], [b]) => BELTS.indexOf(b) - BELTS.indexOf(a));
+      belts = [...by].filter(([b, t]) => b === plan.belt || t.events).sort(([a], [b]) => BELTS.indexOf(b) - BELTS.indexOf(a));
     }
     // Everyone who beat them, with the whole head-to-head: opponents are known by name,
     // as registrations change per event, and the newest meeting gives the club, photo
     // and registration to link.
     const met = new Map();
-    for (const event of matches) for (const f of results.get(event.id).faced) {
+    for (const e of events) for (const f of e.out.faced) {
       const who = f.name.trim().toLowerCase().replace(/\s+/g, ' ');
-      if (!met.has(who)) met.set(who, { name: f.name, club: f.club, image: f.image, reg: f.reg, event: event.id, w: 0, l: 0 });
+      if (!met.has(who)) met.set(who, { name: f.name, club: f.club, image: f.image, reg: f.reg, event: e.id, w: 0, l: 0 });
       met.get(who)[f.won ? 'w' : 'l']++;
     }
     const rivals = [...met.values()].filter(r => r.l > 1).sort((a, b) => b.l - a.l || a.w - b.w).slice(0, 5);
-    stats = { types, belts, losses, rivals };
-    try { localStorage.setItem(key, JSON.stringify({ print, stats })); } catch {}
+    return { types, belts, losses, rivals };
+  }
+  async function readStats(whole = false) {
+    reading = true;
+    const past = got['past-events'];
+    const total = past.meta?.total ?? 0;
+    const key = STORE + pastUrl.match(/\/athlete\/(\d+)\//)?.[1];
+    let kept = null;
+    try { kept = whole ? null : JSON.parse(localStorage.getItem(key)); } catch {}
+    const local = (kept?.events ?? []).map(e => ({ ...e, out: clean(e.out) }));
+    const known = new Map(local.filter(e => e.settled).map(e => [e.id, e]));
+    // Nothing kept here: what any install already read for this athlete (not when the
+    // whole history is being read again, as what was kept no longer added up).
+    const site = location.hostname === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com';
+    const user = key.slice(STORE.length);
+    const shared = new Set();
+    if (!known.size && !whole) for (const e of (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? []) {
+      if (!Number.isSafeInteger(e?.id) || !(Date.parse(e.start_date) || e.out?.extra === true)) continue;
+      known.set(e.id, { id: e.id, start_date: Date.parse(e.start_date) ? e.start_date : null, title: typeof e.title === 'string' ? e.title : null, out: clean(e.out), settled: true });
+      shared.add(e.id);
+    }
+    if (known.size) show(tally(local.length ? local : [...known.values()]));
+    else { plan.loading = true; draw(); }
+    // The events since the newest kept one: the page has the first page of them, and
+    // further pages are read only while none of a page is kept (all at once when none is).
+    let list = [...past.data];
+    if (!known.size) list.push(...await pages('past-events', past.meta?.last_page ?? 1, 2));
+    else for (let page = 2; page <= (past.meta?.last_page ?? 1) && !list.some(e => known.has(e.id)); page++) list.push(...(await read('past-events', page)).data);
+    const firstKept = list.findIndex(e => known.has(e.id));
+    const news = firstKept < 0 ? list : list.slice(0, firstKept);
+    // Their match lists, three events a page, newest first: all pages at once with nothing
+    // kept, else page by page until every new event is found.
+    const wanted = new Set(news.map(e => e.id));
+    const found = new Map();
+    if (!known.size) for (const event of await pages('event-statistics', Math.ceil(total / 3), 1)) found.set(event.id, event);
+    else for (let page = 1; [...wanted].some(id => !found.has(id)) && page <= Math.ceil(total / 3); page++) {
+      const body = await read('event-statistics', page);
+      for (const event of body.data ?? []) found.set(event.id, event);
+      if (!(body.data ?? []).some(event => wanted.has(event.id))) break;
+    }
+    const empty = { types: {}, losses: [], faced: [] };
+    const fresh = news.map(e => {
+      const event = found.get(e.id);
+      return { id: e.id, start_date: e.start_date, title: event?.title ?? e.title ?? null, out: event ? outcomes(event) : empty, settled: Date.now() - Date.parse(e.start_date) > WEEK };
+    });
+    // A match list can hold an event the event list leaves out (an event under two
+    // ids): its matches count all the same, dated by the belt list when it names it.
+    if (!known.size) {
+      const dated = new Map((got.skills?.data ?? []).flatMap(s => s.events ?? []).map(e => [e.id, e.event_start]));
+      for (const event of found.values()) {
+        if (news.some(e => e.id === event.id)) continue;
+        const start = dated.get(event.id) ?? null;
+        fresh.push({ id: event.id, start_date: start, title: event.title ?? null, out: { ...outcomes(event), extra: true }, settled: !start || Date.now() - Date.parse(start) > WEEK });
+      }
+    }
+    const events = [...fresh, ...[...known.values()]];
+    if (events.filter(e => !e.out.extra).length !== total && !whole && known.size) return readStats(true);
+    // Settled events the server lacks go to it: all of them the first time this browser
+    // shares an athlete, then only the newly settled.
+    const unshared = events.filter(e => e.settled && !shared.has(e.id) && (!kept?.shared || fresh.includes(e)));
+    let sent = !!kept?.shared || shared.size > 0;
+    if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
+    keep(key, { seen: Date.now(), shared: sent, events });
+    show(tally(events));
+  }
+  // New figures replace the shown ones in place, without the opening or the bars regrowing.
+  let rev = 0;
+  function show(next) {
+    stats = next;
+    rev++;
     draw();
   }
   // Placeholders hold the shape of what is being read: the rate, its chips, and a row per belt.
@@ -176,8 +262,10 @@
     let html = `<div class="scwr-rate" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
       + (wins + losses ? `<span class="scwr-rate-figure" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
         : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
-    // Each finish the athlete has won or lost by, its record on the chip; pressed ones count.
-    const offered = Object.keys(stats.types).sort((a, b) => order(a) - order(b));
+    // Each finish the athlete has won or lost by, its record on the chip, the most
+    // matches first; pressed ones count.
+    const matches = (type) => stats.types[type][0] + stats.types[type][1];
+    const offered = Object.keys(stats.types).sort((a, b) => matches(b) - matches(a) || order(a) - order(b));
     html += `<div class="scwr-chips" role="group" aria-label="Finishes counted">${offered.map(type => {
       const [w, l] = stats.types[type];
       return `<button type="button" class="scwr-type gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-type="${type}" aria-pressed="${picked.has(type)}">`
@@ -250,7 +338,7 @@
     const pill = (key, label, n) => `<button type="button" class="scwr-loss-filter gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-show="${key}" aria-pressed="${showing === key}">`
       + (key === 'all' ? '' : `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[key]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`)
       + `<span class="gi-font-medium">${label}</span><span class="scwr-lost">${n}</span></button>`;
-    return pill('all', 'All', stats.losses.length) + Object.keys(counts).sort((a, b) => order(a) - order(b)).map(type => pill(type, nameOf(type), counts[type])).join('');
+    return pill('all', 'All', stats.losses.length) + Object.keys(counts).sort((a, b) => counts[b] - counts[a] || order(a) - order(b)).map(type => pill(type, nameOf(type), counts[type])).join('');
   }
   function openLosses() {
     // The card's colour sits on whichever ancestor first paints one.
@@ -283,12 +371,13 @@
       ours.querySelector('span').textContent = 'See losses';
       theirs.after(ours);
     }
-    const stage = stats ? 'done' : plan.loading ? 'loading' : '';
+    const stage = stats ? `done${rev}` : plan.loading ? 'loading' : '';
     const box = chart.querySelector('.scwr-more');
     if (!stage) return box?.remove();
     if (box?.dataset.stage === stage) return;
     const html = stats ? filled() : skeleton();
     if (box) {
+      if (box.dataset.stage.startsWith('done')) box.dataset.settled = '';
       box.dataset.stage = stage;
       box.setAttribute('aria-busy', String(!stats));
       box.innerHTML = html;

@@ -79,3 +79,15 @@ CREATE TABLE IF NOT EXISTS history (
   PRIMARY KEY (site, user, event)
 );
 CREATE INDEX IF NOT EXISTS entries_club ON entries (site, club_id);
+-- Each settled event of an athlete as their profile's match lists give it: finishes won
+-- and lost, each loss, and everyone met. Uploaded by profile pages, read by them.
+CREATE TABLE IF NOT EXISTS outcomes (
+  site TEXT NOT NULL,
+  user TEXT NOT NULL,
+  event TEXT NOT NULL,
+  start TEXT,
+  title TEXT,
+  out TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, user, event)
+);

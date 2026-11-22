@@ -161,7 +161,43 @@ async function record(env, { site, event, records, meta, athletes, read }) {
   return json({});
 }
 
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people };
+// An athlete's settled events, as profile pages read them from the match lists. The
+// worker keeps only the shape profile.js reads: known finishes, counts and bounded text.
+const FINISHES = ['submission', 'stoppage', 'escape', 'points', 'decision', 'disqualification', 'other'];
+const SETTLED = 7 * 24 * 60 * 60 * 1000;
+const count = n => (Number.isSafeInteger(n) && n >= 0 && n < 1000 ? n : 0);
+const regOf = r => (Number.isSafeInteger(r) && r > 0 ? r : null);
+function cleanOut(out) {
+  const types = {};
+  for (const type of FINISHES) {
+    const pair = out?.types?.[type];
+    if (Array.isArray(pair) && (count(pair[0]) || count(pair[1]))) types[type] = [count(pair[0]), count(pair[1])];
+  }
+  const losses = (Array.isArray(out?.losses) ? out.losses : []).slice(0, 60).filter(l => FINISHES.includes(l?.type)).map(l => ({
+    type: l.type, how: text(l.how, 60) ?? '', opponent: text(l.opponent, 120), club: text(l.club, 160), division: text(l.division, 200),
+    reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: text(l.stage, 60),
+  }));
+  const faced = (Array.isArray(out?.faced) ? out.faced : []).slice(0, 120).filter(m => text(m?.name, 120)).map(m => ({
+    name: text(m.name, 120), club: text(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
+  }));
+  return { types, losses, faced, ...(out?.extra === true ? { extra: true } : {}) };
+}
+async function outcomes(env, { site, user }) {
+  if (!SITES.includes(site) || !validUser(user)) return json({ error: 'Bad outcomes' }, 400);
+  const { results } = await env.DB.prepare('SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2').bind(site, user).all();
+  return json({ events: results.map(r => ({ id: Number(r.event), start_date: r.start, title: r.title, out: JSON.parse(r.out) })) });
+}
+async function keepOutcomes(env, { site, user, events }) {
+  if (!SITES.includes(site) || !validUser(user) || !Array.isArray(events) || events.length > 400) return json({ error: 'Bad outcomes' }, 400);
+  // An event only a match list names may come undated; every other one must have started a week ago.
+  const rows = events.filter(e => Number.isSafeInteger(e?.id) && e.id > 0 && (typeof e.start_date === 'string' ? Date.parse(e.start_date) < Date.now() - SETTLED : e.start_date == null && e.out?.extra === true))
+    .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(cleanOut(e.out))]);
+  if (rows.length) await env.DB.prepare(`INSERT OR REPLACE INTO outcomes (site, user, event, start, title, out, at)
+    SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, value ->> 3, ?3 FROM json_each(?4)`).bind(site, user, Date.now(), JSON.stringify(rows)).run();
+  return json({ kept: rows.length });
+}
+
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes };
 
 // A page of the site, with a CSP nonce made for this response alone. Cloudflare's bot
 // detection injects an inline script and signs it with the nonce it finds in this header.

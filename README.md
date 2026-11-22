@@ -47,8 +47,9 @@ with the win rate at each belt worn. Chips pick the finishes counted (submission
 walkovers never count), each showing its record. See losses lists every loss, newest first: who won (photo, profile and academy linked),
 how, in which round of which bracket (linked), at which event, and the belt worn then, filtered by finish. Whoever beat them most shows with the whole
 head-to-head. A match list names registrations, not accounts, so those links pass through the event's participants
-page, which forwards to the profile or academy. Every page of the athlete's event and match lists is read at once,
-and kept until their events, wins or belts change.
+page, which forwards to the profile or academy. Each event's result is kept for good once it is a week old, here and in
+Mat Stats' shared cache, so a profile draws at once and reads only events newer than what is kept (all
+pages at once the first time anyone opens it).
 
 **Stats site** — [matstats.mohamed3on.com](https://matstats.mohamed3on.com) shows the shared cache outside
 Smoothcomp: athletes pooled into one ranking, academies ranked by their athletes' careers with their top athletes,
