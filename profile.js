@@ -25,9 +25,10 @@
   const finish = (wonBy) => {
     const w = String(wonBy ?? '').toLowerCase();
     return /^sub/.test(w) ? 'submission' : /walk/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
-      : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : w || 'other';
+      : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
   };
-  const nameOf = (type) => FINISH[type]?.[0] ?? type.replace(/[_-]+/g, ' ').replace(/^./, c => c.toUpperCase());
+  // Anything else counts as Other, so no unknown name reaches the page or a tally's keys.
+  const nameOf = (type) => FINISH[type]?.[0] ?? 'Other';
   const order = (type) => (type in FINISH ? Object.keys(FINISH).indexOf(type) : 99);
   // The finishes counted, kept on this browser; one always stays picked.
   const PICKED = 'scwr:profile:finishes';
@@ -101,7 +102,7 @@
     reading = true;
     const past = got['past-events'];
     // The number in the key retires what an older count kept.
-    const key = `scwr:profile:3:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
+    const key = `scwr:profile:4:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
     const print = JSON.stringify([past.meta?.total, got['wins-and-medals'].data.win_method_breakdown, got.skills.data.map(s => [s.belt, s.competed_count])]);
     try {
       const kept = JSON.parse(localStorage.getItem(key));
