@@ -159,9 +159,15 @@ function arrange(groups) {
 
 // Every career in the event is read from the moment the page opens, athletes on
 // screen first, so a whole-event view opened later finds most of them read.
+// The first lookup asks after every athlete, kept or not: the shared cache knows
+// whose kept career an event they entered has since outdated.
+let asked = false;
 function readAll() {
-  for (const g of source) for (const r of g.registrations) if (r.user_id && !fresh(r.user_id)) pending.add(String(r.user_id));
-  SCWRCareers.lookup([...pending]);
+  const users = [...new Set(source.flatMap((g) => g.registrations).filter((r) => r.user_id).map((r) => String(r.user_id)))];
+  const unseen = () => { for (const u of users) if (!fresh(u)) pending.add(u); };
+  unseen();
+  if (asked) SCWRCareers.lookup([...pending]);
+  else { asked = true; SCWRCareers.lookup(users).then(() => { unseen(); drain(); }); }
   drain();
 }
 

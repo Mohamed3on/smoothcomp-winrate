@@ -25,6 +25,13 @@ async function lookup(env, { site, users }) {
   const seen = await env.DB.prepare('SELECT user, sum(wins) wins, sum(losses) losses, count(*) events FROM records WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
     .bind(site, JSON.stringify(users)).all();
   for (const row of seen.results) kept.seen[row.user] = [row.wins, row.losses, row.events];
+  // When the latest event each athlete entered ended, so a career read before it is read again.
+  // An event whose end no page has sent yet counts as over at its start.
+  const over = 'coalesce(v.ends, unixepoch(v.start) * 1000)';
+  const ended = await env.DB.prepare(`SELECT user, max(${over}) AS ended FROM entries e JOIN events v USING (site, event)
+    WHERE e.site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ${over} <= ?3 GROUP BY user`)
+    .bind(site, JSON.stringify(users), Date.now()).all();
+  kept.ended = Object.fromEntries(ended.results.map((row) => [row.user, row.ended]));
   return json(kept);
 }
 
@@ -64,12 +71,13 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
   // A date decides whose academy and photo win, so none from the future.
   const start = typeof meta?.start === 'string' && ISO.test(meta.start) && Date.parse(meta.start) < Date.now() + 366 * 24 * 60 * 60 * 1000 ? meta.start : null;
   const now = Date.now();
+  const ends = typeof meta?.end === 'string' && ISO.test(meta.end) && Date.parse(meta.end) < now + 366 * 24 * 60 * 60 * 1000 ? Date.parse(meta.end) : null;
   const statements = [];
   if (meta && typeof meta === 'object') {
-    statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+    statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at, ends) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
       ON CONFLICT (site, event) DO UPDATE SET title = coalesce(excluded.title, title), start = coalesce(excluded.start, start), city = coalesce(excluded.city, city),
-      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at`)
-      .bind(site, event, text(meta.title, 200), start, text(meta.city, 100), text(meta.country, 8), text(meta.organiser, 200), now));
+      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at, ends = coalesce(excluded.ends, ends)`)
+      .bind(site, event, text(meta.title, 200), start, text(meta.city, 100), text(meta.country, 8), text(meta.organiser, 200), now, ends));
   }
   const people = [];
   const entries = [];

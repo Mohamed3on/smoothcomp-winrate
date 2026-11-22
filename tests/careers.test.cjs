@@ -106,6 +106,21 @@ test('a career read before the shown event ended is read again there, and kept e
   assert.equal(ended.api.fresh('1'), true);
 });
 
+test('a career read before the last event its athlete entered ended is read again on any page', async () => {
+  const shared = { careers: {} };
+  const w = worker(undefined, undefined, shared);
+  const fetcher = url => url.includes('/profile/') ? profile(w) : career();
+  await page(w, fetcher).api.readCareer('1');
+  w.advance(24 * 60 * 60 * 1000);
+  shared.ended = { 1: w.now() - 1000, 2: 'x' };
+  const p = page(w, fetcher, 2);
+  await p.api.lookup(['1', '2']);
+  assert.equal(p.api.fresh('1'), false);
+  await p.api.readCareer('1');
+  assert.equal(p.fetched.filter(url => url.includes('/profile/')).length, 1);
+  assert.equal(p.api.fresh('1'), true);
+});
+
 test('a second tab joins completed work instead of fetching the athlete twice', async () => {
   const w = worker();
   const fetcher = url => url.includes('/profile/') ? profile(w) : career();

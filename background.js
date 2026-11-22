@@ -158,8 +158,9 @@ async function lookup({ users }, sender) {
   if (!site || !users.length) return {};
   const response = await fetch(`${SERVER}/lookup`, { method: 'POST', body: JSON.stringify({ site, users }), signal: AbortSignal.timeout(10000) });
   const given = response.ok ? await response.json() : {};
-  const kept = { careers: {}, ranks: {}, seen: {} };
+  const kept = { careers: {}, ranks: {}, seen: {}, ended: {} };
   for (const [id, seen] of Object.entries(given.seen ?? {})) if (validUser(id) && Array.isArray(seen) && seen.length === 3 && seen.every(Number.isSafeInteger)) kept.seen[id] = seen;
+  for (const [id, end] of Object.entries(given.ended ?? {})) if (validUser(id) && Number.isSafeInteger(end) && end <= Date.now()) kept.ended[id] = end;
   for (const name of ['careers', 'ranks']) for (const [id, entry] of Object.entries(given[name] ?? {})) {
     const clean = SCWRCache.clean(name, entry);
     if (validUser(id) && clean) kept[name][id] = clean;

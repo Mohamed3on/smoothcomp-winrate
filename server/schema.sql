@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS events (
   country TEXT,
   organiser TEXT,
   at INTEGER NOT NULL,
+  ends INTEGER, -- epoch ms
   PRIMARY KEY (site, event)
 );
 -- One row per athlete per division. A results page's rows (fought = 1) replace
