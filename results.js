@@ -983,62 +983,158 @@
     return tr;
   }
 
+  // Only the rows near the viewport are in the table; a spacer above and below
+  // stands in for the rest at their measured heights. Laying out a big event's
+  // every row took most of a second, on every keystroke and sort.
+  const heights = new Map();
+  const BLOCK = 10;
+  let rowHeight = 56;
+  let cols = [];
+  let ctx = {};
+  // rows[first, last) are in the table, between the two spacers.
+  let first = 0, last = 0, above, below;
+
   function renderBody() {
-    const cols = columns();
-    // One scale for every bar on screen, so lengths stay comparable.
-    const ctx = {
+    cols = columns();
+    // One scale for every bar in the table, so lengths stay comparable.
+    ctx = {
       maxWins: Math.max(1, ...rows.map((r) => r.wins || 0)),
       maxLosses: Math.max(1, ...rows.map((r) => r.losses || 0)),
     };
-    const nodes = [];
-    rows.forEach((row, index) => {
-      const tr = el('tr', undefined, 'scwr-row');
-      tr.dataset.key = row.key;
-      if (index < 3 && state.direction === -1) tr.classList.add('scwr-top');
-      const rank = el('td', undefined, 'scwr-rank');
-      const open = state.open.has(row.key);
-      const toggle = el('button', String(index + 1), 'scwr-expand');
-      toggle.type = 'button';
-      toggle.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${row.name}`);
-      toggle.setAttribute('aria-expanded', String(open));
-      toggle.setAttribute('aria-controls', `scwr-detail-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`);
-      rank.append(toggle);
-      tr.append(rank);
-      for (const col of cols) {
-        const td = el('td', undefined, `scwr-col scwr-col-${col.key}`);
-        if (col.align === 'start') td.classList.add('scwr-start');
-        if (col.wide) td.classList.add('scwr-wide');
-        if (col.grow) td.classList.add('scwr-grow');
-        if (state.sort === col.key) td.classList.add('scwr-sorted');
-        td.append(col.cell(row, ctx));
-        tr.append(td);
-      }
-      tr.classList.toggle('scwr-open', open);
-      nodes.push(tr);
-      if (open) nodes.push(detailRow(row, cols.length + 1));
-    });
-    if (!rows.length) {
-      const tr = el('tr', undefined, 'scwr-empty-row');
-      const cell = el('td');
-      cell.colSpan = cols.length + 1;
-      const empty = el('div', undefined, 'scwr-empty');
-      // Before a match is decided or a result published there is nothing to
-      // rank, and no filter is to blame.
-      const idle = !model.fought && !model.walkovers && [...model.brackets.values()].every((b) => b.provisional);
-      empty.append(el('p', idle ? 'Nothing to rank yet.' : `No ${VIEWS[state.view].unit[1]} match these filters.`, 'scwr-empty-title'));
-      const counted = activeBelts();
-      empty.append(el('p', idle
-        ? 'No match here has been decided yet, and Smoothcomp has not published any results.'
-        : state.search
-          ? `Nothing matches “${state.search}”. Clear the search, or loosen the age and match filters.`
-          : counted && !counted.length
-            ? 'Every belt in this event is switched off — the filter you brought from another event leaves nobody here. Turn one back on.'
-            : `${state.minimumAge || state.maximumAge ? 'Widen the age range or lower' : 'Lower'} the minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}${counted ? ', or count more belts' : ''}.`, 'scwr-meta'));
-      cell.append(empty);
-      tr.append(cell);
-      nodes.push(tr);
+    first = last = 0;
+    if (!rows.length) return renderEmpty();
+    [above, below] = [spacer(), spacer()];
+    body.replaceChildren(above, below);
+    paintWindow();
+  }
+
+  function rowNodes(row, index) {
+    const tr = el('tr', undefined, 'scwr-row');
+    tr.dataset.key = row.key;
+    if (index < 3 && state.direction === -1) tr.classList.add('scwr-top');
+    const rank = el('td', undefined, 'scwr-rank');
+    const open = state.open.has(row.key);
+    const toggle = el('button', String(index + 1), 'scwr-expand');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${row.name}`);
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-controls', `scwr-detail-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`);
+    rank.append(toggle);
+    tr.append(rank);
+    for (const col of cols) {
+      const td = el('td', undefined, `scwr-col scwr-col-${col.key}`);
+      if (col.align === 'start') td.classList.add('scwr-start');
+      if (col.wide) td.classList.add('scwr-wide');
+      if (col.grow) td.classList.add('scwr-grow');
+      if (state.sort === col.key) td.classList.add('scwr-sorted');
+      td.append(col.cell(row, ctx));
+      tr.append(td);
     }
-    body.replaceChildren(...nodes);
+    tr.classList.toggle('scwr-open', open);
+    return open ? [tr, detailRow(row, cols.length + 1)] : [tr];
+  }
+
+  const heightOf = (row) => heights.get(`${state.view}:${row.key}`) ?? rowHeight;
+
+  function spacer() {
+    const tr = el('tr', undefined, 'scwr-spacer');
+    const td = el('td');
+    td.colSpan = cols.length + 1;
+    tr.append(td);
+    return tr;
+  }
+
+  function size(spacer, height) {
+    spacer.hidden = !height;
+    spacer.firstChild.style.height = `${height}px`;
+  }
+
+  function drop(tr) {
+    if (tr.nextElementSibling?.classList.contains('scwr-detail')) tr.nextElementSibling.remove();
+    tr.remove();
+  }
+
+  function paintWindow() {
+    if (!rows.length || scroll.hidden) return;
+    const top = body.getBoundingClientRect().top;
+    const from = -top - innerHeight, to = 2 * innerHeight - top;
+    let start = 0, y = 0;
+    while (start < rows.length - 1 && y + heightOf(rows[start]) < from) y += heightOf(rows[start++]);
+    let end = start;
+    while (end < rows.length && y < to) y += heightOf(rows[end++]);
+    // Whole blocks of rows, so scrolling redraws once a block rather than every row.
+    start -= start % BLOCK;
+    end = Math.min(rows.length, Math.ceil(end / BLOCK) * BLOCK);
+    if (start === first && end === last) return;
+    // Only the rows entering or leaving change; the rest stay as they are.
+    const shownRows = [...body.querySelectorAll(':scope > .scwr-row')];
+    const build = (from, to) => rows.slice(from, to).flatMap((row, i) => rowNodes(row, from + i));
+    if (start >= last || end <= first) {
+      shownRows.forEach(drop);
+      above.after(...build(start, end));
+    } else {
+      shownRows.slice(0, Math.max(0, start - first)).forEach(drop);
+      shownRows.slice(end - first).forEach(drop);
+      if (start < first) above.after(...build(start, first));
+      if (end > last) below.before(...build(last, end));
+    }
+    [first, last] = [start, end];
+    let before = 0, after = 0;
+    rows.forEach((row, i) => { if (i < start) before += heightOf(row); else if (i >= end) after += heightOf(row); });
+    size(above, before);
+    size(below, after);
+    measure();
+  }
+
+  function measure() {
+    for (const tr of body.querySelectorAll('.scwr-row')) {
+      const detail = tr.nextElementSibling?.classList.contains('scwr-detail') ? tr.nextElementSibling.offsetHeight : 0;
+      if (!detail) rowHeight = tr.offsetHeight;
+      heights.set(`${state.view}:${tr.dataset.key}`, tr.offsetHeight + detail);
+    }
+  }
+
+  // The placeholders shown while the event is read stay until it is.
+  let frame = 0;
+  const onScroll = () => {
+    if (!frame) frame = requestAnimationFrame(() => { frame = 0; if (!body.querySelector('.scwr-skeleton')) paintWindow(); });
+  };
+  addEventListener('scroll', onScroll, { passive: true });
+  addEventListener('resize', onScroll, { passive: true });
+
+  // The browser's find would miss the rows off screen, so while the table is on
+  // screen Cmd/Ctrl+F goes to the panel's search; pressed there, it reaches the
+  // browser's own.
+  addEventListener('keydown', (event) => {
+    if (event.key.toLowerCase() !== 'f' || !(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey) return;
+    const search = panel.querySelector('[data-filter="search"]');
+    const { top, bottom } = scroll.getBoundingClientRect();
+    if (scroll.hidden || document.activeElement === search || bottom < 0 || top > innerHeight) return;
+    event.preventDefault();
+    search.focus();
+    search.select();
+  });
+
+  function renderEmpty() {
+    const tr = el('tr', undefined, 'scwr-empty-row');
+    const cell = el('td');
+    cell.colSpan = cols.length + 1;
+    const empty = el('div', undefined, 'scwr-empty');
+    // Before a match is decided or a result published there is nothing to
+    // rank, and no filter is to blame.
+    const idle = !model.fought && !model.walkovers && [...model.brackets.values()].every((b) => b.provisional);
+    empty.append(el('p', idle ? 'Nothing to rank yet.' : `No ${VIEWS[state.view].unit[1]} match these filters.`, 'scwr-empty-title'));
+    const counted = activeBelts();
+    empty.append(el('p', idle
+      ? 'No match here has been decided yet, and Smoothcomp has not published any results.'
+      : state.search
+        ? `Nothing matches “${state.search}”. Clear the search, or loosen the age and match filters.`
+        : counted && !counted.length
+          ? 'Every belt in this event is switched off — the filter you brought from another event leaves nobody here. Turn one back on.'
+          : `${state.minimumAge || state.maximumAge ? 'Widen the age range or lower' : 'Lower'} the minimum match count${state.minimum > 1 ? ` below ${state.minimum}` : ''}${counted ? ', or count more belts' : ''}.`, 'scwr-meta'));
+    cell.append(empty);
+    tr.append(cell);
+    body.replaceChildren(tr);
   }
 
   // Sorting is the one moment worth animating: rows travel to their new rank so
@@ -1463,8 +1559,7 @@
 
     const row = event.target.closest('.scwr-row');
     if (row && !event.target.closest('a')) {
-      // Only this row's detail changes, so leave the rest of the table alone:
-      // a full render rebuilds every row and lags on big events.
+      // Only this row's detail changes, so leave the rest of the table alone.
       const data = rows.find((r) => r.key === row.dataset.key);
       const open = !state.open.has(data.key);
       if (open) {
@@ -1474,6 +1569,7 @@
         reveal([detail.querySelector('.scwr-detail-grid')]);
       }
       else { state.open.delete(data.key); row.nextElementSibling?.classList.contains('scwr-detail') && row.nextElementSibling.remove(); }
+      measure();
       row.classList.toggle('scwr-open', open);
       const toggle = row.querySelector('.scwr-expand');
       toggle.setAttribute('aria-expanded', String(open));

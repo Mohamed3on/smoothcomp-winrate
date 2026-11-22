@@ -1,3 +1,8 @@
+/* Hundreds of official brackets sit below the panel. Off screen the browser
+   skips them, so the table above changing height as it scrolls does not lay
+   them all out again. */
+#resultsView .result { content-visibility: auto; contain-intrinsic-size: auto 480px; }
+
 /* The bracket size rides in the site's badge slot next to the group name. Read
    it as a quiet count, not as a blue alert pill. */
 .result h2 .label-info {
@@ -406,6 +411,7 @@
 /* Fixed layout will not grow a cell for its content, so long strings must be
    told what to do instead of silently overflowing. */
 .scwr-table td { overflow: hidden; }
+.scwr-table .scwr-spacer > td { padding: 0; border: 0; }
 .scwr-glyph { line-height: 1; letter-spacing: 0; }
 
 .scwr-row { cursor: pointer; }
