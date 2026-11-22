@@ -43,7 +43,8 @@ own labels, and one whose label says nothing readable counts only if you entered
 the panel names the bracket you fall the fewest wins short of.
 
 **Profile page** — under Smoothcomp's wins chart, wins per event entered, walkovers aside, from the career and
-event list the page loads anyway.
+event list the page loads anyway; then wins per event at the current belt against before it, reading only the
+event-list pages back to when that belt began.
 
 **Stats site** — [matstats.mohamed3on.com](https://matstats.mohamed3on.com) shows the shared cache outside
 Smoothcomp: athletes pooled into one ranking, academies ranked by their athletes' careers with their top athletes,
