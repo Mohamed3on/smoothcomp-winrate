@@ -63,6 +63,17 @@
       "css": [
         "results.css"
       ]
+    },
+    {
+      "matches": [
+        "https://smoothcomp.com/*/profile/*",
+        "https://ajptour.com/*/profile/*"
+      ],
+      "js": [
+        "profile.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ],
   "background": {

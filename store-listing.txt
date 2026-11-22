@@ -23,6 +23,9 @@ PARTICIPANTS PAGE
 • Belt, age, country and approved-only filters
 • Signed in: every bracket you could enter and would top-seed, with the athlete you'd displace
 
+PROFILE PAGE
+• Wins per event entered under the wins chart, walkovers aside
+
 STATS SITE
 • Everything Mat Stats users read, browsable outside Smoothcomp at matstats.mohamed3on.com
 • Athletes pooled into one ranking: by wins, any finish type, submission rate, medals or wins per event, with the finish types that count, belt, age range, country, and minimum wins and events as filters; athletes whose profile isn't public rank on their results
@@ -32,7 +35,7 @@ STATS SITE
 Works on smoothcomp.com events and on AJP Tour events (ajptour.com).
 
 PRIVACY
-Mat Stats runs only on Smoothcomp and AJP Tour event pages. It reads what those sites already show you, keeps a cache in your browser so repeat visits make fewer requests, and shares what event pages publicly show about athletes and events (Smoothcomp athlete ID, name, academy, country, age, belt, profile photo, career wins, medals and events entered, and each event's divisions, placements, wins and losses, title, date and city) through Mat Stats' own cache, so no one has to read the same athlete twice. The same data is published on the Mat Stats stats site. Nothing about you as a user of the extension is sent: no accounts, no analytics, no tracking.
+Mat Stats runs only on Smoothcomp and AJP Tour event and athlete profile pages. It reads what those sites already show you, keeps a cache in your browser so repeat visits make fewer requests, and shares what event pages publicly show about athletes and events (Smoothcomp athlete ID, name, academy, country, age, belt, profile photo, career wins, medals and events entered, and each event's divisions, placements, wins and losses, title, date and city) through Mat Stats' own cache, so no one has to read the same athlete twice. The same data is published on the Mat Stats stats site. Nothing about you as a user of the extension is sent: no accounts, no analytics, no tracking.
 
 Mat Stats is independent and is not affiliated with or endorsed by Smoothcomp or AJP Tour.
 

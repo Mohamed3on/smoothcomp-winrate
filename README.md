@@ -42,6 +42,9 @@ discipline, every age group you're old enough for, and every absolute. Brackets 
 own labels, and one whose label says nothing readable counts only if you entered under it. With nothing to top,
 the panel names the bracket you fall the fewest wins short of.
 
+**Profile page** — under Smoothcomp's wins chart, wins per event entered, walkovers aside, from the career and
+event list the page loads anyway.
+
 **Stats site** — [matstats.mohamed3on.com](https://matstats.mohamed3on.com) shows the shared cache outside
 Smoothcomp: athletes pooled into one ranking, academies ranked by their athletes' careers with their top athletes,
 and a page for every athlete, academy and event. An athlete with no readable Smoothcomp career, a profile it marks not public included, ranks on their results at the events read.
@@ -76,6 +79,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
 | `participants.js` | The participants page |
+| `profile.js` | Wins per event on an athlete's profile, read from the page's own requests |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
 `site.js` loads first on every page; the rest share globals through page scope in manifest
