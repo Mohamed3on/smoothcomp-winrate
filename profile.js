@@ -104,11 +104,13 @@
     const rows = (got.skills?.data ?? []).filter(s => /jiu|bjj/i.test(s.name) && color(s.belt)).sort((a, b) => b.sort_order - a.sort_order);
     const belt = color(rows[0]?.belt);
     const listed = (b) => rows.filter(s => color(s.belt) === b);
-    const worn = BELTS.filter(b => listed(b).some(s => s.competed_count > 0));
+    // The current belt is worn even when Smoothcomp counts no events at it (levels like
+    // "Intermediate (Blue)" don't count toward a belt).
+    const worn = BELTS.filter(b => b === belt || listed(b).some(s => s.competed_count > 0));
     // Every event at one belt: the overall rate is that belt's, so it only takes the belt.
     if (!belt || worn.every(b => b === belt)) return { belt, whole: true };
     const times = (b) => listed(b).flatMap(s => s.events ?? []).map(time);
-    const starts = worn.map((b, i) => (!i ? -Infinity : listed(b).every(s => (s.events?.length ?? 0) >= s.competed_count)
+    const starts = worn.map((b, i) => (!i ? -Infinity : times(b).length && listed(b).every(s => (s.events?.length ?? 0) >= s.competed_count)
       ? Math.min(...times(b)) : Math.max(...times(worn[i - 1])) + 1));
     return { belt, worn, shown: new Set([belt, ...worn]).size, beltOf: (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0] };
   }
