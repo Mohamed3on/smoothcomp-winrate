@@ -177,3 +177,12 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   serial = serial.then(() => handle(message, sender)).then(reply, error => reply({ error: error.message }));
   return true;
 });
+
+// The Dev Reloader (../dev-reloader) asks an unpacked build to reload itself after a change:
+// its fallback, toggling the extension, keeps the old manifest. Store installs carry an
+// update_url and ignore it.
+chrome.runtime.onMessageExternal.addListener((message, _sender, reply) => {
+  if (message !== 'dev-reload' || 'update_url' in chrome.runtime.getManifest()) return;
+  reply(true);
+  setTimeout(() => chrome.runtime.reload(), 100);
+});
