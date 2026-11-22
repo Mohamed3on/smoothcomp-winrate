@@ -73,7 +73,10 @@
         "profile.js"
       ],
       "world": "MAIN",
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "css": [
+        "profile.css"
+      ]
     }
   ],
   "background": {
