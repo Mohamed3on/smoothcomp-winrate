@@ -802,6 +802,10 @@ a.scwr-h2h-person:hover { color: var(--accent); text-decoration: underline; text
 @media (prefers-reduced-motion: no-preference) {
   .scwr-tab::after { transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1); transform-origin: left; }
   .scwr-results :is(.scwr-btn, .scwr-tab, .scwr-sort, .scwr-name) { transition: color 0.15s ease, background-color 0.15s ease; }
+  .scwr-results :is(.scwr-btn, .scwr-chip-toggle) {
+    transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .scwr-results :is(.scwr-btn, .scwr-chip-toggle):active:not(:disabled) { transform: scale(0.97); }
   .scwr-row > td { transition: background-color 0.15s ease, box-shadow 0.15s ease; }
   .scwr-shimmer { animation: scwr-pulse 1.4s ease-in-out infinite; }
   .scwr-next-live > i { animation: scwr-pulse 2s ease-in-out infinite; }

@@ -1330,6 +1330,9 @@
       rebuildSummaries();
       syncAcademyNames();
       render(); orderResults(); decorate();
+      // The placeholders give way to the full table in one frame; a short fade
+      // bridges it.
+      body.animate({ opacity: [0, 1] }, { duration: 180, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
     } catch (error) {
       // Put the numbers we already had back on screen; skeleton() cleared them,
       // and the message below promises they are still here.
@@ -1464,7 +1467,12 @@
       // a full render rebuilds every row and lags on big events.
       const data = rows.find((r) => r.key === row.dataset.key);
       const open = !state.open.has(data.key);
-      if (open) { state.open.add(data.key); row.after(detailRow(data, columns().length + 1)); }
+      if (open) {
+        state.open.add(data.key);
+        const detail = detailRow(data, columns().length + 1);
+        row.after(detail);
+        reveal([detail.querySelector('.scwr-detail-grid')]);
+      }
       else { state.open.delete(data.key); row.nextElementSibling?.classList.contains('scwr-detail') && row.nextElementSibling.remove(); }
       row.classList.toggle('scwr-open', open);
       const toggle = row.querySelector('.scwr-expand');
