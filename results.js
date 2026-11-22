@@ -1460,8 +1460,16 @@
 
     const row = event.target.closest('.scwr-row');
     if (row && !event.target.closest('a')) {
-      state.open.has(row.dataset.key) ? state.open.delete(row.dataset.key) : state.open.add(row.dataset.key);
-      render();
+      // Only this row's detail changes, so leave the rest of the table alone:
+      // a full render rebuilds every row and lags on big events.
+      const data = rows.find((r) => r.key === row.dataset.key);
+      const open = !state.open.has(data.key);
+      if (open) { state.open.add(data.key); row.after(detailRow(data, columns().length + 1)); }
+      else { state.open.delete(data.key); row.nextElementSibling?.classList.contains('scwr-detail') && row.nextElementSibling.remove(); }
+      row.classList.toggle('scwr-open', open);
+      const toggle = row.querySelector('.scwr-expand');
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.setAttribute('aria-label', `${open ? 'Collapse' : 'Expand'} ${data.name}`);
     }
   });
 
