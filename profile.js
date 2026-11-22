@@ -35,6 +35,14 @@
   let picked;
   try { picked = new Set(JSON.parse(localStorage.getItem(PICKED))); } catch {}
   if (!picked?.size) picked = new Set(['submission', 'escape', 'points']);
+  // Text from Smoothcomp (names, clubs, event titles) goes into markup escaped.
+  const esc = (text) => String(text ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  // How a match ended, with the detail Smoothcomp gives ("submission_armbar" reads
+  // "Submission (armbar)"); the detail keeps letters only.
+  const how = (wonBy, type) => {
+    const detail = String(wonBy ?? '').toLowerCase().replace(/^(submission|decision|points)/, '').replace(/[^a-z]+/g, ' ').trim();
+    return detail && ['submission', 'decision', 'points'].includes(type) ? `${nameOf(type)} (${detail})` : nameOf(type);
+  };
   // A refusal (a 429, or the failed fetch Cloudflare's challenge makes of one) is
   // tried again after 1, 2, 4 and 8 s.
   const read = async (kind, page, tries = 0) => {
@@ -56,12 +64,13 @@
     }
     return into;
   };
-  // The athlete's matches at one event, as [won, lost] by finish, walkovers left out.
+  // The athlete's matches at one event, as [won, lost] by finish, and each loss with
+  // who beat them, in what division and how; walkovers left out.
   // Each division registers them afresh: their seat is the registration in the most
   // of its matches (a round robin lists others' too), the profile's name settling a tie.
   const outcomes = (event) => {
     const name = document.title.split(' - ')[0].trim().toLowerCase();
-    const out = {};
+    const out = { types: {}, losses: [] };
     for (const group of Object.values(event.matches ?? {})) {
       const matches = group.matches ?? [];
       const seen = new Map();
@@ -77,8 +86,10 @@
         const seat = m.seats?.find(s => s.event_registration_id === mine);
         const type = finish(m.wonBy);
         if (!seat || type === 'walkover' || !(seat.isWinner || seat.isLoser)) continue;
-        out[type] ??= [0, 0];
-        out[type][seat.isWinner ? 0 : 1]++;
+        out.types[type] ??= [0, 0];
+        out.types[type][seat.isWinner ? 0 : 1]++;
+        const other = m.seats.find(s => s !== seat);
+        if (seat.isLoser) out.losses.push({ type, how: how(m.wonBy, type), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null });
       }
     }
     return out;
@@ -102,7 +113,7 @@
     reading = true;
     const past = got['past-events'];
     // The number in the key retires what an older count kept.
-    const key = `scwr:profile:5:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
+    const key = `scwr:profile:6:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
     const print = JSON.stringify([past.meta?.total, got['wins-and-medals'].data.win_method_breakdown, got.skills.data.map(s => [s.belt, s.competed_count])]);
     try {
       const kept = JSON.parse(localStorage.getItem(key));
@@ -112,22 +123,26 @@
     draw();
     // Every page of both lists at once. The page has the events' first page; the event
     // count says how many match-list pages there are, at most, three events a page.
-    const [more, matches] = await Promise.all([plan.whole ? [] : pages('past-events', past.meta?.last_page ?? 1, 2),
+    // The events give each loss its date, and each event its belt.
+    const [more, matches] = await Promise.all([pages('past-events', past.meta?.last_page ?? 1, 2),
       pages('event-statistics', Math.ceil((past.meta?.total ?? 0) / 3), 1)]);
     const results = new Map(matches.map(event => [event.id, outcomes(event)]));
-    const types = [...results.values()].reduce(add, {});
+    const types = [...results.values()].map(r => r.types).reduce(add, {});
+    const dates = new Map([...past.data, ...more].map(e => [e.id, e.start_date]));
+    const losses = matches.flatMap(event => results.get(event.id).losses.map(loss => ({ ...loss, event: event.id, title: event.title ?? null, date: dates.get(event.id) ?? null })))
+      .sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
     let belts = null;
     if (!plan.whole) {
       const tally = new Map([plan.belt, ...plan.worn].map(b => [b, { events: 0, types: {} }]));
       for (const e of [...past.data, ...more]) {
         const t = tally.get(plan.beltOf(e));
-        add(t.types, results.get(e.id) ?? {});
+        add(t.types, results.get(e.id)?.types ?? {});
         t.events++;
       }
       // A lower belt no event fell to has nothing to show; the current one says it has no events yet.
       belts = [...tally].filter(([b, t]) => b === plan.belt || t.events).sort(([a], [b]) => BELTS.indexOf(b) - BELTS.indexOf(a));
     }
-    stats = { types, belts };
+    stats = { types, belts, losses };
     try { localStorage.setItem(key, JSON.stringify({ print, stats })); } catch {}
     draw();
   }
@@ -156,7 +171,8 @@
         + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
-    if (!stats.belts) return html;
+    const more = stats.losses.length ? `<button type="button" class="scwr-losses-open gi-text-sm">See losses${CHEVRON}</button>` : '';
+    if (!stats.belts) return html + more;
     // One bar per belt, highest first: its win rate, on a scale of all its matches.
     const row = ([b, t]) => {
       const [w, l] = record(t.types);
@@ -167,7 +183,47 @@
         + `<span class="scwr-split-track">${w + l ? `<span class="scwr-split-fill" data-belt="${b}" style="width: ${(w / (w + l)) * 100}%"></span>` : ''}</span>`
         + `<small class="scwr-record">${w + l ? wl(w, l) : ''}</small></div>`;
     };
-    return `${html}<div class="scwr-belt-split">${stats.belts.map(row).join('')}</div>`;
+    return `${html}<div class="scwr-belt-split">${stats.belts.map(row).join('')}</div>${more}`;
+  }
+  const CHEVRON = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const CROSS = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+  // Every loss, newest first, in a dialog dressed in the card's own colours; pills
+  // narrow it to one finish. The belt beside each is the one worn on that date.
+  let dialog, showing = 'all';
+  function lossList() {
+    const shown = stats.losses.filter(loss => showing === 'all' || loss.type === showing);
+    const locale = location.pathname.split('/')[1] || 'en';
+    const day = (date) => (Date.parse(date) ? new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+    return shown.map(loss => {
+      const belt = plan.whole ? plan.belt : loss.date && plan.beltOf({ start_date: loss.date });
+      return `<li class="scwr-loss"${loss.division ? ` title="${esc(loss.division)}"` : ''}>${belt ? swatch(belt) : '<span></span>'}<div>`
+        + `<div><span class="gi-font-medium">${esc(loss.opponent ?? 'Unknown opponent')}</span>${loss.club ? ` <span class="gi-text-secondary gi-text-xs">${esc(loss.club)}</span>` : ''}</div>`
+        + `<div class="scwr-loss-how gi-text-xs gi-text-secondary"><span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${FINISH[loss.type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
+        + `<span class="scwr-lost">${esc(loss.how)}</span><span>·</span><a href="/${esc(locale)}/event/${Number(loss.event)}">${esc(loss.title ?? 'Event')}</a>${loss.date ? `<span>·</span><span>${day(loss.date)}</span>` : ''}</div></div></li>`;
+    }).join('');
+  }
+  function filters() {
+    const counts = {};
+    for (const loss of stats.losses) counts[loss.type] = (counts[loss.type] ?? 0) + 1;
+    const pill = (key, label, n) => `<button type="button" class="scwr-loss-filter gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-show="${key}" aria-pressed="${showing === key}">`
+      + (key === 'all' ? '' : `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[key]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`)
+      + `<span class="gi-font-medium">${label}</span><span class="scwr-lost">${n}</span></button>`;
+    return pill('all', 'All', stats.losses.length) + Object.keys(counts).sort((a, b) => order(a) - order(b)).map(type => pill(type, nameOf(type), counts[type])).join('');
+  }
+  function openLosses() {
+    // The card's colour sits on whichever ancestor first paints one.
+    let card = document.querySelector('.match-statistics-content');
+    while (card.parentElement && /^(transparent|rgba\(.*, 0\))$/.test(getComputedStyle(card).backgroundColor)) card = card.parentElement;
+    card = getComputedStyle(card);
+    dialog ??= document.body.appendChild(document.createElement('dialog'));
+    dialog.className = 'scwr-losses-dialog gi-text-sm';
+    dialog.setAttribute('aria-labelledby', 'scwr-losses-title');
+    dialog.style.cssText = `--card: ${card.backgroundColor}; color: ${card.color};`;
+    showing = 'all';
+    dialog.innerHTML = `<header><h2 id="scwr-losses-title">Losses</h2><span class="gi-text-secondary">${esc(document.title.split(' - ')[0].trim())}</span>`
+      + `<button type="button" class="scwr-losses-close" aria-label="Close">${CROSS}</button></header>`
+      + `<div class="scwr-loss-filters" role="group" aria-label="Show losses by">${filters()}</div><ol class="scwr-loss-list">${lossList()}</ol>`;
+    dialog.showModal();
   }
   const draw = () => {
     const chart = document.querySelector('.match-statistics-content > div');
@@ -185,8 +241,20 @@
       box.innerHTML = html;
     } else chart.insertAdjacentHTML('beforeend', `<div class="scwr-more gi-text-sm" data-stage="${stage}" aria-busy="${!stats}">${html}</div>`);
   };
-  // A chip toggles its finish in or out, and every rate redraws at once.
   document.addEventListener('click', (event) => {
+    if (!stats) return;
+    if (event.target.closest?.('.scwr-losses-open')) return openLosses();
+    // The dialog closes from its button or a click on the dim around it.
+    if (event.target === dialog || event.target.closest?.('.scwr-losses-close')) return dialog.close();
+    const filter = event.target.closest?.('.scwr-loss-filter');
+    if (filter) {
+      showing = filter.dataset.show;
+      dialog.querySelector('.scwr-loss-filters').innerHTML = filters();
+      dialog.querySelector('.scwr-loss-list').innerHTML = lossList();
+      dialog.querySelector('.scwr-loss-list').scrollTop = 0;
+      return dialog.querySelector(`.scwr-loss-filter[data-show="${showing}"]`)?.focus();
+    }
+    // A chip toggles its finish in or out, and every rate redraws at once.
     const chip = event.target.closest?.('.scwr-type');
     const box = chip?.closest('.scwr-more');
     if (!chip || !stats) return;

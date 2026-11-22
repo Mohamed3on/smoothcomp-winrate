@@ -12,19 +12,60 @@
    wins-only chip row above them goes. */
 .match-statistics-content > div:has(> .scwr-more[data-stage='done']) > .gi-flex-wrap { display: none; }
 /* A finish chip in Smoothcomp's own pill, pressed when its finish counts. */
-.scwr-type {
+:is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close) {
   color: inherit;
   font: inherit;
   background: none;
   cursor: pointer;
   transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), background-color 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-.scwr-type[aria-pressed='false'] { opacity: 0.45; }
-.scwr-type:active { transform: scale(0.97); }
-.scwr-type:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+:is(.scwr-type, .scwr-loss-filter)[aria-pressed='false'] { opacity: 0.45; }
+:is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close):active { transform: scale(0.97); }
+:is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close, .scwr-loss a):focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) {
-  .scwr-type:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+  :is(.scwr-type, .scwr-loss-filter, .scwr-losses-close):hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+  .scwr-losses-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
+/* The way into the losses, set like Smoothcomp's own "See all wins". */
+.scwr-losses-open { display: flex; align-items: center; gap: 4px; margin: 14px auto 0; padding: 4px 8px; border: 0; border-radius: 6px; }
+/* Every loss, in a dialog dressed in the card's own colours. */
+.scwr-losses-dialog {
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(720px, calc(100vh - 96px));
+  padding: 0;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.5);
+}
+.scwr-losses-dialog[open] { display: flex; flex-direction: column; }
+.scwr-losses-dialog::backdrop { background: rgb(0 0 0 / 0.55); }
+.scwr-losses-dialog header { display: flex; align-items: baseline; gap: 10px; padding: 18px 16px 12px 20px; }
+.scwr-losses-dialog h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: normal; text-transform: none; }
+.scwr-losses-close { display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; align-self: center; border: 0; border-radius: 8px; }
+.scwr-loss-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px 14px; }
+.scwr-loss-filter .scwr-lost { font-variant-numeric: tabular-nums; }
+.scwr-loss-list {
+  margin: 0;
+  padding: 0 8px 12px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, currentColor 25%, transparent) transparent;
+}
+.scwr-loss {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-top: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+}
+.scwr-loss > .scwr-belt { margin-top: 6px; }
+.scwr-loss-how { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
+.scwr-loss-how > :first-child { flex: none; }
+.scwr-loss a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }
 .scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px 0 12px; }
 .scwr-belt-split {
   display: grid;
@@ -103,6 +144,16 @@
   }
   @starting-style { .scwr-more { height: 0; padding-block: 0; } }
   .scwr-skel { animation: scwr-skel-pulse 1.2s ease-in-out infinite; }
+  /* The dialog rises out of a slight scale, and the dim fades with it. */
+  .scwr-losses-dialog, .scwr-losses-dialog::backdrop {
+    transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1), transform 200ms cubic-bezier(0.23, 1, 0.32, 1), overlay 200ms allow-discrete, display 200ms allow-discrete;
+  }
+  .scwr-losses-dialog:not([open]), .scwr-losses-dialog:not([open])::backdrop { opacity: 0; }
+  .scwr-losses-dialog:not([open]) { transform: scale(0.97); }
+  @starting-style {
+    .scwr-losses-dialog[open], .scwr-losses-dialog[open]::backdrop { opacity: 0; }
+    .scwr-losses-dialog[open] { transform: scale(0.97); }
+  }
   /* After a chip is toggled the bars just take their new lengths. */
   .scwr-more[data-settled] .scwr-split-fill { animation: none; }
   .scwr-split-fill { animation: scwr-split-grow 350ms cubic-bezier(0.23, 1, 0.32, 1) both; }
