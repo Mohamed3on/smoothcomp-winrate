@@ -302,12 +302,11 @@
 }
 #registrations .participants-desktop .profile-card.unapproved .participant-tr { background-color: var(--gray-2); }
 #registrations .participants-desktop .participant-tr-note-notapproved { display: none; }
-/* On the country line, where the name column has room, so the figures stay in line. */
-.profile-card.unapproved .profile-country::after {
-  content: '· Not approved';
-  margin-left: 6px;
+/* After the country name, in its small muted type, where the name column has
+   room, so the figures stay in line. */
+.profile-card.unapproved .country-name > span::after {
+  content: ' · Not approved';
   white-space: nowrap;
-  font-style: italic;
 }
 
 /* The brackets the athlete would top-seed sit over the list in Smoothcomp's own
