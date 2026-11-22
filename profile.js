@@ -206,11 +206,13 @@
   // Every loss, newest first, in a dialog dressed in the card's own colours; pills
   // narrow it to one finish. The belt beside each is the one worn on that date.
   let dialog, showing = 'all';
-  // One opponent who beat them more than once: photo, name and the whole head-to-head.
+  // One opponent who beat them more than once: photo, name and academy (from their
+  // newest meeting), and the whole head-to-head.
   function rival(r) {
     const face = avatar({ image: r.image, opponent: r.name });
-    const name = named({ opponent: r.name, reg: r.reg, event: r.event }, 'who');
-    return `<span class="scwr-rival" title="${esc(r.name)}${r.club ? `, ${esc(r.club)}` : ''}: ${r.w} won, ${r.l} lost against them">${face}${name}<span class="scwr-record">${wl(r.w, r.l)}</span></span>`;
+    const meeting = { opponent: r.name, club: r.club, reg: r.reg, event: r.event };
+    const who = `<span class="scwr-rival-who">${named(meeting, 'who')}${r.club ? named(meeting, 'club') : ''}</span>`;
+    return `<span class="scwr-rival" title="${r.w} won, ${r.l} lost against ${esc(r.name)}">${face}${who}<span class="scwr-record">${wl(r.w, r.l)}</span></span>`;
   }
   // Who beat them and their academy link through the event's participants page: a
   // match list names registrations, not accounts, and that page knows whose each is

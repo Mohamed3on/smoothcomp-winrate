@@ -29,7 +29,9 @@
 /* Who beat them most: their photo, name and the whole head-to-head. */
 .scwr-nemesis { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px; margin-top: 14px; }
 .scwr-rival { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.scwr-rival .scwr-face { width: 24px; height: 24px; font-size: 9px; }
+.scwr-rival .scwr-face { width: 28px; height: 28px; font-size: 10px; }
+.scwr-rival-who { display: grid; min-width: 0; text-align: left; line-height: 1.3; }
+.scwr-rival-who > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scwr-rival a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }
 .scwr-rival a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .scwr-rivals { display: grid; gap: 8px; padding: 0 20px 16px; }
