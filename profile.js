@@ -1,5 +1,5 @@
 // A profile's win rate, under Smoothcomp's own wins chart, then at each belt worn.
-// It counts the finishes picked in the chips below it (submission, fastest escape and points until
+// It counts the finishes picked in the chips below it (submission, fastest escape, points and decision until
 // the reader picks others), never walkovers. Every page of the athlete's event list
 // and match list is read at once: the matches give each finish won and lost, and the
 // page's belt list dates each belt. What was read is kept until the athlete's
@@ -32,10 +32,10 @@
   const nameOf = (type) => FINISH[type]?.[0] ?? 'Other';
   const order = (type) => (type in FINISH ? Object.keys(FINISH).indexOf(type) : 99);
   // The finishes counted, kept on this browser; one always stays picked.
-  const PICKED = 'scwr:profile:finishes:2';
+  const PICKED = 'scwr:profile:finishes:3';
   let picked;
   try { picked = new Set(JSON.parse(localStorage.getItem(PICKED))); } catch {}
-  if (!picked?.size) picked = new Set(['submission', 'escape', 'points']);
+  if (!picked?.size) picked = new Set(['submission', 'escape', 'points', 'decision']);
   // Text from Smoothcomp (names, clubs, event titles) goes into markup escaped.
   const esc = (text) => String(text ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   // How a match ended, with the detail Smoothcomp gives ("submission_armbar" reads
