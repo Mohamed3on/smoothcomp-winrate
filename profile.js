@@ -19,6 +19,8 @@
   };
   const time = (e) => Date.parse(e.event_start ?? e.start_date);
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  // Opponents are known by name, as registrations change per event.
+  const person = (name) => String(name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
   // Smoothcomp's finishes come finer than its own chips name them ("submission_armbar",
   // "decision_unanimous", "double-dq"); each counts under the chip it belongs to. Each
@@ -71,12 +73,13 @@
     return into;
   };
   // The athlete's matches at one event, as [won, lost] by finish, and each loss with
-  // who beat them, in what division and how; walkovers left out.
+  // who beat them, in what division and how; each win names the same, for a
+  // head-to-head. Walkovers left out. v 2 marks the wins' details.
   // Each division registers them afresh: their seat is the registration in the most
   // of its matches (a round robin lists others' too), the profile's name settling a tie.
   const outcomes = (event) => {
     const name = document.title.split(' - ')[0].trim().toLowerCase();
-    const out = { types: {}, losses: [], faced: [] };
+    const out = { v: 2, types: {}, losses: [], faced: [] };
     for (const group of Object.values(event.matches ?? {})) {
       const matches = group.matches ?? [];
       const seen = new Map();
@@ -95,7 +98,8 @@
         out.types[type] ??= [0, 0];
         out.types[type][seat.isWinner ? 0 : 1]++;
         const other = m.seats.find(s => s !== seat);
-        if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner });
+        if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner,
+          ...(seat.isWinner ? { type, how: how(m.wonBy, type), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null } : {}) });
         if (seat.isLoser) out.losses.push({ type, how: how(m.wonBy, type), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
           reg: other?.event_registration_id ?? null, image: other?.image ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null });
       }
@@ -123,7 +127,7 @@
   // more), so a visit draws at once from what is kept and reads only what is new: both
   // lists run newest first, so reading stops at the first event already kept. If the
   // kept events and Smoothcomp's count stop agreeing, the whole history is read again.
-  const STORE = 'scwr:profile:11:';
+  const STORE = 'scwr:profile:12:';
   const WEEK = 7 * 864e5;
   for (const k of Object.keys(localStorage)) if (/^scwr:profile:\d+:/.test(k) && !k.startsWith(STORE)) localStorage.removeItem(k);
   // Storage full: the athletes looked at longest ago give way.
@@ -150,7 +154,7 @@
       if (Array.isArray(pair)) types[type] = [Number(pair[0]) || 0, Number(pair[1]) || 0];
     }
     return { types, losses: (Array.isArray(out?.losses) ? out.losses : []).filter(l => finishes.includes(l?.type)),
-      faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string'), ...(out?.extra === true ? { extra: true } : {}) };
+      faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string'), ...(out?.v === 2 ? { v: 2 } : {}), ...(out?.extra === true ? { extra: true } : {}) };
   };
   // Everything shown, worked out from the kept events with no request; newest first, so
   // each rival takes the club and photo of the latest meeting.
@@ -158,6 +162,8 @@
     events = [...events].sort((a, b) => (Date.parse(b.start_date) || 0) - (Date.parse(a.start_date) || 0));
     const types = events.map(e => e.out.types).reduce(add, {});
     const losses = events.flatMap(e => e.out.losses.map(loss => ({ ...loss, event: e.id, title: e.title, date: e.start_date })));
+    // Their wins, for a head-to-head: who, where and when only.
+    const wins = events.flatMap(e => e.out.faced.filter(f => f.won).map(f => ({ ...f, won: true, opponent: f.name, event: e.id, title: e.title, date: e.start_date })));
     let belts = null;
     if (!plan.whole) {
       const by = new Map([plan.belt, ...plan.worn].map(b => [b, { events: 0, types: {} }]));
@@ -175,12 +181,12 @@
     // and registration to link.
     const met = new Map();
     for (const e of events) for (const f of e.out.faced) {
-      const who = f.name.trim().toLowerCase().replace(/\s+/g, ' ');
-      if (!met.has(who)) met.set(who, { name: f.name, club: f.club, image: f.image, reg: f.reg, event: e.id, w: 0, l: 0 });
+      const who = person(f.name);
+      if (!met.has(who)) met.set(who, { key: who, name: f.name, club: f.club, image: f.image, reg: f.reg, event: e.id, w: 0, l: 0 });
       met.get(who)[f.won ? 'w' : 'l']++;
     }
     const rivals = [...met.values()].filter(r => r.l > 1).sort((a, b) => b.l - a.l || a.w - b.w).slice(0, 5);
-    return { types, belts, losses, rivals };
+    return { types, belts, losses, wins, rivals };
   }
   async function readStats(whole = false) {
     reading = true;
@@ -196,7 +202,9 @@
     const site = ajp ? 'ajptour.com' : 'smoothcomp.com';
     const user = key.slice(STORE.length);
     const shared = new Set();
-    if (!known.size && !whole) for (const e of (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? []) {
+    // Copies from before wins kept their details are read again, and replace the server's.
+    const theirs = known.size || whole ? [] : (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? [];
+    if (theirs.every(e => e?.out?.v === 2)) for (const e of theirs) {
       if (!Number.isSafeInteger(e?.id) || !(Date.parse(e.start_date) || e.out?.extra === true)) continue;
       known.set(e.id, { id: e.id, start_date: Date.parse(e.start_date) ? e.start_date : null, title: typeof e.title === 'string' ? e.title : null, out: clean(e.out), settled: true });
       shared.add(e.id);
@@ -220,7 +228,7 @@
       for (const event of body.data ?? []) found.set(event.id, event);
       if (!(body.data ?? []).some(event => wanted.has(event.id))) break;
     }
-    const empty = { types: {}, losses: [], faced: [] };
+    const empty = { v: 2, types: {}, losses: [], faced: [] };
     const fresh = news.map(e => {
       const event = found.get(e.id);
       return { id: e.id, start_date: e.start_date, title: event?.title ?? e.title ?? null, out: event ? outcomes(event) : empty, settled: Date.now() - Date.parse(e.start_date) > WEEK };
@@ -284,8 +292,11 @@
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
     // Nobody beating them twice is itself worth saying, when they have lost at all.
-    const more = (stats.rivals?.length ? `<div class="scwr-nemesis gi-text-sm"><span class="gi-text-secondary gi-text-xs">Lost most to</span>${rival(stats.rivals[0])}</div>`
-      : stats.rivals && stats.losses.length > 1 ? '<div class="scwr-nemesis gi-text-sm gi-text-secondary">No one has beaten them twice</div>' : '')
+    // The headline goes to the rivals they are furthest behind (losses less wins), all
+    // who tie on it; none when they are level with or ahead of every rival.
+    const behind = Math.max(0, ...(stats.rivals ?? []).map(r => r.l - r.w));
+    const more = (behind ? `<div class="scwr-nemesis gi-text-sm"><span class="gi-text-secondary gi-text-xs">Lost most to</span><div>${stats.rivals.filter(r => r.l - r.w === behind).map(r => rival(r)).join('')}</div></div>`
+      : stats.rivals && !stats.rivals.length && stats.losses.length > 1 ? '<div class="scwr-nemesis gi-text-sm gi-text-secondary">No one has beaten them twice</div>' : '')
       + (stats.losses.length && !document.querySelector('.match-statistics-action button') ? `<button type="button" class="scwr-losses-open gi-text-sm">See losses${CHEVRON}</button>` : '');
     if (!stats.belts) return html + more;
     // One bar per belt, highest first: its win rate, on a scale of all its matches.
@@ -306,9 +317,12 @@
   // narrow it to one finish. The belt beside each is the one worn on that date.
   let dialog, showing = 'all';
   // One opponent who beat them more than once: photo, name and academy (from their
-  // newest meeting), and the whole head-to-head.
-  function rival(r) {
+  // newest meeting), and the whole head-to-head. In the dialog each is a button that
+  // narrows the list to every match between them.
+  function rival(r, pick) {
     const face = avatar({ image: r.image, opponent: r.name });
+    if (pick) return `<button type="button" class="scwr-rival" data-rival="${esc(r.key)}" aria-pressed="${showing === `rival:${r.key}`}" title="Every match against ${esc(r.name)}">${face}`
+      + `<span class="scwr-rival-who"><span class="gi-font-medium">${esc(r.name)}</span>${r.club ? `<span class="gi-text-secondary gi-text-xs">${esc(r.club)}</span>` : ''}</span><span class="scwr-record">${wl(r.w, r.l)}</span></button>`;
     const meeting = { opponent: r.name, club: r.club, reg: r.reg, event: r.event };
     const who = `<span class="scwr-rival-who">${named(meeting, 'who')}${r.club ? named(meeting, 'club') : ''}</span>`;
     return `<span class="scwr-rival" title="${r.w} won, ${r.l} lost against ${esc(r.name)}">${face}${who}<span class="scwr-record">${wl(r.w, r.l)}</span></span>`;
@@ -330,14 +344,17 @@
     return `<a class="${cls}" href="/${esc(locale())}/event/${Number(loss.event)}/participants#scwr-find=${Number(loss.reg)}-${kind}">${text}</a>`;
   };
   function lossList() {
-    const shown = stats.losses.filter(loss => showing === 'all' || loss.type === showing);
+    const against = showing.startsWith('rival:') && showing.slice(6);
+    const shown = against ? [...stats.losses, ...stats.wins].filter(m => person(m.opponent) === against).sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0))
+      : stats.losses.filter(loss => showing === 'all' || loss.type === showing);
     const day = (date) => (Date.parse(date) ? new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
     return shown.map(loss => {
       const belt = plan.whole ? plan.belt : loss.date && plan.beltOf({ start_date: loss.date });
       return `<li class="scwr-loss">${avatar(loss)}<div>`
         + `<div class="scwr-loss-who">${named(loss, 'who')}${loss.club ? named(loss, 'club') : ''}</div>`
-        + `<div class="scwr-loss-how gi-text-xs gi-text-secondary"><span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${FINISH[loss.type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
-        + `<span class="scwr-lost">${esc(loss.how)}</span>${loss.stage ? `<span>·</span><span>${esc(loss.stage)}</span>` : ''}`
+        + `<div class="scwr-loss-how gi-text-xs gi-text-secondary">${against ? `<span class="scwr-${loss.won ? 'won">Won' : 'lost">Lost'}</span>${loss.type ? '<span>·</span>' : ''}` : ''}`
+        + (loss.type ? `<span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${FINISH[loss.type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
+          + `<span class="scwr-${loss.won ? 'won' : 'lost'}">${esc(loss.how)}</span>${loss.stage ? `<span>·</span><span>${esc(loss.stage)}</span>` : ''}` : '')
         // The bracket it was lost in, linked; then the event and its date.
         + (loss.division ? `<span>·</span>${loss.bracket ? `<a href="/${esc(locale())}/event/${Number(loss.event)}/bracket/${Number(loss.bracket)}">${esc(loss.division)}</a>` : `<span>${esc(loss.division)}</span>`}` : '') + '</div>'
         + `<div class="scwr-loss-how gi-text-xs gi-text-secondary"><a href="/${esc(locale())}/event/${Number(loss.event)}">${esc(loss.title ?? 'Event')}</a>${loss.date ? `<span>·</span><span>${day(loss.date)}</span>` : ''}</div></div>${belt ? swatch(belt).replace('<i ', `<i title="${belt} belt then" `) : ''}</li>`;
@@ -348,7 +365,7 @@
     for (const loss of stats.losses) counts[loss.type] = (counts[loss.type] ?? 0) + 1;
     const pill = (key, label, n) => `<button type="button" class="scwr-loss-filter gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-show="${key}" aria-pressed="${showing === key}">`
       + (key === 'all' ? '' : `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[key]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`)
-      + `<span class="gi-font-medium">${label}</span><span class="scwr-lost">${n}</span></button>`;
+      + `<span class="gi-font-medium">${label}</span><span class="scwr-count">${n}</span></button>`;
     return pill('all', 'All', stats.losses.length) + Object.keys(counts).sort((a, b) => counts[b] - counts[a] || order(a) - order(b)).map(type => pill(type, nameOf(type), counts[type])).join('');
   }
   function openLosses() {
@@ -363,7 +380,7 @@
     showing = 'all';
     dialog.innerHTML = `<header><h2 id="scwr-losses-title">Losses</h2><span class="gi-text-secondary">${esc(document.title.split(' - ')[0].trim())}</span>`
       + `<button type="button" class="scwr-losses-close" aria-label="Close">${CROSS}</button></header>`
-      + (stats.rivals?.length ? `<section class="scwr-rivals" aria-label="Lost most to"><span class="gi-text-secondary gi-text-xs">Lost most to</span><div>${stats.rivals.map(rival).join('')}</div></section>` : '')
+      + (stats.rivals?.length ? `<section class="scwr-rivals" aria-label="Lost most to"><span class="gi-text-secondary gi-text-xs">Lost most to</span><div>${stats.rivals.map(r => rival(r, true)).join('')}</div></section>` : '')
       + `<div class="scwr-loss-filters" role="group" aria-label="Show losses by">${filters()}</div><ol class="scwr-loss-list">${lossList()}</ol>`;
     dialog.showModal();
   }
@@ -399,13 +416,17 @@
     if (event.target.closest?.('.scwr-losses-open')) return openLosses();
     // The dialog closes from its button or a click on the dim around it.
     if (event.target === dialog || event.target.closest?.('.scwr-losses-close')) return dialog.close();
-    const filter = event.target.closest?.('.scwr-loss-filter');
+    // A finish pill, or a rival (pressed again, back to every loss).
+    const filter = event.target.closest?.('.scwr-loss-filter, .scwr-rival[data-rival]');
     if (filter) {
-      showing = filter.dataset.show;
+      const next = filter.dataset.show ?? `rival:${filter.dataset.rival}`;
+      showing = filter.dataset.rival && showing === next ? 'all' : next;
+      for (const r of dialog.querySelectorAll('.scwr-rival[data-rival]')) r.setAttribute('aria-pressed', String(showing === `rival:${r.dataset.rival}`));
+      dialog.querySelector('h2').textContent = showing.startsWith('rival:') ? 'Head-to-head' : 'Losses';
       dialog.querySelector('.scwr-loss-filters').innerHTML = filters();
       dialog.querySelector('.scwr-loss-list').innerHTML = lossList();
       dialog.querySelector('.scwr-loss-list').scrollTop = 0;
-      return dialog.querySelector(`.scwr-loss-filter[data-show="${showing}"]`)?.focus();
+      return filter.dataset.show && dialog.querySelector(`.scwr-loss-filter[data-show="${showing}"]`)?.focus();
     }
     // A chip toggles its finish in or out, and every rate redraws at once.
     const chip = event.target.closest?.('.scwr-type');

@@ -177,10 +177,12 @@ function cleanOut(out) {
     type: l.type, how: text(l.how, 60) ?? '', opponent: text(l.opponent, 120), club: text(l.club, 160), division: text(l.division, 200),
     reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: text(l.stage, 60),
   }));
+  // A win names its finish, round and division too (from v 2), for a head-to-head.
   const faced = (Array.isArray(out?.faced) ? out.faced : []).slice(0, 120).filter(m => text(m?.name, 120)).map(m => ({
     name: text(m.name, 120), club: text(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
+    ...(m.won === true && FINISHES.includes(m.type) ? { type: m.type, how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60) } : {}),
   }));
-  return { types, losses, faced, ...(out?.extra === true ? { extra: true } : {}) };
+  return { ...(out?.v === 2 ? { v: 2 } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}) };
 }
 async function outcomes(env, { site, user }) {
   if (!SITES.includes(site) || !validUser(user)) return json({ error: 'Bad outcomes' }, 400);
@@ -192,9 +194,12 @@ async function keepOutcomes(env, { site, user, events }) {
   // An event only a match list names may come undated; every other one must have started a week ago.
   const rows = events.filter(e => Number.isSafeInteger(e?.id) && e.id > 0 && (typeof e.start_date === 'string' ? Date.parse(e.start_date) < Date.now() - SETTLED : e.start_date == null && e.out?.extra === true))
     .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(cleanOut(e.out))]);
-  // A settled event does not change, so the first upload of it stands and later ones cannot replace it.
-  if (rows.length) await env.DB.prepare(`INSERT OR IGNORE INTO outcomes (site, user, event, start, title, out, at)
-    SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, value ->> 3, ?3 FROM json_each(?4)`).bind(site, user, Date.now(), JSON.stringify(rows)).run();
+  // A settled event does not change, so the first upload of it stands and later ones cannot replace it,
+  // except a copy from before v 2, which lacks the wins' details.
+  if (rows.length) await env.DB.prepare(`INSERT INTO outcomes (site, user, event, start, title, out, at)
+    SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, value ->> 3, ?3 FROM json_each(?4) WHERE true
+    ON CONFLICT (site, user, event) DO UPDATE SET start = excluded.start, title = excluded.title, out = excluded.out, at = excluded.at
+    WHERE outcomes.out ->> '$.v' IS NOT 2 AND excluded.out ->> '$.v' = 2`).bind(site, user, Date.now(), JSON.stringify(rows)).run();
   return json({ kept: rows.length });
 }
 

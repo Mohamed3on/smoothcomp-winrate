@@ -15,7 +15,7 @@
    wins-only chip row above them goes. */
 .match-statistics-content > div:has(> .scwr-more[data-stage^='done']) > .gi-flex-wrap { display: none; }
 /* A finish chip in Smoothcomp's own pill, pressed when its finish counts. */
-:is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close) {
+:is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close, .scwr-rival[data-rival]) {
   color: inherit;
   font: inherit;
   background: none;
@@ -24,9 +24,10 @@
 }
 :is(.scwr-type, .scwr-loss-filter)[aria-pressed='false'] { opacity: 0.45; }
 :is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close):active { transform: scale(0.97); }
-:is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close, .scwr-loss a):focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+:is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close, .scwr-rival[data-rival], .scwr-loss a):focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) {
-  :is(.scwr-type, .scwr-loss-filter, .scwr-losses-close):hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+  :is(.scwr-type, .scwr-loss-filter, .scwr-losses-close, .scwr-rival[data-rival]):hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+  :is(.scwr-loss, .scwr-rival) a:hover { text-decoration-color: color-mix(in srgb, currentColor 50%, transparent); }
   .scwr-losses-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 /* Who beat them most: their photo, name and the whole head-to-head. */
@@ -41,21 +42,40 @@
   padding-top: 14px;
   border-top: 1px solid color-mix(in srgb, currentColor 9%, transparent);
 }
-.scwr-rival { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+/* Several tied rivals share one grid, so their records line up. */
+.scwr-nemesis > div { display: grid; gap: 8px; max-width: 100%; }
+.scwr-rival { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
+.scwr-nemesis .scwr-record { padding-left: 4px; }
 .scwr-rival .scwr-face { width: 28px; height: 28px; font-size: 10px; }
 .scwr-rival-who { display: grid; min-width: 0; text-align: left; line-height: 1.3; }
 .scwr-rival-who > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scwr-rival a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }
+.scwr-rival a { color: inherit; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; border-radius: 2px; transition: text-decoration-color 150ms cubic-bezier(0.23, 1, 0.32, 1); }
 .scwr-rival a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-.scwr-rivals { display: grid; gap: 8px; padding: 0 20px 16px; }
-.scwr-rivals > div { display: flex; flex-wrap: wrap; gap: 10px 18px; }
+/* In the dialog the rivals sit in two even columns, records aligned; pressing one
+   narrows the list to every match between them. */
+.scwr-rivals { display: grid; gap: 6px; padding: 0 12px 14px; }
+.scwr-rivals > span { padding-inline: 8px; }
+.scwr-rivals > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 8px; }
+.scwr-rivals .scwr-rival {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+}
+.scwr-rivals .scwr-rival[aria-pressed='true'] {
+  border-color: color-mix(in srgb, currentColor 22%, transparent);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
 /* The way into the losses: beside Smoothcomp's own "See all wins" when it is there, else alone. */
 .match-statistics-action:has(> .scwr-losses-open) { display: flex; justify-content: center; gap: 28px; }
 .match-statistics-action > .scwr-losses-open { margin: 0; padding: 0; }
 .scwr-losses-open { display: flex; align-items: center; gap: 4px; margin: 12px auto 0; padding: 4px 8px; border: 0; border-radius: 6px; }
 /* Every loss, in a dialog dressed in the card's own colours. */
 .scwr-losses-dialog {
-  width: min(560px, calc(100vw - 48px));
+  width: min(640px, calc(100vw - 48px));
   max-height: min(720px, calc(100vh - 96px));
   padding: 0;
   border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
@@ -69,7 +89,7 @@
 .scwr-losses-dialog h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: normal; text-transform: none; }
 .scwr-losses-close { display: grid; place-items: center; width: 32px; height: 32px; margin-left: auto; align-self: center; border: 0; border-radius: 8px; }
 .scwr-loss-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px 14px; }
-.scwr-loss-filter .scwr-lost { font-variant-numeric: tabular-nums; }
+.scwr-count { opacity: 0.6; font-variant-numeric: tabular-nums; }
 .scwr-loss-list {
   margin: 0;
   padding: 0 8px 12px;
@@ -103,10 +123,10 @@
   outline-offset: -1px;
 }
 .scwr-loss-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
-/* Names, academies and events share the row's faint underline, so each reads as a link. */
+/* Names, academies and events link quietly: the underline shows on hover. */
 .scwr-loss-how { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
 .scwr-loss-how > :first-child { flex: none; max-width: 100%; }
-.scwr-loss a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }
+.scwr-loss a { color: inherit; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; border-radius: 2px; transition: text-decoration-color 150ms cubic-bezier(0.23, 1, 0.32, 1); }
 .scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px 0 18px; }
 .scwr-belt-split {
   display: grid;

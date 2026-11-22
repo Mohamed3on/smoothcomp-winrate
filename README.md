@@ -45,8 +45,8 @@ the panel names the bracket you fall the fewest wins short of.
 **Profile page** — under Smoothcomp's wins chart (AJP Tour's too, whose older profile page reads none of the athlete JSON itself, so `profile.js` asks for it), the athlete's win rate and record, then a belt-coloured bar
 with the win rate at each belt worn. Chips pick the finishes counted (submission, fastest escape, points and decision until you pick others;
 walkovers never count), each showing its record. See losses lists every loss, newest first: who won (photo, profile and academy linked),
-how, in which round of which bracket (linked), at which event, and the belt worn then, filtered by finish. Whoever beat them most shows with the whole
-head-to-head. A match list names registrations, not accounts, so those links pass through the event's participants
+how, in which round of which bracket (linked), at which event, and the belt worn then, filtered by finish. Whoever they trail most (losses less wins) shows with the whole
+head-to-head, and in See losses everyone who beat them twice opens every match between them, won or lost. A match list names registrations, not accounts, so those links pass through the event's participants
 page, which forwards to the profile or academy. Each event's result is kept for good once it is a week old, here and in
 Mat Stats' shared cache, so a profile draws at once and reads only events newer than what is kept (all
 pages at once the first time anyone opens it).

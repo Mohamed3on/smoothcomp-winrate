@@ -28,7 +28,7 @@ PROFILE PAGE
 • Win rate and record under the wins chart, and the win rate at each belt worn
 • Pick the finishes counted: submission, fastest escape, points and decision by default, walkovers never
 • See every loss: opponent, finish, round, bracket and event, filtered by how it ended
-• Who beat them most, with the head-to-head record
+• Who they trail most, and every match against anyone who beat them twice
 • On AJP Tour profiles too
 
 ENGLISH
