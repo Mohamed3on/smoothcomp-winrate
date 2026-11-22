@@ -7,7 +7,10 @@
   transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 @starting-style { .scwr-more { opacity: 0; } }
-.scwr-rate { display: flex; justify-content: center; padding-top: 8px; }
+/* The win rate leads the block at the size Smoothcomp gives its own key figure's label. */
+.scwr-rate { display: flex; justify-content: center; align-items: baseline; gap: 6px; padding-top: 4px; }
+.scwr-rate > .scwr-belt { align-self: center; }
+.scwr-rate-figure { font-size: 22px; font-weight: 600; line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 /* Once read, the finish chips here carry each finish's wins and losses, so Smoothcomp's own
    wins-only chip row above them goes. */
 .match-statistics-content > div:has(> .scwr-more[data-stage='done']) > .gi-flex-wrap { display: none; }
@@ -27,7 +30,17 @@
   .scwr-losses-open:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 /* Who beat them most: their photo, name and the whole head-to-head. */
-.scwr-nemesis { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px; margin-top: 14px; }
+/* The rival sits apart from the rates, past a hairline, its label above it. */
+.scwr-nemesis {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 300px);
+  margin: 18px auto 0;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, currentColor 9%, transparent);
+}
 .scwr-rival { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .scwr-rival .scwr-face { width: 28px; height: 28px; font-size: 10px; }
 .scwr-rival-who { display: grid; min-width: 0; text-align: left; line-height: 1.3; }
@@ -36,8 +49,10 @@
 .scwr-rival a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .scwr-rivals { display: grid; gap: 8px; padding: 0 20px 16px; }
 .scwr-rivals > div { display: flex; flex-wrap: wrap; gap: 10px 18px; }
-/* The way into the losses, set like Smoothcomp's own "See all wins". */
-.scwr-losses-open { display: flex; align-items: center; gap: 4px; margin: 14px auto 0; padding: 4px 8px; border: 0; border-radius: 6px; }
+/* The way into the losses: beside Smoothcomp's own "See all wins" when it is there, else alone. */
+.match-statistics-action:has(> .scwr-losses-open) { display: flex; justify-content: center; gap: 28px; }
+.match-statistics-action > .scwr-losses-open { margin: 0; padding: 0; }
+.scwr-losses-open { display: flex; align-items: center; gap: 4px; margin: 12px auto 0; padding: 4px 8px; border: 0; border-radius: 6px; }
 /* Every loss, in a dialog dressed in the card's own colours. */
 .scwr-losses-dialog {
   width: min(560px, calc(100vw - 48px));
@@ -92,10 +107,10 @@
 .scwr-loss-how { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
 .scwr-loss-how > :first-child { flex: none; }
 .scwr-loss a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }
-.scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px 0 12px; }
+.scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px 0 18px; }
 .scwr-belt-split {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   width: min(100%, 300px);
   margin: 0 auto;
 }
@@ -130,7 +145,7 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent);
   transform-origin: left;
 }
-.scwr-split-row small { font-size: 12px; }
+.scwr-split-row small { font-size: 12px; text-align: right; }
 /* A record's wins read green and its losses red, the colours of Smoothcomp's own
    finish dots, lifted to read on its dark card; the dash between them stays quiet. */
 .scwr-record { font-variant-numeric: tabular-nums; white-space: nowrap; }

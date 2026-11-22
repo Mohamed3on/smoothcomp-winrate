@@ -173,8 +173,8 @@
     const [wins, losses] = record(stats.types);
     const counted = [...picked].filter(t => stats.types[t]).sort((a, b) => order(a) - order(b)).map(nameOf).join(', ').toLowerCase();
     const belt = plan.whole && plan.belt ? swatch(plan.belt).replace('<i ', `<i role="img" aria-label="Every event at ${plan.belt}" title="Every event at ${plan.belt}" `) : '';
-    let html = `<div class="scwr-rate gi-flex gi-justify-center gi-items-center gi-gap-1.5" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
-      + (wins + losses ? `<span class="gi-font-medium" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
+    let html = `<div class="scwr-rate" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
+      + (wins + losses ? `<span class="scwr-rate-figure" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
         : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
     // Each finish the athlete has won or lost by, its record on the chip; pressed ones count.
     const offered = Object.keys(stats.types).sort((a, b) => order(a) - order(b));
@@ -185,9 +185,9 @@
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
     // Nobody beating them twice is itself worth saying, when they have lost at all.
-    const more = (stats.rivals?.length ? `<div class="scwr-nemesis gi-text-sm"><span class="gi-text-secondary">Lost most to</span>${rival(stats.rivals[0])}</div>`
+    const more = (stats.rivals?.length ? `<div class="scwr-nemesis gi-text-sm"><span class="gi-text-secondary gi-text-xs">Lost most to</span>${rival(stats.rivals[0])}</div>`
       : stats.rivals && stats.losses.length > 1 ? '<div class="scwr-nemesis gi-text-sm gi-text-secondary">No one has beaten them twice</div>' : '')
-      + (stats.losses.length ? `<button type="button" class="scwr-losses-open gi-text-sm">See losses${CHEVRON}</button>` : '');
+      + (stats.losses.length && !document.querySelector('.match-statistics-action button') ? `<button type="button" class="scwr-losses-open gi-text-sm">See losses${CHEVRON}</button>` : '');
     if (!stats.belts) return html + more;
     // One bar per belt, highest first: its win rate, on a scale of all its matches.
     const row = ([b, t]) => {
@@ -270,6 +270,16 @@
     if (!chart || !got['wins-and-medals'] || !got.skills || !Array.isArray(got['past-events']?.data) || !got['past-events'].meta?.total || !pastUrl) return;
     plan ??= planBelts();
     if (!reading) readStats().catch(() => { plan.loading = false; draw(); });
+    // See losses sits beside Smoothcomp's own See all wins, made of the same parts
+    // (its scoped style attributes and its chevron) so the two read as a pair.
+    const theirs = document.querySelector('.match-statistics-action button:not(.scwr-losses-open)');
+    if (stats?.losses.length && theirs && !theirs.parentElement.querySelector('.scwr-losses-open')) {
+      const ours = theirs.cloneNode(true);
+      ours.classList.add('scwr-losses-open');
+      ours.type = 'button';
+      ours.querySelector('span').textContent = 'See losses';
+      theirs.after(ours);
+    }
     const stage = stats ? 'done' : plan.loading ? 'loading' : '';
     const box = chart.querySelector('.scwr-more');
     if (!stage) return box?.remove();
