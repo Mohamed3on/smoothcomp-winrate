@@ -42,9 +42,10 @@ discipline, every age group you're old enough for, and every absolute. Brackets 
 own labels, and one whose label says nothing readable counts only if you entered under it. With nothing to top,
 the panel names the bracket you fall the fewest wins short of.
 
-**Profile page** — under Smoothcomp's wins chart, wins per event entered, walkovers aside, from the career and
-event list the page loads anyway. Below it, a belt-coloured bar for each belt worn shows wins per event at it,
-walkovers aside too, from every page of the athlete's event and match lists, fetched at once.
+**Profile page** — under Smoothcomp's wins chart, the athlete's win rate and record, then a belt-coloured bar
+with the win rate at each belt worn. Chips pick the finishes counted (submission and points until you pick others;
+walkovers never count), each showing its record. Every page of the athlete's event and match lists is read at once,
+and kept until their events, wins or belts change.
 
 **Stats site** — [matstats.mohamed3on.com](https://matstats.mohamed3on.com) shows the shared cache outside
 Smoothcomp: athletes pooled into one ranking, academies ranked by their athletes' careers with their top athletes,
@@ -80,7 +81,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
 | `participants.js` | The participants page |
-| `profile.js` | Wins per event on an athlete's profile, read from the page's own requests |
+| `profile.js` | Win rate overall and per belt on an athlete's profile, by the finishes picked |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
 `site.js` loads first on every page; the rest share globals through page scope in manifest

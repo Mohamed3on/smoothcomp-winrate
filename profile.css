@@ -1,19 +1,43 @@
-/* Wins per event at each belt worn, inside Smoothcomp's own
+/* The win rate, its finish chips and the rate at each belt worn, inside Smoothcomp's own
    wins card: ink borrowed from the card (currentColor), belt colours from the sport. */
+.scwr-more {
+  padding-bottom: 10px;
+  /* It lands after the card has drawn: it opens instead of shoving the card down. */
+  overflow: clip;
+  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@starting-style { .scwr-more { opacity: 0; } }
+.scwr-rate { display: flex; justify-content: center; padding-top: 8px; }
+/* A finish chip in Smoothcomp's own pill, pressed when its finish counts. */
+.scwr-type {
+  color: inherit;
+  font: inherit;
+  background: none;
+  cursor: pointer;
+  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1), background-color 150ms cubic-bezier(0.23, 1, 0.32, 1), transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.scwr-type[aria-pressed='false'] { opacity: 0.45; }
+.scwr-type:active { transform: scale(0.97); }
+.scwr-type:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .scwr-type:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+}
+.scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 8px 0 12px; }
 .scwr-belt-split {
   display: grid;
   gap: 6px;
   width: min(100%, 300px);
   margin: 0 auto;
-  padding: 2px 0 10px;
-  /* It lands after the card has drawn: it opens instead of shoving the card down. */
-  overflow: clip;
-  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
 }
-@starting-style { .scwr-belt-split { opacity: 0; } }
+/* Placeholders pulse in the card's own ink until the lists are read. */
+.scwr-skel {
+  display: block;
+  border-radius: 3px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
 .scwr-split-row {
   display: grid;
-  grid-template-columns: 22px 3.2ch 1fr 5.2em;
+  grid-template-columns: 22px 4.5ch 1fr 5.2em;
   align-items: center;
   gap: 10px;
 }
@@ -68,14 +92,18 @@
 :is(.scwr-belt, .scwr-split-fill)[data-belt='brown'] { --belt: #79472f; }
 :is(.scwr-belt, .scwr-split-fill)[data-belt='black'] { --belt: #17191c; --belt-rank: #b53b42; }
 @media (prefers-reduced-motion: no-preference) {
-  .scwr-belt-split {
+  .scwr-more {
     interpolate-size: allow-keywords;
     transition: height 260ms cubic-bezier(0.23, 1, 0.32, 1), padding 260ms cubic-bezier(0.23, 1, 0.32, 1), opacity 200ms cubic-bezier(0.23, 1, 0.32, 1);
   }
-  @starting-style { .scwr-belt-split { height: 0; padding-block: 0; } }
+  @starting-style { .scwr-more { height: 0; padding-block: 0; } }
+  .scwr-skel { animation: scwr-skel-pulse 1.2s ease-in-out infinite; }
+  /* After a chip is toggled the bars just take their new lengths. */
+  .scwr-more[data-settled] .scwr-split-fill { animation: none; }
   .scwr-split-fill { animation: scwr-split-grow 350ms cubic-bezier(0.23, 1, 0.32, 1) both; }
   .scwr-split-row:nth-child(2) .scwr-split-fill { animation-delay: 60ms; }
   .scwr-split-row:nth-child(3) .scwr-split-fill { animation-delay: 120ms; }
   .scwr-split-row:nth-child(n + 4) .scwr-split-fill { animation-delay: 180ms; }
 }
 @keyframes scwr-split-grow { from { transform: scaleX(0); } }
+@keyframes scwr-skel-pulse { 50% { opacity: 0.4; } }

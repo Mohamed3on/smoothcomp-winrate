@@ -24,8 +24,8 @@ PARTICIPANTS PAGE
 • Signed in: every bracket you could enter and would top-seed, with the athlete you'd displace
 
 PROFILE PAGE
-• Wins per event entered under the wins chart, walkovers aside
-• Wins per event at each belt worn, walkovers aside
+• Win rate and record under the wins chart, and the win rate at each belt worn
+• Pick the finishes counted: submission and points by default, walkovers never
 
 STATS SITE
 • Everything Mat Stats users read, browsable outside Smoothcomp at matstats.mohamed3on.com
