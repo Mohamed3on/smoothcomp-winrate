@@ -184,7 +184,9 @@
         + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
-    const more = (stats.rivals?.length ? `<div class="scwr-nemesis gi-text-sm"><span class="gi-text-secondary">Lost most to</span>${rival(stats.rivals[0])}</div>` : '')
+    // Nobody beating them twice is itself worth saying, when they have lost at all.
+    const more = (stats.rivals?.length ? `<div class="scwr-nemesis gi-text-sm"><span class="gi-text-secondary">Lost most to</span>${rival(stats.rivals[0])}</div>`
+      : stats.rivals && stats.losses.length > 1 ? '<div class="scwr-nemesis gi-text-sm gi-text-secondary">No one has beaten them twice</div>' : '')
       + (stats.losses.length ? `<button type="button" class="scwr-losses-open gi-text-sm">See losses${CHEVRON}</button>` : '');
     if (!stats.belts) return html + more;
     // One bar per belt, highest first: its win rate, on a scale of all its matches.
