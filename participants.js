@@ -69,16 +69,13 @@ function tally(user) {
 // counts were read is read again for its count.
 const eventsOf = (user) => (fresh(user) ? careers[user].events : undefined);
 const needsEvents = (user) => fresh(user) && !!careers[user].wins && careers[user].events == null;
-// A hidden profile has no career, but the results pages Mat Stats users opened show how
-// it went at those events; it ranks on that, as the stats site ranks it.
-const seenOf = (user) => {
+const perEvent = (user) => (tally(user) && eventsOf(user) ? [tally(user)[0] / eventsOf(user), eventsOf(user)] : [-1, -1]);
+// A hidden profile has no career, only how it went at the events whose results Mat
+// Stats users opened: a win rate there, which no career figure compares with. Hidden
+// profiles rank after every career, by that win rate, then by matches seen.
+const seenRate = (user) => {
   const seen = fresh(user) && careers[user].hidden && SCWRCareers.seen[user];
-  return seen?.[2] ? seen : null;
-};
-const perEvent = (user) => {
-  if (tally(user) && eventsOf(user)) return [tally(user)[0] / eventsOf(user), eventsOf(user)];
-  const seen = seenOf(user);
-  return seen ? [seen[0] / seen[2], seen[2]] : [-1, -1];
+  return seen && seen[0] + seen[1] ? [seen[0] / (seen[0] + seen[1]), seen[0] + seen[1]] : [-1, -1];
 };
 const unread = (user) => !fresh(user) || needsEvents(user);
 
@@ -106,7 +103,7 @@ const ranked = new Set();
 function rank(group, lead = 2) {
   const key = (r) => {
     const t = tally(r.user_id) ?? [-1, -1, -1];
-    return [...(lead === 2 ? perEvent(r.user_id) : [t[lead]]), ...t, -(r.age ?? Infinity), -place.get(r.id)];
+    return [...(lead === 2 ? perEvent(r.user_id) : [t[lead]]), ...t, ...seenRate(r.user_id), -(r.age ?? Infinity), -place.get(r.id)];
   };
   return group.registrations.map((r) => [r, key(r)])
     .sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0))
@@ -579,7 +576,7 @@ function draw(cell, user) {
   } else if (state.startsWith('hidden')) {
     // What Mat Stats users' results pages have seen of them stands in, as a record, never as a career.
     const s = SCWRCareers.seen[user];
-    cell.innerHTML = (s && lead && s[2] ? column(s[0], `<b>${(s[0] / s[2]).toFixed(1)}</b><span class="muted"> per event seen</span>`, `${s[0]}–${s[1]} in ${plural(s[2], 'event')} seen`)
+    cell.innerHTML = (s && lead && s[0] + s[1] ? column(s[0], `<b>${Math.round((s[0] / (s[0] + s[1])) * 100)}%</b><span class="muted"> win rate seen</span>`, `${s[0]}–${s[1]} in ${plural(s[2], 'event')} seen`)
       : s ? column(s[0], `<b>${s[0]}–${s[1]}</b>`, `in ${plural(s[2], 'event')} seen`) : '<div></div>') + '<div class="muted">Hidden profile</div>';
     cell.title = (s ? `Wins–losses, walkovers aside, across ${plural(s[2], 'event')} whose results Mat Stats users have opened. ` : '')
       + 'Smoothcomp does not share a hidden profile\'s record.';
