@@ -192,7 +192,8 @@ async function keepOutcomes(env, { site, user, events }) {
   // An event only a match list names may come undated; every other one must have started a week ago.
   const rows = events.filter(e => Number.isSafeInteger(e?.id) && e.id > 0 && (typeof e.start_date === 'string' ? Date.parse(e.start_date) < Date.now() - SETTLED : e.start_date == null && e.out?.extra === true))
     .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(cleanOut(e.out))]);
-  if (rows.length) await env.DB.prepare(`INSERT OR REPLACE INTO outcomes (site, user, event, start, title, out, at)
+  // A settled event does not change, so the first upload of it stands and later ones cannot replace it.
+  if (rows.length) await env.DB.prepare(`INSERT OR IGNORE INTO outcomes (site, user, event, start, title, out, at)
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, value ->> 3, ?3 FROM json_each(?4)`).bind(site, user, Date.now(), JSON.stringify(rows)).run();
   return json({ kept: rows.length });
 }
