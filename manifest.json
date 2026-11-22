@@ -15,6 +15,17 @@
   "content_scripts": [
     {
       "matches": [
+        "https://smoothcomp.com/*",
+        "https://*.smoothcomp.com/*",
+        "https://ajptour.com/*"
+      ],
+      "js": [
+        "en.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
         "https://*.smoothcomp.com/*/event/*/participants*",
         "https://smoothcomp.com/*/event/*/participants*",
         "https://ajptour.com/*/event/*/participants*",

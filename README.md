@@ -42,7 +42,7 @@ discipline, every age group you're old enough for, and every absolute. Brackets 
 own labels, and one whose label says nothing readable counts only if you entered under it. With nothing to top,
 the panel names the bracket you fall the fewest wins short of.
 
-**Profile page** — under Smoothcomp's wins chart, the athlete's win rate and record, then a belt-coloured bar
+**Profile page** — under Smoothcomp's wins chart (AJP Tour's too, whose older profile page reads none of the athlete JSON itself, so `profile.js` asks for it), the athlete's win rate and record, then a belt-coloured bar
 with the win rate at each belt worn. Chips pick the finishes counted (submission, fastest escape, points and decision until you pick others;
 walkovers never count), each showing its record. See losses lists every loss, newest first: who won (photo, profile and academy linked),
 how, in which round of which bracket (linked), at which event, and the belt worn then, filtered by finish. Whoever beat them most shows with the whole
@@ -86,6 +86,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
 | `participants.js` | The participants page |
 | `profile.js` | Win rate overall and per belt on an athlete's profile, by the finishes picked |
+| `en.js` | Sends any Smoothcomp or AJP Tour page under another language's path to its `/en/` page |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
 `site.js` loads first on every page; the rest share globals through page scope in manifest

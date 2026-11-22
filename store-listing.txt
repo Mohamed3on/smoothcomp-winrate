@@ -29,6 +29,10 @@ PROFILE PAGE
 • Pick the finishes counted: submission, fastest escape, points and decision by default, walkovers never
 • See every loss: opponent, finish, round, bracket and event, filtered by how it ended
 • Who beat them most, with the head-to-head record
+• On AJP Tour profiles too
+
+ENGLISH
+• Smoothcomp and AJP Tour pages in another language open in English
 
 STATS SITE
 • Everything Mat Stats users read, browsable outside Smoothcomp at matstats.mohamed3on.com
@@ -39,7 +43,7 @@ STATS SITE
 Works on smoothcomp.com events and on AJP Tour events (ajptour.com).
 
 PRIVACY
-Mat Stats runs only on Smoothcomp and AJP Tour event and athlete profile pages. It reads what those sites already show you, keeps a cache in your browser so repeat visits make fewer requests, and shares what event pages publicly show about athletes and events (Smoothcomp athlete ID, name, academy, country, age, belt, profile photo, career wins, medals and events entered, and each event's divisions, placements, wins and losses, title, date and city) through Mat Stats' own cache, so no one has to read the same athlete twice. The same data is published on the Mat Stats stats site. Nothing about you as a user of the extension is sent: no accounts, no analytics, no tracking.
+Mat Stats runs only on Smoothcomp and AJP Tour: on event and athlete profile pages, and on any of their pages in another language, to open it in English. It reads what those sites already show you, keeps a cache in your browser so repeat visits make fewer requests, and shares what event pages publicly show about athletes and events (Smoothcomp athlete ID, name, academy, country, age, belt, profile photo, career wins, medals and events entered, and each event's divisions, placements, wins and losses, title, date and city) through Mat Stats' own cache, so no one has to read the same athlete twice. The same data is published on the Mat Stats stats site. Nothing about you as a user of the extension is sent: no accounts, no analytics, no tracking.
 
 Mat Stats is independent and is not affiliated with or endorsed by Smoothcomp or AJP Tour.
 

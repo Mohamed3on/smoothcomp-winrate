@@ -7,6 +7,11 @@
 (() => {
   const got = {};
   let pastUrl, plan, stats, reading;
+  // AJP Tour's profile is Smoothcomp's older page: the wins ring sits in .user-statistics,
+  // and Smoothcomp's utility classes that this block uses are filled in by profile.css.
+  const ajp = location.hostname === 'ajptour.com';
+  if (ajp) document.documentElement.classList.add('scwr-ajp');
+  const CARD = ajp ? '.user-statistics' : '.match-statistics-content';
   const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
   const color = (text) => {
     const named = BELTS.filter(b => new RegExp(`\\b${b}`, 'i').test(String(text).replace(/gray/i, 'grey')));
@@ -188,7 +193,7 @@
     const known = new Map(local.filter(e => e.settled).map(e => [e.id, e]));
     // Nothing kept here: what any install already read for this athlete (not when the
     // whole history is being read again, as what was kept no longer added up).
-    const site = location.hostname === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com';
+    const site = ajp ? 'ajptour.com' : 'smoothcomp.com';
     const user = key.slice(STORE.length);
     const shared = new Set();
     if (!known.size && !whole) for (const e of (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? []) {
@@ -348,7 +353,7 @@
   }
   function openLosses() {
     // The card's colour sits on whichever ancestor first paints one.
-    let card = document.querySelector('.match-statistics-content');
+    let card = document.querySelector(CARD);
     while (card.parentElement && /^(transparent|rgba\(.*, 0\))$/.test(getComputedStyle(card).backgroundColor)) card = card.parentElement;
     card = getComputedStyle(card);
     dialog ??= document.body.appendChild(document.createElement('dialog'));
@@ -363,7 +368,7 @@
     dialog.showModal();
   }
   const draw = () => {
-    const chart = document.querySelector('.match-statistics-content > div');
+    const chart = document.querySelector(ajp ? CARD : `${CARD} > div`);
     if (!chart || !got['wins-and-medals'] || !got.skills || !Array.isArray(got['past-events']?.data) || !got['past-events'].meta?.total || !pastUrl) return;
     plan ??= planBelts();
     if (!reading) readStats().catch(() => { plan.loading = false; draw(); });
@@ -428,6 +433,13 @@
     });
     return send.apply(this, args);
   };
+  // AJP's page reads none of these itself, and AJP answers them unsigned.
+  const id = location.pathname.match(/\/profile\/(\d+)/)?.[1];
+  if (ajp && id) {
+    pastUrl = `/en/athlete/${id}/past-events`;
+    for (const kind of ['wins-and-medals', 'skills', 'past-events']) fetch(`/en/athlete/${id}/${kind}`, { headers: { Accept: 'application/json' } })
+      .then(r => r.json()).then(body => { got[kind] ??= body; draw(); }).catch(() => {});
+  }
   // The chart renders after the responses land, and a re-render drops the block.
   new MutationObserver(draw).observe(document, { childList: true, subtree: true });
 })();

@@ -105,7 +105,7 @@
 .scwr-loss-who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; }
 /* Names, academies and events share the row's faint underline, so each reads as a link. */
 .scwr-loss-how { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
-.scwr-loss-how > :first-child { flex: none; }
+.scwr-loss-how > :first-child { flex: none; max-width: 100%; }
 .scwr-loss a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); text-underline-offset: 3px; border-radius: 2px; }
 .scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px 0 18px; }
 .scwr-belt-split {
@@ -204,3 +204,23 @@
 }
 @keyframes scwr-split-grow { from { transform: scaleX(0); } }
 @keyframes scwr-skel-pulse { 50% { opacity: 0.4; } }
+/* AJP Tour's older profile: the block takes a row of its own under the wins ring and its
+   legend, and the Smoothcomp utility classes it uses, which AJP doesn't ship, are filled in. */
+.user-statistics:has(> .scwr-more) { flex-wrap: wrap; }
+.user-statistics > .scwr-more { flex: 0 0 100%; margin-top: 40px; padding-bottom: 0; }
+.scwr-ajp :is(.scwr-more, .scwr-losses-dialog) {
+  .gi-flex { display: flex; }
+  .gi-items-center { align-items: center; }
+  .gi-gap-1\.5 { gap: 6px; }
+  .gi-py-0\.5 { padding-block: 2px; }
+  .gi-px-2 { padding-inline: 8px; }
+  .gi-text-xs { font-size: 12px; line-height: 16px; }
+  .gi-text-sm { font-size: 14px; line-height: 20px; }
+  .gi-font-medium { font-weight: 500; }
+  .gi-text-secondary { color: color-mix(in srgb, currentColor 62%, transparent); }
+  .gi-border { border: 1px solid; }
+  .gi-border-divider-secondary { border-color: color-mix(in srgb, currentColor 22%, transparent); }
+  .gi-rounded-full { border-radius: 9999px; }
+  .gi-h-2 { height: 8px; } .gi-w-2 { width: 8px; }
+  .gi-h-2\.5 { height: 10px; } .gi-w-2\.5 { width: 10px; }
+}
