@@ -43,7 +43,7 @@ own labels, and one whose label says nothing readable counts only if you entered
 the panel names the bracket you fall the fewest wins short of.
 
 **Profile page** — under Smoothcomp's wins chart, the athlete's win rate and record, then a belt-coloured bar
-with the win rate at each belt worn. Chips pick the finishes counted (submission and points until you pick others;
+with the win rate at each belt worn. Chips pick the finishes counted (submission, fastest escape and points until you pick others;
 walkovers never count), each showing its record. Every page of the athlete's event and match lists is read at once,
 and kept until their events, wins or belts change.
 

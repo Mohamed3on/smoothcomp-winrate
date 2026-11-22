@@ -1,5 +1,5 @@
 // A profile's win rate, under Smoothcomp's own wins chart, then at each belt worn.
-// It counts the finishes picked in the chips below it (submission and points until
+// It counts the finishes picked in the chips below it (submission, fastest escape and points until
 // the reader picks others), never walkovers. Every page of the athlete's event list
 // and match list is read at once: the matches give each finish won and lost, and the
 // page's belt list dates each belt. What was read is kept until the athlete's
@@ -19,22 +19,22 @@
   // "decision_unanimous", "double-dq"); each counts under the chip it belongs to, in
   // that chip's dot colour.
   const FINISH = {
-    submission: ['Submission', 'rgb(121, 186, 33)'], stoppage: ['Stoppage', 'rgb(121, 186, 33)'], points: ['Points', 'rgb(6, 114, 167)'],
+    submission: ['Submission', 'rgb(121, 186, 33)'], stoppage: ['Stoppage', 'rgb(121, 186, 33)'], escape: ['Fastest escape', 'rgb(6, 114, 167)'], points: ['Points', 'rgb(6, 114, 167)'],
     decision: ['Decision', 'rgb(6, 114, 167)'], disqualification: ['Disqualification', 'rgb(198, 52, 52)'],
   };
   const finish = (wonBy) => {
     const w = String(wonBy ?? '').toLowerCase();
-    return /^sub/.test(w) ? 'submission' : /walk/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
+    return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'escape' : /walk/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
       : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
   };
   // Anything else counts as Other, so no unknown name reaches the page or a tally's keys.
   const nameOf = (type) => FINISH[type]?.[0] ?? 'Other';
   const order = (type) => (type in FINISH ? Object.keys(FINISH).indexOf(type) : 99);
   // The finishes counted, kept on this browser; one always stays picked.
-  const PICKED = 'scwr:profile:finishes';
+  const PICKED = 'scwr:profile:finishes:2';
   let picked;
   try { picked = new Set(JSON.parse(localStorage.getItem(PICKED))); } catch {}
-  if (!picked?.size) picked = new Set(['submission', 'points']);
+  if (!picked?.size) picked = new Set(['submission', 'escape', 'points']);
   // A refusal (a 429, or the failed fetch Cloudflare's challenge makes of one) is
   // tried again after 1, 2, 4 and 8 s.
   const read = async (kind, page, tries = 0) => {
@@ -102,7 +102,7 @@
     reading = true;
     const past = got['past-events'];
     // The number in the key retires what an older count kept.
-    const key = `scwr:profile:4:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
+    const key = `scwr:profile:5:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
     const print = JSON.stringify([past.meta?.total, got['wins-and-medals'].data.win_method_breakdown, got.skills.data.map(s => [s.belt, s.competed_count])]);
     try {
       const kept = JSON.parse(localStorage.getItem(key));
