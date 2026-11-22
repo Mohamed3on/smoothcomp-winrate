@@ -69,7 +69,17 @@ function tally(user) {
 // counts were read is read again for its count.
 const eventsOf = (user) => (fresh(user) ? careers[user].events : undefined);
 const needsEvents = (user) => fresh(user) && !!careers[user].wins && careers[user].events == null;
-const perEvent = (user) => (tally(user) && eventsOf(user) ? [tally(user)[0] / eventsOf(user), eventsOf(user)] : [-1, -1]);
+// A hidden profile has no career, but the results pages Mat Stats users opened show how
+// it went at those events; it ranks on that, as the stats site ranks it.
+const seenOf = (user) => {
+  const seen = fresh(user) && careers[user].hidden && SCWRCareers.seen[user];
+  return seen?.[2] ? seen : null;
+};
+const perEvent = (user) => {
+  if (tally(user) && eventsOf(user)) return [tally(user)[0] / eventsOf(user), eventsOf(user)];
+  const seen = seenOf(user);
+  return seen ? [seen[0] / seen[2], seen[2]] : [-1, -1];
+};
 const unread = (user) => !fresh(user) || needsEvents(user);
 
 // How much of a whole-event read is still to come: the athletes among these
@@ -105,12 +115,12 @@ function rank(group, lead = 2) {
 
 // The medal a bracket's ranking points to at each place: first gold, second
 // silver, third bronze; a fourth place wins nothing. A call is sure when the
-// athlete's wins are known and no one else in it has as many; a tie, or a career
-// of their own not known, makes it a ring. A hidden rival ranks last, as in the
+// athlete's wins per event are known and no one else in it has the same; a tie, or a
+// career of their own not known, makes it a ring. A hidden rival ranks last, as in the
 // bracket, rather than clouding every call beside them.
 const MEDALS = ['gold', 'silver', 'bronze'];
 function calls(rows) {
-  const wins = rows.map((r) => tally(r.user_id)?.[0]);
+  const wins = rows.map((r) => (perEvent(r.user_id)[0] >= 0 ? perEvent(r.user_id)[0] : undefined));
   const complete = rows.every(r => !r.user_id || fresh(r.user_id));
   return rows.map((r, i) => i < 3 && {
     medal: i,
@@ -536,7 +546,12 @@ const haul = (medals) => (medals.some(Boolean)
 // Brackets lead with wins per event, as they rank by it, the wins, subs and points under it;
 // the athletes view by wins per event says how many events, and its other sorts lead with
 // the wins, wins per event beside them. A career with no events counted yet leads with its wins.
-const figures = (t, medals, events, entered, lead) => (Number.isInteger(events)
+// Someone who has never competed says so, apart from someone who has and never won.
+const figures = (t, medals, events, entered, lead) => (entered === 0
+  ? column(0, 'First event', 'no past events')
+  : !t[0] && entered
+    ? column(0, `<b>0.0</b><span class="muted"> per event</span>`, `0 wins in ${plural(entered, 'event')}`)
+  : Number.isInteger(events)
   ? column(t[0], events ? `<b>${(t[0] / events).toFixed(1)}</b>` : 'No events yet', `${plural(t[0], 'win')} · ${plural(events, 'event')}`)
   : lead && entered
     ? column(t[0], `<b>${(t[0] / entered).toFixed(1)}</b><span class="muted"> per event</span>`, `${plural(t[0], 'win')} · ${plural(t[1], 'sub')} · ${t[2]} pts`)
@@ -564,7 +579,8 @@ function draw(cell, user) {
   } else if (state.startsWith('hidden')) {
     // What Mat Stats users' results pages have seen of them stands in, as a record, never as a career.
     const s = SCWRCareers.seen[user];
-    cell.innerHTML = (s ? column(s[0], `<b>${s[0]}–${s[1]}</b>`, `in ${plural(s[2], 'event')} seen`) : '<div></div>') + '<div class="muted">Hidden profile</div>';
+    cell.innerHTML = (s && lead && s[2] ? column(s[0], `<b>${(s[0] / s[2]).toFixed(1)}</b><span class="muted"> per event seen</span>`, `${s[0]}–${s[1]} in ${plural(s[2], 'event')} seen`)
+      : s ? column(s[0], `<b>${s[0]}–${s[1]}</b>`, `in ${plural(s[2], 'event')} seen`) : '<div></div>') + '<div class="muted">Hidden profile</div>';
     cell.title = (s ? `Wins–losses, walkovers aside, across ${plural(s[2], 'event')} whose results Mat Stats users have opened. ` : '')
       + 'Smoothcomp does not share a hidden profile\'s record.';
   } else {

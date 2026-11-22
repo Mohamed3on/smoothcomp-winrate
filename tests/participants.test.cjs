@@ -6,8 +6,8 @@ const { test } = require('node:test');
 test('division medals update during loading and only depend on their own bracket', () => {
   const source = fs.readFileSync('participants.js', 'utf8');
   const careers = {
-    '1': { at: Date.now(), wins: { points: 5 }, medals: [0, 0, 0] },
-    '2': { at: Date.now(), wins: { points: 3 }, medals: [0, 0, 0] },
+    '1': { at: Date.now(), wins: { points: 5 }, medals: [0, 0, 0], events: 1 },
+    '2': { at: Date.now(), wins: { points: 3 }, medals: [0, 0, 0], events: 1 },
   };
   let medal;
   const division = {
@@ -46,7 +46,7 @@ test('division medals update during loading and only depend on their own bracket
   assert.match(medal.outerHTML, /data-medal="gold"/);
   assert.match(medal.outerHTML, /data-tied/);
 
-  careers['3'] = { at: Date.now(), wins: { points: 10 }, medals: [0, 0, 0] };
+  careers['3'] = { at: Date.now(), wins: { points: 10 }, medals: [0, 0, 0], events: 1 };
   vm.runInContext('paint()', context);
   assert.match(medal.outerHTML, /data-medal="silver"/);
   assert.doesNotMatch(medal.outerHTML, /data-tied/);
