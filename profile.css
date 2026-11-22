@@ -8,6 +8,9 @@
 }
 @starting-style { .scwr-more { opacity: 0; } }
 .scwr-rate { display: flex; justify-content: center; padding-top: 8px; }
+/* Once read, the finish chips here carry each finish's wins and losses, so Smoothcomp's own
+   wins-only chip row above them goes. */
+.match-statistics-content > div:has(> .scwr-more[data-stage='done']) > .gi-flex-wrap { display: none; }
 /* A finish chip in Smoothcomp's own pill, pressed when its finish counts. */
 .scwr-type {
   color: inherit;
