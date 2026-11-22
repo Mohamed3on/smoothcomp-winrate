@@ -124,9 +124,9 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
       SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4 FROM json_each(?5) WHERE ${newer}`)
       .bind(site, event, layer, read, JSON.stringify(entries)));
   }
-  // An athlete's event list, as Smoothcomp gives it, replaces the last one read.
+  // An athlete's events join the ones kept: a career read sends its newest page, a
+  // profile every page it read, and a past event never changes.
   for (const [user, rows] of Object.entries(history)) {
-    statements.push(env.DB.prepare('DELETE FROM history WHERE site = ?1 AND user = ?2').bind(site, user));
     statements.push(env.DB.prepare(`INSERT OR REPLACE INTO history (site, user, event, title, start, city, wins, gold, silver, bronze, at)
       SELECT ?1, ?2, value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'wins', value ->> '$.medals[0]', value ->> '$.medals[1]', value ->> '$.medals[2]', ?3 FROM json_each(?4)`)
       .bind(site, user, now, JSON.stringify(rows)));

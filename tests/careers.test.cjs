@@ -422,13 +422,15 @@ test('careers are read down the list shown, then on screen, then the rest', asyn
   assert.equal(await p.api.next(pending, () => true), '2');
 });
 
-test('every page of past events is read and shared as the athlete history', async () => {
+test('only the first page of past events is read, and its rows are shared as the athlete history', async () => {
   const w = worker();
   const past = url => new Response(JSON.stringify({ data: [{ id: url.includes('page=2') ? 2 : 1, title: 'Open', start_date: '2026-01-01T00:00:00+00:00', city: 'Berlin', wins: 3, medals: { gold: 1, silver: 0, bronze: 0 } }], meta: { total: 6, last_page: 2 } }));
-  const p = page(w, url => url.includes('/profile/') ? profile(w) : url.includes('/past-events') ? past(url) : career());
+  const read = [];
+  const p = page(w, url => url.includes('/profile/') ? profile(w) : url.includes('/past-events') ? (read.push(url), past(url)) : career());
   await p.api.readCareer('1');
   await new Promise(done => setTimeout(done, 20));
   const shared = w.posts.find(post => post.url.endsWith('/people') && post.athletes?.['1']?.history);
-  assert.deepEqual(shared.athletes['1'].history.map(e => [e.event, e.wins, e.medals]), [['1', 3, [1, 0, 0]], ['2', 3, [1, 0, 0]]]);
+  assert.deepEqual(shared.athletes['1'].history.map(e => [e.event, e.wins, e.medals]), [['1', 3, [1, 0, 0]]]);
+  assert.equal(read.length, 1);
   assert.equal(p.api.careers['1'].events, 6);
 });

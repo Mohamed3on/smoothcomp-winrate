@@ -236,6 +236,10 @@
     let sent = !!kept?.shared || shared.size > 0;
     if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
     keep(key, { seen: Date.now(), shared: sent, events });
+    // The event list rows read here join the athlete's history on the stats site: every
+    // page on a first read, the new ones after.
+    if (news.length) ask('/people', { site, athletes: { [user]: { name: document.title.split(' - ')[0].trim(), history: list.slice(0, 500).map(e => ({
+      event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
     show(tally(events));
   }
   // New figures replace the shown ones in place, without the opening or the bars regrowing.

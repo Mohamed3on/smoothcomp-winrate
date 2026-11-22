@@ -169,13 +169,12 @@ const SCWRCareers = (() => {
 
 // Every event an athlete entered, five a page: its date, place, wins and medal. The
   // public site shows them all; the career keeps only the count.
+  // The first page alone: its count is the events entered, and its rows, the newest,
+  // join the athlete's kept event list on the server (profile pages send the rest).
   async function pastEvents(user, signed) {
-    const read = page => request('events', user, signed, page).then(r => r.ok ? r.json() : null).catch(() => null);
-    const first = await read(1);
+    const first = await request('events', user, signed, 1).then(r => r.ok ? r.json() : null).catch(() => null);
     if (!first) return null;
-    const list = (body) => (Array.isArray(body?.data) ? body.data : []);
-    const rows = list(first);
-    for (let page = 2; page <= Math.min(first.meta?.last_page ?? 1, 100); page++) rows.push(...list(await read(page)));
+    const rows = Array.isArray(first.data) ? first.data : [];
     if (rows.length) ask({ op: 'people', athletes: { [user]: { history: rows.map(e => ({ event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
     return first;
   }
