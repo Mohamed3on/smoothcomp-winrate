@@ -195,11 +195,13 @@ async function keepOutcomes(env, { site, user, events }) {
   const rows = events.filter(e => Number.isSafeInteger(e?.id) && e.id > 0 && (typeof e.start_date === 'string' ? Date.parse(e.start_date) < Date.now() - SETTLED : e.start_date == null && e.out?.extra === true))
     .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(cleanOut(e.out))]);
   // A settled event does not change, so the first upload of it stands and later ones cannot replace it,
-  // except a copy from before v 2, which lacks the wins' details.
+  // except a copy from before v 2, which lacks the wins' details: a v 2 upload with the same record and
+  // losses can add them, and change nothing else.
   if (rows.length) await env.DB.prepare(`INSERT INTO outcomes (site, user, event, start, title, out, at)
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, value ->> 3, ?3 FROM json_each(?4) WHERE true
     ON CONFLICT (site, user, event) DO UPDATE SET start = excluded.start, title = excluded.title, out = excluded.out, at = excluded.at
-    WHERE outcomes.out ->> '$.v' IS NOT 2 AND excluded.out ->> '$.v' = 2`).bind(site, user, Date.now(), JSON.stringify(rows)).run();
+    WHERE outcomes.out ->> '$.v' IS NOT 2 AND excluded.out ->> '$.v' = 2
+      AND excluded.out ->> '$.types' = outcomes.out ->> '$.types' AND excluded.out ->> '$.losses' = outcomes.out ->> '$.losses'`).bind(site, user, Date.now(), JSON.stringify(rows)).run();
   return json({ kept: rows.length });
 }
 
