@@ -137,12 +137,16 @@
     + (plan.whole ? '' : `<div class="scwr-belt-split">${'<div class="scwr-split-row"><i class="scwr-skel" style="height: 8px"></i><i class="scwr-skel" style="height: 12px"></i><i class="scwr-skel" style="height: 6px"></i><i class="scwr-skel" style="height: 10px"></i></div>'.repeat(plan.shown)}</div>`);
   const record = (types) => [...picked].reduce(([w, l], type) => [w + (types[type]?.[0] ?? 0), l + (types[type]?.[1] ?? 0)], [0, 0]);
   const rate = (w, l) => `${Math.round((w / (w + l)) * 100)}%`;
+  // A rate takes its hue from red at 40% or under, through amber, to green at 85% and over.
+  const tone = (w, l) => `color: oklch(0.8 0.14 ${25 + 120 * Math.min(1, Math.max(0, (w / (w + l) - 0.4) / 0.45))})`;
+  // Wins read green and losses red, the dash between them neutral.
+  const wl = (w, l) => `<span class="scwr-won">${w}</span><span class="scwr-dash">–</span><span class="scwr-lost">${l}</span>`;
   function filled() {
     const [wins, losses] = record(stats.types);
     const counted = [...picked].filter(t => stats.types[t]).sort((a, b) => order(a) - order(b)).map(nameOf).join(', ').toLowerCase();
     const belt = plan.whole && plan.belt ? swatch(plan.belt).replace('<i ', `<i role="img" aria-label="Every event at ${plan.belt}" title="Every event at ${plan.belt}" `) : '';
     let html = `<div class="scwr-rate gi-flex gi-justify-center gi-items-center gi-gap-1.5" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
-      + (wins + losses ? `<span class="gi-text-primary gi-font-medium">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate · ${wins}–${losses}</span>`
+      + (wins + losses ? `<span class="gi-font-medium" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
         : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
     // Each finish the athlete has won or lost by, its record on the chip; pressed ones count.
     const offered = Object.keys(stats.types).sort((a, b) => order(a) - order(b));
@@ -150,7 +154,7 @@
       const [w, l] = stats.types[type];
       return `<button type="button" class="scwr-type gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-type="${type}" aria-pressed="${picked.has(type)}">`
         + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
-        + `<span class="gi-font-medium">${nameOf(type)}</span><span class="gi-text-secondary">${w}–${l}</span></button>`;
+        + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
     if (!stats.belts) return html;
     // One bar per belt, highest first: its win rate, on a scale of all its matches.
@@ -159,9 +163,9 @@
       const label = !t.events ? `No events at ${b} yet` : `${w + l ? `${rate(w, l)} of matches won` : 'No matches by these finishes'} at ${b}: `
         + `${plural(w, 'win')} and ${l} loss${l === 1 ? '' : 'es'} in ${plural(t.events, 'event')}`;
       return `<div class="scwr-split-row" role="img" aria-label="${label}" title="${label}">${swatch(b)}`
-        + `<b class="gi-text-primary">${w + l ? rate(w, l) : '–'}</b>`
+        + (w + l ? `<b style="${tone(w, l)}">${rate(w, l)}</b>` : '<b class="gi-text-secondary">–</b>')
         + `<span class="scwr-split-track">${w + l ? `<span class="scwr-split-fill" data-belt="${b}" style="width: ${(w / (w + l)) * 100}%"></span>` : ''}</span>`
-        + `<small class="gi-text-secondary">${w + l ? `${w}–${l}` : ''}</small></div>`;
+        + `<small class="scwr-record">${w + l ? wl(w, l) : ''}</small></div>`;
     };
     return `${html}<div class="scwr-belt-split">${stats.belts.map(row).join('')}</div>`;
   }

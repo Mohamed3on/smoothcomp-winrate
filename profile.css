@@ -46,6 +46,7 @@
 }
 .scwr-split-row b {
   font-weight: 600;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -62,12 +63,13 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent);
   transform-origin: left;
 }
-.scwr-split-row small {
-  white-space: nowrap;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  opacity: 0.6;
-}
+.scwr-split-row small { font-size: 12px; }
+/* A record's wins read green and its losses red, the colours of Smoothcomp's own
+   finish dots, lifted to read on its dark card; the dash between them stays quiet. */
+.scwr-record { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.scwr-won { color: oklch(0.8 0.15 145); }
+.scwr-lost { color: oklch(0.72 0.15 25); }
+.scwr-dash { padding: 0 1px; opacity: 0.45; }
 .scwr-belt {
   position: relative;
   flex: none;
