@@ -86,6 +86,20 @@ test('with nothing to top-seed, the closest bracket stands in', () => {
   assert.equal(closest.rival, 4);
 });
 
+test('the page\'s lead decides: more wins per event beats a longer record', () => {
+  // [wins per event, events, wins, subs, points], as the page ranks brackets.
+  const standings = { 1: [3, 2, 6, 2, 2], 2: [1.5, 20, 30, 10, 10], 3: [-1, -1, 0, 0, 0] };
+  const group = { name: 'G', registrations: [1, 2, 3, null].map((user_id) => ({ user_id, age: 30 })) };
+  const runner = { id: '1', age: 30, tally: standings[1] };
+  const [standing] = SCWRPicks.picks([group], runner, (user) => standings[user] ?? null).top;
+  assert.equal(standing.rival, 1.5);
+  assert.equal(standing.hidden, 1);
+  const veteran = { ...runner, tally: [1, 10, 10, 5, 5] };
+  const { top, closest } = SCWRPicks.picks([group], veteran, (user) => standings[user] ?? null);
+  assert.equal(top.length, 0);
+  assert.equal(closest.rival, 1.5);
+});
+
 test('a label nothing can read counts only where the athlete entered under it', () => {
   const values = new Map([
     [1, { category_name: 'Rank', name: 'Beginner' }],

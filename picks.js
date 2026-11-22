@@ -76,22 +76,24 @@ const SCWRPicks = (() => {
   }
 
   // How `me` would stand in each bracket against its strongest other athlete, by
-  // the page's own order: wins, then submissions, then points, then the younger.
-  // A career `tally` can't read ranks last there too. Every bracket
-  // `me` would top, biggest first, or, with none, the one `me` falls the fewest wins short of.
+  // the page's own order: whatever `tally` leads with (the page gives wins per event),
+  // then the rest of it, then the younger. A career `tally` can't read ranks last there
+  // too. Every bracket `me` would top, biggest first, or, with none, the one `me` falls
+  // the least short of on that lead.
   function picks(groups, me, tally) {
-    const key = (t, age) => [...(t ?? [-1, -1, -1]), -(age ?? Infinity)];
+    const key = (t, age) => [...(t ?? me.tally.map(() => -1)), -(age ?? Infinity)];
     const ahead = (a, b) => a.reduce((order, x, i) => order || x - b[i], 0) > 0;
     const mine = key(me.tally, me.age);
     const standings = groups.map((group) => {
       const others = group.registrations.filter((r) => String(r.user_id) !== me.id);
-      const keys = others.map((r) => key(r.user_id && tally(String(r.user_id)), r.age));
+      const tallies = others.map((r) => r.user_id && tally(String(r.user_id)));
+      const keys = others.map((r, i) => key(tallies[i], r.age));
       const rival = keys.reduce((best, k) => (!best || ahead(k, best) ? k : best), null);
       return {
         group,
         size: group.registrations.length,
         entered: others.length < group.registrations.length,
-        hidden: keys.filter((k) => k[0] < 0).length,
+        hidden: tallies.filter((t) => !t).length,
         rival: rival?.[0] >= 0 ? rival[0] : null,
         top: !rival || ahead(mine, rival),
       };

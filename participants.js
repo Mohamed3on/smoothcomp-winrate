@@ -704,7 +704,7 @@ function age(birth) {
 // Six careers in flight at most, however many brackets are eligible.
 async function pool(users) {
   const waiting = [...users];
-  await Promise.all(Array.from({ length: 6 }, async () => { while (waiting.length) await readCareer(waiting.shift()); }));
+  await Promise.all(Array.from({ length: 6 }, async () => { while (waiting.length) await readCareer(waiting.shift(), true); }));
 }
 
 function mount() {
@@ -749,21 +749,24 @@ async function pick() {
   const athlete = { id: me, gender: you.gender, belt: you.belt, age: age(you.birth), weight };
   const groups = SCWRPicks.eligible(vm.all, new Map((vm.categories ?? []).map((c) => [c.id, c])), athlete);
   const users = new Set([me, ...groups.flatMap((g) => g.registrations.map((r) => r.user_id && String(r.user_id)))]);
-  await pool([...users].filter((user) => user && !fresh(user)));
+  await pool([...users].filter((user) => user && unread(user)));
   save();
-  athlete.tally = tally(me);
+  // Picks rank as the brackets do: wins per event first, then the wins themselves.
+  const standing = (user) => tally(user) && [...perEvent(user), ...tally(user)];
+  athlete.tally = standing(me);
   if (!athlete.tally) return say('<p class="muted">Smoothcomp would not share your record.</p>');
-  if (run === picking) panel.querySelector('.scwr-picks-wins').textContent = plural(athlete.tally[0], 'win');
-  const { top, closest } = SCWRPicks.picks(groups, athlete, tally);
+  const rate = (n) => `${n.toFixed(1)} per event`;
+  if (run === picking) panel.querySelector('.scwr-picks-wins').textContent = [athlete.tally[0] >= 0 && rate(athlete.tally[0]), plural(athlete.tally[2], 'win')].filter(Boolean).join(' · ');
+  const { top, closest } = SCWRPicks.picks(groups, athlete, standing);
   // A bracket already entered wears the accent and says so beside its name.
   const row = (s, lead) => `<button type="button" class="scwr-pick${s.entered ? ' scwr-entered' : ''}" data-name="${esc(s.group.name)}">`
     + `<span><span title="${esc(s.group.name)}">${esc(s.group.name)}</span>${s.entered ? '<span class="scwr-entered-label">Entered</span>' : ''}</span>`
     + `<span>${plural(s.size, 'athlete')}</span>`
     + `<span class="muted">${[lead, s.hidden && `${s.hidden} hidden`].filter(Boolean).join(' · ')}</span></button>`;
-  const gap = closest && closest.rival - athlete.tally[0];
-  say(top.length ? top.map((s) => row(s, s.rival !== null && `next best ${plural(s.rival, 'win')}`)).join('')
+  const gap = closest && closest.rival - Math.max(athlete.tally[0], 0);
+  say(top.length ? top.map((s) => row(s, s.rival !== null && `next best ${rate(s.rival)}`)).join('')
     : `<p class="muted">No eligible bracket you'd top-seed${closest ? ' — closest:' : '.'}</p>`
-      + (closest ? row(closest, gap ? `${plural(gap, 'win')} short` : 'level on wins') : ''));
+      + (closest ? row(closest, gap >= 0.05 ? `${gap.toFixed(1)} per event short` : 'level per event') : ''));
 }
 
 // Who entered, in which divisions, for the public site.
