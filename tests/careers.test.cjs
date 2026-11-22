@@ -26,7 +26,7 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000, share
   });
   const context = vm.createContext({ URL, Response, AbortSignal, fetch, importScripts() {}, crypto: require('node:crypto').webcrypto,
     Date: class extends Date { static now() { return now; } },
-    chrome: { storage: { local: area('local'), session: area('session') }, runtime: { onMessage: { addListener(fn) { listener = fn; } } } },
+    chrome: { storage: { local: area('local'), session: area('session') }, runtime: { onMessage: { addListener(fn) { listener = fn; } }, onMessageExternal: { addListener() {} } } },
   });
   vm.runInContext(fs.readFileSync('career-cache.js', 'utf8'), context);
   vm.runInContext(fs.readFileSync('background.js', 'utf8'), context);
