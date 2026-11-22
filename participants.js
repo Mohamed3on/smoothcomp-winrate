@@ -64,14 +64,13 @@ function tally(user) {
 }
 
 // Counted wins per event entered: how deep an athlete usually goes, whatever
-// the bracket sizes. It ranks by the figure shown, a single event after every
-// longer record, and a tie goes to the longer record. A career kept from before
-// event counts were read is read again for its count.
-const MIN_EVENTS = 2;
+// the bracket sizes. It ranks by the figure shown, one event counting like any
+// other, and a tie goes to the longer record. A career kept from before event
+// counts were read is read again for its count.
 const eventsOf = (user) => (fresh(user) ? careers[user].events : undefined);
 const needsEvents = (user) => fresh(user) && !!careers[user].wins && careers[user].events == null;
-const perEvent = (user) => (tally(user) && eventsOf(user) ? [+(eventsOf(user) >= MIN_EVENTS), tally(user)[0] / eventsOf(user)] : [-1, -1]);
-const unread = (user) => !fresh(user) || (order === 'event' && needsEvents(user));
+const perEvent = (user) => (tally(user) && eventsOf(user) ? [tally(user)[0] / eventsOf(user), eventsOf(user)] : [-1, -1]);
+const unread = (user) => !fresh(user) || needsEvents(user);
 
 // How much of a whole-event read is still to come: the athletes among these
 // registrations whose career is not read yet. The progress bar fills from the
@@ -89,11 +88,12 @@ let place; // each registration's index in Smoothcomp's own order
 let first; // each bracket's index in Smoothcomp's own order
 const ranked = new Set();
 
-// Most wins first, then most by submission, most by points, and the younger
-// athlete; anything still level keeps Smoothcomp's own order. The athletes view
-// can lead with submissions, or wins per event (lead 2), instead. A career that is unread or hidden
-// sorts after every known one, as does an unknown age.
-function rank(group, lead = 0) {
+// Brackets lead with wins per event (lead 2): how deep an athlete usually goes, so
+// a long career of early exits no longer outranks a short one of finals. Then most
+// wins, most by submission, most by points, and the younger athlete; anything still
+// level keeps Smoothcomp's own order. The athletes view picks its own lead. A career
+// that is unread or hidden sorts after every known one, as does an unknown age.
+function rank(group, lead = 2) {
   const key = (r) => {
     const t = tally(r.user_id) ?? [-1, -1, -1];
     return [...(lead === 2 ? perEvent(r.user_id) : [t[lead]]), ...t, -(r.age ?? Infinity), -place.get(r.id)];
@@ -509,7 +509,7 @@ function drain() {
       while (pending.size) {
         const user = await SCWRCareers.next(pending, u => unread(u) || (order !== null && needsRank(u)));
         if (!user) break;
-        if (unread(user)) await readCareer(user, order === 'event');
+        if (unread(user)) await readCareer(user, true);
         if (order !== null && needsRank(user)) await readRank(user);
         if (order === 'academies') glide ??= tops(box.querySelectorAll('.profile-card'), club);
         if (LEADS.includes(order) && Date.now() - shownAt > 15000) show(); else queue();
@@ -533,9 +533,14 @@ const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${fig
 const haul = (medals) => (medals.some(Boolean)
   ? `<div class="scwr-haul">${medals.map((n, i) => `<span${n ? '' : ' class="muted"'} title="${plural(n, MEDALS[i])}"><i class="scwr-medal" data-medal="${MEDALS[i]}"></i>${n}</span>`).join('')}</div>`
   : '<div class="muted">No medals</div>');
-const figures = (t, medals, events) => (Number.isInteger(events)
+// Brackets lead with wins per event, as they rank by it, the wins, subs and points under it;
+// the athletes view by wins per event says how many events, and its other sorts lead with
+// the wins, wins per event beside them. A career with no events counted yet leads with its wins.
+const figures = (t, medals, events, entered, lead) => (Number.isInteger(events)
   ? column(t[0], events ? `<b>${(t[0] / events).toFixed(1)}</b>` : 'No events yet', `${plural(t[0], 'win')} · ${plural(events, 'event')}`)
-  : column(t[0], `<b>${t[0]}</b>`, `${plural(t[1], 'sub')} · ${t[2]} pts`)) + haul(medals);
+  : lead && entered
+    ? column(t[0], `<b>${(t[0] / entered).toFixed(1)}</b><span class="muted"> per event</span>`, `${plural(t[0], 'win')} · ${plural(t[1], 'sub')} · ${t[2]} pts`)
+    : column(t[0], `<b>${t[0]}</b>${entered ? `<span class="muted"> · ${(t[0] / entered).toFixed(1)} per event</span>` : ''}`, `${plural(t[1], 'sub')} · ${t[2]} pts`)) + haul(medals);
 // The placeholder takes the shape of what replaces it, so nothing moves when it lands.
 const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-size-tiny"><i class="scwr-pulse"></i></div></div>';
 
@@ -543,14 +548,16 @@ function draw(cell, user) {
   const t = user && tally(user);
   const medals = t && careers[user].medals;
   const events = t && order === 'event' && careers[user].events;
-  const state = user === 'head' ? `head|${order === 'event'}` : t ? `${t}|${medals}|${events}` : !user ? '' : fresh(user) ? `hidden|${SCWRCareers.seen[user] ?? ''}` : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
+  const entered = t && careers[user].events;
+  const lead = order === null;
+  const state = user === 'head' ? `head|${order === 'event' || lead}` : t ? `${t}|${medals}|${events}|${entered}|${lead}` : !user ? '' : fresh(user) ? `hidden|${SCWRCareers.seen[user] ?? ''}` : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
   if (cell.dataset.state === state) return;
   cell.dataset.state = state;
   cell.title = '';
   if (user === 'head') {
-    cell.innerHTML = (order === 'event' ? ['Wins per event', COLUMNS[1]] : COLUMNS).map((label) => `<span>${label}</span>`).join('');
+    cell.innerHTML = (order === 'event' || lead ? ['Wins per event', COLUMNS[1]] : COLUMNS).map((label) => `<span>${label}</span>`).join('');
   } else if (t) {
-    cell.innerHTML = figures(t, medals, events);
+    cell.innerHTML = figures(t, medals, events, entered, lead);
     const by =(keep) => Object.entries(careers[user].wins).filter(([type]) => counted(type) === keep)
       .map(([type, n]) => `${n} by ${type}`).join(', ');
     cell.title = `${plural(t[0], 'career win')}: ${by(true) || 'none'}${by(false) ? `, not counting ${by(false)}` : ''}.`;

@@ -24,8 +24,8 @@ colour folded together. Search reaches countries as well as names, academies and
 **Participants page** — unrolls the infinite scroll and shows every bracket at once, biggest first.
 Athletes Smoothcomp hides until their registration is approved show too, faded and marked "Not approved".
 As a bracket nears the screen, each athlete's career replaces the registration column, which only
-repeated the bracket title: wins, leaving out walkovers unless the results page counts them, over how many
-came by submission and on points, then medals. The bracket ranks itself by wins, submissions, points,
+repeated the bracket title: wins per event entered, over the wins (leaving out walkovers unless the results page
+counts them) and how many came by submission and on points, then medals. The bracket ranks itself by wins per event, wins, submissions, points,
 then the younger athlete, and otherwise keeps Smoothcomp's order. Every career in the event is read from page load, brackets on
 screen first, with a bar under the menu filling as they land, and kept for three weeks across organiser sites. Confirmed private profiles have no career shown and are checked again after 30 days.
 Tabs share one request allowance and reuse work already in progress; each completed athlete is saved immediately.
