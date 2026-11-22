@@ -1,9 +1,9 @@
 // A profile's wins per event entered, under Smoothcomp's own wins chart: the same
 // figure the participants page sorts by. Both numbers come from responses the page
 // asks for anyway (its career and its past events), so nothing extra is fetched.
-// Below it, wins per event at the current belt against before it, walkovers aside
-// too: the page's belt list says when the current belt began, the past-events pages
-// back to then give those events' wins, and their match lists the walkovers in them.
+// Below it, wins per event at each belt worn, walkovers aside too: the page's belt
+// list dates each belt, every past-events page gives each event's wins, and every
+// match-list page the walkovers in them.
 (() => {
   const got = {};
   let pastUrl, split, splitting;
@@ -16,12 +16,16 @@
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
   const figure = (wins, events, label) => `<span class="gi-text-primary gi-font-medium">${(wins / events).toFixed(1)}</span>`
     + `<span class="gi-text-secondary">${label} · ${wins} in ${events} event${events === 1 ? '' : 's'}</span>`;
-  const read = async (kind, page) => {
+  // A refusal (a 429, or the failed fetch Cloudflare's challenge makes of one) is
+  // tried again after 1, 2, 4 and 8 s.
+  const read = async (kind, page, tries = 0) => {
     const url = new URL(pastUrl.replace('/past-events', `/${kind}`), location.href);
     url.searchParams.set('page', page);
-    const response = await fetch(url, { headers: { Accept: 'application/json' } });
-    if (!response.ok) throw new Error(`${kind} unavailable`);
-    return response.json();
+    const response = await fetch(url, { headers: { Accept: 'application/json' } }).catch(() => null);
+    if (response?.ok) return response.json();
+    if ((response && response.status !== 429) || tries > 3) throw new Error(`${kind} unavailable`);
+    await new Promise(done => setTimeout(done, 1000 * 2 ** tries));
+    return read(kind, page, tries + 1);
   };
   // Walkovers the athlete won at one event. Each division registers them afresh, so
   // their seat is the one in all of a division's matches, or, in a one-match
@@ -36,41 +40,41 @@
       return n + matches.filter(m => m.wonBy === 'walkover' && m.seats?.some(s => s.isWinner && theirs(s))).length;
     }, 0);
   };
-  // The current belt's events are those after the last one at a lower belt, or from
-  // its first when the belt list names all of them.
+  // Each belt's events run from its first when the belt list names all of them, else
+  // from just after the last one listed at the belt below. Events without a belt
+  // (no-gi levels, absolutes) take the belt worn at the time.
   async function readSplit() {
     splitting = true;
     const rows = (got.skills?.data ?? []).filter(s => /jiu|bjj/i.test(s.name) && color(s.belt)).sort((a, b) => b.sort_order - a.sort_order);
     const belt = color(rows[0]?.belt);
-    const lower = rows.filter(s => BELTS.indexOf(color(s.belt)) < BELTS.indexOf(belt)).flatMap(s => s.events ?? []).map(time);
     if (!belt) return;
+    const listed = (b) => rows.filter(s => color(s.belt) === b);
+    const worn = BELTS.filter(b => listed(b).some(s => s.competed_count > 0));
     // Every event at one belt: the overall figure is that belt's, so it only takes the belt.
-    if (!lower.length) {
+    if (worn.every(b => b === belt)) {
       split = { belt, whole: true };
       return draw();
     }
-    const at = rows.filter(s => color(s.belt) === belt);
-    const from = at.every(s => (s.events?.length ?? 0) >= s.competed_count)
-      ? Math.min(...at.flatMap(s => s.events ?? []).map(time)) : Math.max(...lower) + 1;
-    const past = got['past-events'];
-    const events = [...past.data];
-    for (let page = 2; page <= past.meta.last_page && events.length && time(events.at(-1)) >= from; page++) events.push(...(await read('past-events', page)).data);
-    const current = events.filter(e => time(e) >= from);
-    // The match lists run newest first like the events, three a page; stop at the first older event.
-    const ids = new Set(current.map(e => e.id));
-    let given = 0;
-    for (let page = 1, last = 1, done = !ids.size; !done && page <= last; page++) {
-      const body = await read('event-statistics', page);
-      last = body.meta?.last_page ?? 1;
-      for (const event of body.data ?? []) {
-        if (!ids.delete(event.id)) { done = true; break; }
-        given += walkovers(event);
-      }
-      done ||= !ids.size;
+    const times = (b) => listed(b).flatMap(s => s.events ?? []).map(time);
+    const starts = worn.map((b, i) => (!i ? -Infinity : listed(b).every(s => (s.events?.length ?? 0) >= s.competed_count)
+      ? Math.min(...times(b)) : Math.max(...times(worn[i - 1])) + 1));
+    const beltOf = (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0];
+    // Every page of both lists at once; the first page says how many there are.
+    const all = async (kind, first) => {
+      first ??= await read(kind, 1);
+      const rest = Array.from({ length: Math.max(0, (first.meta?.last_page ?? 1) - 1) }, (_, i) => read(kind, i + 2));
+      return [first, ...await Promise.all(rest)].flatMap(body => body.data ?? []);
+    };
+    const [events, matches] = await Promise.all([all('past-events', got['past-events']), all('event-statistics')]);
+    const given = new Map(matches.map(event => [event.id, walkovers(event)]));
+    const tally = new Map([belt, ...worn].map(b => [b, { wins: 0, events: 0 }]));
+    for (const e of events) {
+      const t = tally.get(beltOf(e));
+      t.wins += (e.wins ?? 0) - (given.get(e.id) ?? 0);
+      t.events++;
     }
-    // The belts worn before, lowest first, each only if events were entered in it.
-    const worn = BELTS.slice(0, BELTS.indexOf(belt)).filter(b => rows.some(s => color(s.belt) === b && s.competed_count > 0));
-    split = { belt, worn, wins: current.reduce((n, e) => n + e.wins, 0) - given, events: current.length };
+    // A lower belt no event fell to has nothing to show; the current one says it has no events yet.
+    split = { belt, belts: [...tally].filter(([b, t]) => b === belt || t.events).sort(([a], [b]) => BELTS.indexOf(b) - BELTS.indexOf(a)) };
     draw();
   }
   const draw = () => {
@@ -91,19 +95,16 @@
       return;
     }
     if (chart.querySelector('.scwr-belt-split')) return;
-    // One bar per side, scaled to the larger figure; the belts worn label each side.
-    const sides = [[[split.belt], split.wins, split.events, `at ${split.belt}`], [split.worn, wins - split.wins, events - split.events, `before ${split.belt}`]].filter((side, i) => !i || side[2]);
-    if (sides.some(([, w, n]) => n < 0 || w < 0)) return;
-    const top = Math.max(...sides.map(([, w, n]) => (n ? w / n : 0))) || 1;
-    const row = ([belts, w, n, when]) => {
-      const label = n ? `${(w / n).toFixed(1)} wins per event ${when}, walkovers aside: ${w} in ${n} event${n === 1 ? '' : 's'}` : `No events ${when} yet`;
-      return `<div class="scwr-split-row" role="img" aria-label="${label}" title="${label}">`
-        + `<span class="scwr-split-belts">${belts.map(swatch).join('')}</span>`
+    // One bar per belt, highest first, scaled to the best figure.
+    const top = Math.max(...split.belts.map(([, t]) => (t.events ? t.wins / t.events : 0))) || 1;
+    const row = ([b, { wins: w, events: n }]) => {
+      const label = n ? `${(w / n).toFixed(1)} wins per event at ${b}, walkovers aside: ${w} in ${n} event${n === 1 ? '' : 's'}` : `No events at ${b} yet`;
+      return `<div class="scwr-split-row" role="img" aria-label="${label}" title="${label}">${swatch(b)}`
         + `<b class="gi-text-primary">${n ? (w / n).toFixed(1) : '–'}</b>`
-        + `<span class="scwr-split-track">${n ? `<span class="scwr-split-fill" data-belt="${belts.at(-1) ?? split.belt}" style="width: ${(w / n / top) * 100}%"></span>` : ''}</span>`
+        + `<span class="scwr-split-track">${n ? `<span class="scwr-split-fill" data-belt="${b}" style="width: ${(w / n / top) * 100}%"></span>` : ''}</span>`
         + `<small class="gi-text-secondary">${n} event${n === 1 ? '' : 's'}</small></div>`;
     };
-    chart.insertAdjacentHTML('beforeend', `<div class="scwr-belt-split gi-text-sm" style="--belts: ${Math.max(1, split.worn.length)}">${sides.map(row).join('')}</div>`);
+    chart.insertAdjacentHTML('beforeend', `<div class="scwr-belt-split gi-text-sm">${split.belts.map(row).join('')}</div>`);
   };
   const { open, send } = XMLHttpRequest.prototype;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {

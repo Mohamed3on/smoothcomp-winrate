@@ -1,4 +1,4 @@
-/* Wins per event at the current belt against before it, inside Smoothcomp's own
+/* Wins per event at each belt worn, inside Smoothcomp's own
    wins card: ink borrowed from the card (currentColor), belt colours from the sport. */
 .scwr-belt-split {
   display: grid;
@@ -9,11 +9,10 @@
 }
 .scwr-split-row {
   display: grid;
-  grid-template-columns: calc(var(--belts) * 25px - 3px) 3.2ch 1fr 6.5ch;
+  grid-template-columns: 22px 3.2ch 1fr 5.2em;
   align-items: center;
   gap: 10px;
 }
-.scwr-split-belts { display: flex; justify-content: flex-end; gap: 3px; }
 .scwr-split-row b {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -33,6 +32,7 @@
   transform-origin: left;
 }
 .scwr-split-row small {
+  white-space: nowrap;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   opacity: 0.6;
@@ -65,6 +65,8 @@
 :is(.scwr-belt, .scwr-split-fill)[data-belt='black'] { --belt: #17191c; --belt-rank: #b53b42; }
 @media (prefers-reduced-motion: no-preference) {
   .scwr-split-fill { animation: scwr-split-grow 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-  .scwr-split-row + .scwr-split-row .scwr-split-fill { animation-delay: 90ms; }
+  .scwr-split-row:nth-child(2) .scwr-split-fill { animation-delay: 60ms; }
+  .scwr-split-row:nth-child(3) .scwr-split-fill { animation-delay: 120ms; }
+  .scwr-split-row:nth-child(n + 4) .scwr-split-fill { animation-delay: 180ms; }
 }
 @keyframes scwr-split-grow { from { transform: scaleX(0); } }
