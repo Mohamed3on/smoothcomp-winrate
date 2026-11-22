@@ -92,7 +92,7 @@
         const other = m.seats.find(s => s !== seat);
         if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner });
         if (seat.isLoser) out.losses.push({ type, how: how(m.wonBy, type), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
-          reg: other?.event_registration_id ?? null, image: other?.image ?? null });
+          reg: other?.event_registration_id ?? null, image: other?.image ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null });
       }
     }
     return out;
@@ -116,7 +116,7 @@
     reading = true;
     const past = got['past-events'];
     // The number in the key retires what an older count kept.
-    const key = `scwr:profile:8:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
+    const key = `scwr:profile:9:${pastUrl.match(/\/athlete\/(\d+)\//)?.[1]}`;
     const print = JSON.stringify([past.meta?.total, got['wins-and-medals'].data.win_method_breakdown, got.skills.data.map(s => [s.belt, s.competed_count])]);
     try {
       const kept = JSON.parse(localStorage.getItem(key));
@@ -235,10 +235,13 @@
     const day = (date) => (Date.parse(date) ? new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
     return shown.map(loss => {
       const belt = plan.whole ? plan.belt : loss.date && plan.beltOf({ start_date: loss.date });
-      return `<li class="scwr-loss"${loss.division ? ` title="${esc(loss.division)}"` : ''}>${avatar(loss)}<div>`
+      return `<li class="scwr-loss">${avatar(loss)}<div>`
         + `<div class="scwr-loss-who">${named(loss, 'who')}${loss.club ? named(loss, 'club') : ''}</div>`
         + `<div class="scwr-loss-how gi-text-xs gi-text-secondary"><span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${FINISH[loss.type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
-        + `<span class="scwr-lost">${esc(loss.how)}</span><span>·</span><a href="/${esc(locale())}/event/${Number(loss.event)}">${esc(loss.title ?? 'Event')}</a>${loss.date ? `<span>·</span><span>${day(loss.date)}</span>` : ''}</div></div>${belt ? swatch(belt).replace('<i ', `<i title="${belt} belt then" `) : ''}</li>`;
+        + `<span class="scwr-lost">${esc(loss.how)}</span>${loss.stage ? `<span>·</span><span>${esc(loss.stage)}</span>` : ''}`
+        // The bracket it was lost in, linked; then the event and its date.
+        + (loss.division ? `<span>·</span>${loss.bracket ? `<a href="/${esc(locale())}/event/${Number(loss.event)}/bracket/${Number(loss.bracket)}">${esc(loss.division)}</a>` : `<span>${esc(loss.division)}</span>`}` : '') + '</div>'
+        + `<div class="scwr-loss-how gi-text-xs gi-text-secondary"><a href="/${esc(locale())}/event/${Number(loss.event)}">${esc(loss.title ?? 'Event')}</a>${loss.date ? `<span>·</span><span>${day(loss.date)}</span>` : ''}</div></div>${belt ? swatch(belt).replace('<i ', `<i title="${belt} belt then" `) : ''}</li>`;
     }).join('');
   }
   function filters() {
