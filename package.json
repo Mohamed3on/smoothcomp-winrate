@@ -6,5 +6,8 @@
     "test": "node --test tests/*.test.cjs",
     "deploy:site": "cd site && bun install && bun run build && cd ../server && wrangler deploy",
     "deploy:crawler": "cd server && bunx wrangler@latest deploy -c crawler.toml"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
   }
 }
