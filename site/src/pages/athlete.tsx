@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'wouter';
 import { ExternalLink, X } from 'lucide-react';
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -62,9 +62,14 @@ function meetingsOf(o: Outcome | undefined): Meeting[] {
   return [...out, ...losses.map((l) => ({ ...l, won: false }))];
 }
 // An event's matches: their profile's match list where it was read, else the matches the results
-// read there give, each division's in the order fought.
-const meetingsOfRow = (r: Row): Meeting[] => r.outcome ? meetingsOf(r.outcome)
-  : (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
+// read there give, each division's in the order fought. The match lists don't name an opponent's
+// account, so it is taken from the results read there.
+const meetingsOfRow = (r: Row): Meeting[] => {
+  if (!r.outcome) return boutsOf(r);
+  const ids = new Map(boutsOf(r).map((m) => [person(m.opponent), m.user]));
+  return meetingsOf(r.outcome).map((m) => ({ ...m, user: ids.get(person(m.opponent)) }));
+};
+const boutsOf = (r: Row): Meeting[] => (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
     won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock,
   })));
 // A match's score as the scoreboard ended it: points, then advantages and penalties where any were
@@ -356,14 +361,25 @@ function Form({ list, f }: { list: Row[]; f: Filters }) {
           {[['bg-gold', 'Gold'], ['bg-silver', 'Silver'], ['bg-bronze', 'Bronze'], ['bg-win-decision', 'No medal'], ...(lost ? [['bg-lost/70', 'Lost']] : [])].map(([bg, label]) => <li key={label} className="inline-flex items-center gap-1.5"><i className={`size-2 rounded-sm ${bg}`} />{label}</li>)}
         </ul>
       </div>
-      <div className="h-52 w-full">
+      <div className="h-52 w-full [&_.recharts-surface:focus:not(:focus-visible)]:outline-none">
         <ResponsiveContainer>
           <BarChart data={points} stackOffset="sign" margin={{ top: 4, right: 0, bottom: 0, left: -28 }}>
             <XAxis dataKey="tick" interval="preserveStartEnd" minTickGap={8} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis allowDecimals={false} tickFormatter={(v) => String(Math.abs(v))} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
             <ReferenceLine y={0} stroke="oklch(1 0 0 / 12%)" />
-            <Tooltip cursor={{ fill: 'oklch(1 0 0 / 5%)' }} contentStyle={{ background: 'var(--popover)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-              labelFormatter={(_, p) => (p[0] ? `${p[0].payload.name} · ${p[0].payload.date}` : '')} formatter={(v, key) => [Math.abs(Number(v)), key === 'wins' ? 'Won' : 'Lost']} />
+            <Tooltip cursor={{ fill: 'oklch(1 0 0 / 5%)', stroke: 'none' }} isAnimationActive={false} content={({ active, payload }) => {
+              const p = active && payload?.[0]?.payload as (typeof points)[number] | undefined;
+              return p && (
+                <div className="flex min-w-40 flex-col gap-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+                  <div><p className="font-medium">{p.name}</p><p className="text-muted-foreground">{p.date}</p></div>
+                  <dl className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-0.5 tabular-nums">
+                    {([['Won', p.wins, p.medal], ...(lost ? [['Lost', -p.losses, 'color-mix(in oklch, var(--color-lost) 70%, transparent)']] : [])] as const).map(([label, n, bg]) => (
+                      <Fragment key={label}><i className="size-2 rounded-sm" style={{ background: bg }} /><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{n}</dd></Fragment>
+                    ))}
+                  </dl>
+                </div>
+              );
+            }} />
             <Bar dataKey="wins" stackId="r" maxBarSize={28} radius={[3, 3, 0, 0]}>{points.map((p, i) => <Cell key={i} fill={p.medal} />)}</Bar>
             {lost && <Bar dataKey="losses" stackId="r" maxBarSize={28} radius={[0, 0, 3, 3]} fill="var(--color-lost)" fillOpacity={0.7} />}
           </BarChart>
@@ -443,7 +459,7 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
                     <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">
                       {/* With more than one division there, each division's matches sit under its name. */}
                       {[...Map.groupBy(shown, (m) => ((row.read?.length ?? named.length) > 1 ? m.division ?? null : null))].map(([division, ms]) => [
-                        division && <li key={division} className="pt-1 text-xs text-muted-foreground first:pt-0">{division}</li>,
+                        division && <li key={division} className="pt-1 text-xs text-muted-foreground first:pt-0">{row.read?.length ? <DivisionLink event={row.id} name={division} f={f} /> : division}</li>,
                         ...ms.map((m, i) => <MatchLine key={`${division}-${i}`} m={m} f={f} divisions={false} />),
                       ])}
                     </ul>
