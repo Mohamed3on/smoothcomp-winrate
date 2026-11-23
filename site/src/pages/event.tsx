@@ -5,10 +5,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Ledger, type Column } from '@/components/ledger';
 import { Empty } from '@/components/empty';
-import { Age, Belt, Flag, Identity, Medals, Num, Photo, Place, Record } from '@/components/stats';
-import { useApi, type EventEntry, type EventMeta } from '@/lib/api';
+import { Age, Belt, Flag, Identity, Medals, Mix, Num, Photo, Place, Record } from '@/components/stats';
+import { useApi, type EventEntry, type EventMeta, type Types } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
-import { beltAt, date, fmt, plural, winsOf } from '@/lib/format';
+import { ageOf, beltAt, date, fmt, plural, rate, winsOf } from '@/lib/format';
+import { FilterBar } from '@/components/filter-bar';
+import { resetAction } from '@/pages/athletes';
 import { cn } from '@/lib/utils';
 import { DivisionLink } from '@/pages/division';
 
@@ -17,11 +19,13 @@ import { DivisionLink } from '@/pages/division';
 // a tie, or a career of their own not known, makes it a ring. Unknown rivals rank last, as in the extension.
 interface Call { medal: number; sure: boolean; bracket: string; seed: number; of: number }
 type Ranked = EventEntry & { career: number | null; tally: number[] | null; call: Call | null };
-type Person = EventEntry & { rows: Ranked[]; w: number; l: number; best: number; career: number | null; calls: Call[] };
+type Person = EventEntry & { rows: Ranked[]; w: number; l: number; won: Types; lost: Types; best: number; career: number | null; calls: Call[] };
 interface Division { name: string; rows: Ranked[]; wins: number }
 interface Academy { id: string | null; name: string | null; athletes: number; g: number; s: number; b: number; w: number; l: number; career: number; expected: number[]; people: Person[] }
 
 const MEDAL = ['gold', 'silver', 'bronze'];
+// Every division's finishes added up, type by type.
+const sum = (buckets: Types[]) => buckets.reduce<Types>((t, b) => { for (const [k, n] of Object.entries(b ?? {})) t[k] = (t[k] ?? 0) + Number(n); return t; }, {});
 const MEDAL_BG = ['bg-gold', 'bg-silver', 'bg-bronze'];
 const MEDAL_RING = ['ring-gold', 'ring-silver', 'ring-bronze'];
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
@@ -73,9 +77,19 @@ export function EventPage({ id }: { id: string }) {
   const calls = Map.groupBy(divisions.flatMap((d) => d.rows.filter((r) => r.call)), (r) => r.user);
   const people: Person[] = [...Map.groupBy(divisions.flatMap((d) => d.rows), (e) => e.user).values()].map((rows) => ({
     ...rows[0], belt: beltAt(rows.map((r) => r.division)), rows, w: rows.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), l: rows.reduce((n, r) => n + winsOf(r.losses, f.counted), 0),
+    won: sum(rows.map((r) => r.wins)), lost: sum(rows.map((r) => r.losses)),
     best: Math.min(...rows.map((r) => r.place ?? 999)), career: rows[0].career,
     calls: (calls.get(rows[0].user) ?? []).map((r) => r.call!).sort((a, b) => a.medal - b.medal),
   })).sort(fought ? (a, b) => a.best - b.best || b.w - a.w || a.l - b.l : (a, b) => byCareer(a.rows[0], b.rows[0]));
+  // The athletes tab answers to the leaderboard's filters: belt, age, country, fewest career wins, and a search.
+  const q = f.get('q').trim().toLowerCase(), belts = f.get('belt').split(',').filter(Boolean);
+  const [agemin, agemax, least] = ['agemin', 'agemax', 'wins'].map((k) => (f.get(k) === '' ? null : Number(f.get(k))));
+  const shown = people.filter((p) => {
+    const age = ageOf(p.born);
+    return (!belts.length || belts.includes(p.belt ?? '')) && (!f.query.country || p.country === f.query.country) && (least == null || (p.career ?? 0) >= least)
+      && (agemin == null || (age != null && age >= agemin)) && (agemax == null || (age != null && age <= agemax))
+      && (!q || [p.name, p.club, p.country_name, ...p.rows.map((r) => r.division)].some((t) => t?.toLowerCase().includes(q)));
+  });
   const academies: Academy[] = [...Map.groupBy(people.filter((p) => p.club_id || p.club), (p) => p.club_id ?? p.club ?? '').values()].map((ps) => {
     const rows = ps.flatMap((p) => p.rows);
     const expected = [0, 1, 2].map((m) => ps.reduce((n, p) => n + p.calls.filter((c) => c.medal === m).length, 0));
@@ -95,13 +109,16 @@ export function EventPage({ id }: { id: string }) {
   const rank = (i: number) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span>;
   const athleteColumns: Column<Person>[] = [
     { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => rank(i) },
-    { key: 'who', label: 'Athlete', width: '34%', align: 'start', cell: (p) => <Identity a={p} f={f} /> },
-    { key: 'div', label: fought ? 'Division' : 'Brackets', align: 'start', narrow: true, cell: (p) => fought
-      ? <span className="text-xs text-muted-foreground" title={p.rows.map((r) => r.division).join('\n')}><DivisionLink event={id} name={p.rows[0].division} f={f} />{p.rows.length > 1 && ` +${p.rows.length - 1}`}</span>
-      : <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Dot call={r.call} /><span className="min-w-0 break-words">{r.division.trim()}</span></li>)}</ul> },
+    // Once fought, each division and their place there sits under the name, as in the extension.
+    { key: 'who', label: 'Athlete', width: fought ? undefined : '34%', align: 'start', cell: (p) => <Identity a={p} f={f}>{fought &&
+      <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Place p={r.place} /><DivisionLink event={id} name={r.division} f={f} className="min-w-0 break-words" /></li>)}</ul>}</Identity> },
+    ...(fought ? [] : [{ key: 'div', label: 'Brackets', align: 'start' as const, narrow: true, cell: (p: Person) =>
+      <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Dot call={r.call} /><span className="min-w-0 break-words">{r.division.trim()}</span></li>)}</ul> }]),
     ...(fought ? [
-      { key: 'place', label: 'Place', width: '6rem', cell: (p: Person) => <Place p={p.best < 999 ? p.best : null} /> },
-      { key: 'record', label: 'Record', width: '7rem', cell: (p: Person) => <Record w={p.w} l={p.l} /> },
+      { key: 'record', label: 'Record', width: '5.5rem', cell: (p: Person) => <Record w={p.w} l={p.l} /> },
+      { key: 'rate', label: 'Win rate', width: '5.5rem', title: 'Wins over matches here, counted finishes', cell: (p: Person) => <span className="font-semibold">{rate(p.w, p.l) ?? '–'}</span> },
+      { key: 'won', label: 'How they won', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.won, f.counted) ? <Mix types={p.won} f={f} /> : <span className="text-muted-foreground">–</span>) },
+      { key: 'lost', label: 'How they lost', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.lost, f.counted) ? <Mix types={p.lost} f={f} /> : <span className="text-muted-foreground">–</span>) },
     ] : []),
     ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', title: 'Medals their brackets point to, by career wins', cell: (p: Person) => <Expected e={[0, 1, 2].map((m) => p.calls.filter((c) => c.medal === m).length)} /> }]),
     { key: 'career', label: 'Career wins', width: '8rem', title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },
@@ -163,8 +180,8 @@ export function EventPage({ id }: { id: string }) {
     ) },
   ];
   const tabs = fought
-    ? [['podiums', 'Podiums', divisions.length], ['academies', 'Academies', academies.length], ['athletes', 'Athletes', people.length], ...(live ? [['divisions', 'Brackets', divisions.length] as const] : [])] as const
-    : [['athletes', 'Athletes', people.length], ['divisions', 'Brackets', divisions.length], ['academies', 'Academies', academies.length]] as const;
+    ? [['podiums', 'Podiums', divisions.length], ['academies', 'Academies', academies.length], ['athletes', 'Athletes', shown.length], ...(live ? [['divisions', 'Brackets', divisions.length] as const] : [])] as const
+    : [['athletes', 'Athletes', shown.length], ['divisions', 'Brackets', divisions.length], ['academies', 'Academies', academies.length]] as const;
   const empty = <Empty title="Nothing here" text="Nothing to show for this event yet." />;
   return (
     <div className="flex flex-col gap-6">
@@ -186,7 +203,8 @@ export function EventPage({ id }: { id: string }) {
           <TabsList variant="line">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<span className="ml-1 text-xs text-muted-foreground">{n}</span></TabsTrigger>)}</TabsList>
           <TabsContent value="podiums"><Ledger rows={divisions} loading={false} columns={podiumColumns} rowKey={(d) => d.name} empty={empty} /></TabsContent>
           <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} empty={empty} sort={fought ? undefined : teamSort} onSort={setTeamSort} expand={roster} /></TabsContent>
-          <TabsContent value="athletes"><Ledger rows={people} loading={false} columns={athleteColumns} rowKey={(p) => p.user} empty={empty} /></TabsContent>
+          <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user}
+            empty={<Empty title="No athletes match" text="Widen the age range, lower the minimum wins, or clear the belt, country and search." action={resetAction(f)} />} /></TabsContent>
           <TabsContent value="divisions"><Ledger rows={divisions} loading={false} columns={divisionColumns} rowKey={(d) => d.name} empty={empty} sort={bracketSort} onSort={setBracketSort} expand={bracket} /></TabsContent>
         </Tabs>
       ) : <Empty title="Nobody listed yet" text="This event's entrants arrive when someone with Mat Stats opens its participants or results page." />}

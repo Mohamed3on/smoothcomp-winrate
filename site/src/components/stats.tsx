@@ -54,7 +54,7 @@ export const HIDDEN = 'Hidden profile on Smoothcomp: their career can’t be rea
 export function Hidden({ className }: { className?: string }) {
   return <Lock role="img" aria-label={HIDDEN} className={cn('size-3 shrink-0 text-muted-foreground', className)}><title>{HIDDEN}</title></Lock>;
 }
-export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: boolean }) {
+export function Identity({ a, f, club = true, children }: { a: Person; f: Filters; club?: boolean; children?: React.ReactNode }) {
   const on = `Profile on ${f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}`;
   return (
     <div className="flex min-w-0 items-center gap-3">
@@ -76,6 +76,7 @@ export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: 
             ? <Link href={f.link(`/academy/${a.club_id}`)} className="min-w-0 break-words hover:text-primary">{a.club}</Link>
             : <span className="min-w-0 break-words">{a.club}</span>)}
         </div>
+        {children}
       </div>
     </div>
   );
