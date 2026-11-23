@@ -354,11 +354,14 @@ function matcher(q, fts, cols, text, starts) {
 async function search(env, params) {
   const f = filters(params);
   if (f.q.length < 2) return json({ athletes: [], teams: [], events: [] });
-  const a = matcher(f.q, 'people_fts', 'name', 'name', 1);
+  // An athlete's name matched at any word's start ranks by wins (the finishes counted); only the whole name comes first.
+  const a = matcher(f.q, 'people_fts', 'name', 'name', 2);
   const t = matcher(f.q, 'people_fts', 'club', 'club', 2);
   const e = matcher(f.q, 'events_fts', '{title city}', 'title', 2);
+  const on = counted(f.off);
+  const wins = `coalesce((SELECT ${on.length ? on.map((g) => `w_${g}`).join(' + ') : '0'} FROM board b WHERE b.site = people.site AND b.user = people.user), 0)`;
   const [people, clubs, found] = await env.DB.batch([
-    env.DB.prepare(`SELECT user, name, club, country, photo, hidden FROM people WHERE ${a.site} = ? AND ${a.filter} ORDER BY ${a.tier}, seen DESC LIMIT 8`)
+    env.DB.prepare(`SELECT user, name, club, country, photo, hidden, ${wins} AS wins FROM people WHERE ${a.site} = ? AND ${a.filter} ORDER BY ${a.tier}, wins DESC, seen DESC LIMIT 8`)
       .bind(f.site, ...a.filterBinds, ...a.tierBinds),
     // min() makes the bare club the name of the best-matching athlete's row.
     env.DB.prepare(`SELECT club_id, club, athletes FROM (SELECT club_id, club, count(*) AS athletes, min(${t.tier}) AS tier FROM people

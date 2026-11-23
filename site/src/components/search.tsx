@@ -8,7 +8,7 @@ import type { Filters } from '@/lib/filters';
 import { date, plural } from '@/lib/format';
 
 interface Found {
-  athletes: { user: string; name: string; club: string | null; photo: string | null }[];
+  athletes: { user: string; name: string; club: string | null; photo: string | null; wins: number }[];
   teams: { club_id: string; club: string; athletes: number }[];
   events: { event: string; title: string; start: string | null; city: string | null }[];
 }
@@ -28,7 +28,7 @@ export function Search({ f }: { f: Filters }) {
     return () => removeEventListener('keydown', key);
   }, []);
   const searching = debounced.length >= 2;
-  const { data, isFetching } = useApi<Found>('search', { site: f.site, q: debounced }, searching);
+  const { data, isFetching } = useApi<Found>('search', { site: f.site, off: [...f.off].join(','), q: debounced }, searching);
   const go = (path: string) => { setOpen(false); setQ(''); navigate(f.link(path)); };
   return (
     <>
@@ -50,6 +50,7 @@ export function Search({ f }: { f: Filters }) {
               {!!data?.athletes.length && <CommandGroup heading="Athletes">{data.athletes.map((a) => (
                 <CommandItem key={a.user} value={`a${a.user}`} onSelect={() => go(`/athlete/${a.user}`)}>
                   <Photo name={a.name} photo={a.photo} className="size-6" /><span className="truncate">{a.name}</span><span className="ml-auto truncate text-xs text-muted-foreground">{a.club}</span>
+                  {!!a.wins && <span className="shrink-0 text-xs tabular-nums">{plural(a.wins, 'win')}</span>}
                 </CommandItem>))}</CommandGroup>}
               {!!data?.teams.length && <CommandGroup heading="Academies">{data.teams.map((t) => (
                 <CommandItem key={t.club_id} value={`t${t.club_id}`} onSelect={() => go(`/academy/${t.club_id}`)}>
