@@ -134,9 +134,10 @@
   // Each event's result is kept for good once it is settled (started a week ago or
   // more), so a visit draws at once from what is kept and reads only what is new: both
   // lists run newest first, so reading stops at the first event already kept. If the
-  // kept events and Smoothcomp's count stop agreeing, the whole history is read again.
+  // kept events and Smoothcomp's count stop agreeing, the whole history is read again,
+  // on top of what is kept; when some match lists never load, at most once a day.
   const STORE = 'scwr:profile:12:';
-  const WEEK = 7 * 864e5;
+  const DAY = 864e5, WEEK = 7 * DAY;
   for (const k of Object.keys(localStorage)) if (/^scwr:profile:\d+:/.test(k) && !k.startsWith(STORE)) localStorage.removeItem(k);
   // Storage full: the athletes looked at longest ago give way.
   const keep = (key, value) => {
@@ -202,16 +203,16 @@
     const total = past.meta?.total ?? 0;
     const key = STORE + pastUrl.match(/\/athlete\/(\d+)\//)?.[1];
     let kept = null;
-    try { kept = whole ? null : JSON.parse(localStorage.getItem(key)); } catch {}
+    try { kept = JSON.parse(localStorage.getItem(key)); } catch {}
     const local = (kept?.events ?? []).map(e => ({ ...e, out: clean(e.out) }));
     const known = new Map(local.filter(e => e.settled).map(e => [e.id, e]));
-    // Nothing kept here: what any install already read for this athlete (not when the
-    // whole history is being read again, as what was kept no longer added up).
+    // Nothing kept here, or the whole history read again: what any install already read
+    // for this athlete.
     const site = ajp ? 'ajptour.com' : 'smoothcomp.com';
     const user = key.slice(STORE.length);
     const shared = new Set();
     // Copies from before wins kept their details are read again, and replace the server's.
-    const theirs = known.size || whole ? [] : (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? [];
+    const theirs = known.size && !whole ? [] : (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? [];
     if (theirs.every(e => e?.out?.v === 2)) for (const e of theirs) {
       if (!Number.isSafeInteger(e?.id) || !(Date.parse(e.start_date) || e.out?.extra === true)) continue;
       // An event under a week old is read again here, as its results can still change.
@@ -223,14 +224,16 @@
     else { plan.loading = true; draw(); }
     // The events since the newest kept one: the page has the first page of them, and
     // further pages are read only while none of a page is kept (all at once when none is).
+    const all = whole || !known.size;
     let list = [...past.data];
-    if (!known.size) list.push(...(await pages('past-events', past.meta?.last_page ?? 1, 2)).data);
+    if (all) list.push(...(await pages('past-events', past.meta?.last_page ?? 1, 2)).data);
     else for (let page = 2; page <= (past.meta?.last_page ?? 1) && !list.some(e => known.has(e.id)); page++) list.push(...(await read('past-events', page)).data);
     const firstKept = list.findIndex(e => known.has(e.id));
-    const news = firstKept < 0 ? list : list.slice(0, firstKept);
+    const news = all || firstKept < 0 ? list : list.slice(0, firstKept);
     // Kept and new events short of (or over) Smoothcomp's count: the whole history is read
     // again, the kept figures shown meanwhile, which also retries what it never sent.
-    if (!whole && known.size && news.length + [...known.values()].filter(e => !e.out.extra).length !== total) return readStats(true);
+    const count = news.length + [...known.values()].filter(e => !e.out.extra).length;
+    if (!all && count !== total && !(Date.now() - kept?.gaps < DAY)) return readStats(true);
     const listed = new Map(news.map(e => [e.id, e]));
     // An event's result from its match list. A match list can hold an event the event list
     // leaves out (an event under two ids): its matches count all the same, dated by the
@@ -246,7 +249,7 @@
     // kept, the figures so far shown as each lands; else page by page until every new event is found.
     const found = new Map();
     let failed = 0;
-    if (!known.size) ({ failed } = await pages('event-statistics', Math.ceil(total / 3), 1, (body) => {
+    if (all) ({ failed } = await pages('event-statistics', Math.ceil(total / 3), 1, (body) => {
       for (const event of body.data ?? []) found.set(event.id, event);
       show({ ...(whole && stats ? stats : tally([...found.values()].map(event => entry(listed.get(event.id), event)))), reading: [found.size, total] });
     }));
@@ -258,8 +261,10 @@
     // With a page unanswered, an event missing from the match lists may be on it: it is
     // left out, unkept, so the next visit reads it again.
     const fresh = news.filter(e => !failed || found.has(e.id)).map(e => entry(e, found.get(e.id)));
-    if (!known.size) for (const event of found.values()) if (!listed.has(event.id)) fresh.push(entry(null, event));
-    const events = [...fresh, ...[...known.values()]];
+    if (all) for (const event of found.values()) if (!listed.has(event.id)) fresh.push(entry(null, event));
+    // What is kept fills in what didn't load this time; on a whole read, events Smoothcomp no longer lists go.
+    const ids = new Set(fresh.map(e => e.id));
+    const events = [...fresh, ...[...known.values()].filter(e => !ids.has(e.id) && (!all || listed.has(e.id) || e.out.extra))];
     const missing = total - events.filter(e => !e.out.extra).length;
     // Settled events the server lacks go to it: all of them the first time this browser
     // shares an athlete, then only the newly settled. Events under a week old go every
@@ -267,14 +272,15 @@
     const unshared = events.filter(e => (e.settled ? !shared.has(e.id) && (!kept?.shared || fresh.includes(e)) : fresh.includes(e)));
     let sent = !!kept?.shared || shared.size > 0;
     if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
-    keep(key, { seen: Date.now(), shared: sent, events });
+    // When a whole read last left events out, so it is tried again a day later, not every visit.
+    keep(key, { seen: Date.now(), shared: sent, events, gaps: missing > 0 ? (all ? Date.now() : kept?.gaps) : undefined });
     // When each belt began, so the stats site splits the win rate by belt as this profile does.
     if (plan.belt) ask('/belts', { site, user, worn: plan.worn ?? [plan.belt], starts: (plan.starts ?? [null]).map(t => (Number.isFinite(t) ? t : null)) }).catch(() => {});
     // The event list rows read here join the athlete's history on the stats site: every
     // page on a first read, the new ones after.
     if (news.length) ask('/people', { site, athletes: { [user]: { name: document.title.split(' - ')[0].trim(), history: list.slice(0, 500).map(e => ({
       event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, image: e.cover_image, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
-    show({ ...tally(events), missing: failed ? Math.max(0, missing) : 0, total });
+    show({ ...tally(events), missing: Math.max(0, missing), total });
     reading = false;
     shareProfile();
   }
