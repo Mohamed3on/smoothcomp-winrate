@@ -52,7 +52,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false }: 
         <div className="flex flex-wrap gap-1" role="group" aria-label="Wins that count">
           {WIN_TYPES.map((t) => (
             <Toggle key={t} variant="outline" size="sm" pressed={f.counted(t)} onPressedChange={() => toggleType(t)}
-              className="h-8 rounded-full aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground text-muted-foreground">
+              className="h-8 rounded-full duration-160 ease-out-strong active:scale-[0.97] motion-reduce:active:scale-100 aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground text-muted-foreground">
               <i className={cn('size-2 rounded-full transition-opacity', !f.counted(t) && 'opacity-35')} style={{ background: `var(--color-win-${t})` }} />
               {typeName(t)}
             </Toggle>
@@ -63,7 +63,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false }: 
         <div className="flex flex-wrap gap-1" role="group" aria-label="Belt">
           {BELTS.filter((b) => !['grey', 'yellow', 'orange', 'green'].includes(b) || belts.has(b)).map((b) => (
             <Toggle key={b} variant="outline" size="sm" pressed={belts.has(b)} onPressedChange={() => toggleBelt(b)} aria-label={`${b} belt`}
-              className="h-8 rounded-full px-2.5 aria-pressed:border-primary/60 aria-pressed:bg-primary/12">
+              className="h-8 rounded-full px-2.5 duration-160 ease-out-strong active:scale-[0.97] motion-reduce:active:scale-100 aria-pressed:border-primary/60 aria-pressed:bg-primary/12">
               <Belt belt={b} className={cn('transition-opacity', !belts.has(b) && 'opacity-45')} />
             </Toggle>
           ))}

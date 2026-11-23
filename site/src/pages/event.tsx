@@ -1,5 +1,5 @@
-import { useState } from 'react';
 import { Link } from 'wouter';
+import NumberFlow from '@number-flow/react';
 import { ExternalLink } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -41,8 +41,6 @@ const NameLink = ({ e, f }: { e: EventEntry; f: Filters }) =>
 
 export function EventPage({ id }: { id: string }) {
   const f = useFilters();
-  const [teamSort, setTeamSort] = useState('expected');
-  const [bracketSort, setBracketSort] = useState('wins');
   const { data, isLoading } = useApi<{ event: EventMeta; entries: EventEntry[] }>('event', { site: f.site, off: f.query.off, id });
   if (isLoading) return <Skeleton className="h-9 w-96" />;
   if (!data) return <Empty title="No event here" text="Mat Stats has nothing under this event on this site. Nobody has opened it with Mat Stats yet." />;
@@ -90,6 +88,8 @@ export function EventPage({ id }: { id: string }) {
       && (agemin == null || (age != null && age >= agemin)) && (agemax == null || (age != null && age <= agemax))
       && (!q || [p.name, p.club, p.country_name, ...p.rows.map((r) => r.division)].some((t) => t?.toLowerCase().includes(q)));
   });
+  const teamSort = f.get('sort') || 'expected', bracketSort = f.get('sort') || 'wins';
+  const sortBy = (fallback: string) => (v: string) => f.set({ sort: v === fallback ? null : v });
   const academies: Academy[] = [...Map.groupBy(people.filter((p) => p.club_id || p.club), (p) => p.club_id ?? p.club ?? '').values()].map((ps) => {
     const rows = ps.flatMap((p) => p.rows);
     const expected = [0, 1, 2].map((m) => ps.reduce((n, p) => n + p.calls.filter((c) => c.medal === m).length, 0));
@@ -182,6 +182,9 @@ export function EventPage({ id }: { id: string }) {
   const tabs = fought
     ? [['podiums', 'Podiums', divisions.length], ['academies', 'Academies', academies.length], ['athletes', 'Athletes', shown.length], ...(live ? [['divisions', 'Brackets', divisions.length] as const] : [])] as const
     : [['athletes', 'Athletes', shown.length], ['divisions', 'Brackets', divisions.length], ['academies', 'Academies', academies.length]] as const;
+  // The tab, and its ranking where it has a choice, live in the address so every view can be linked.
+  const tab = tabs.some(([k]) => k === f.get('tab')) ? f.get('tab') : tabs[0][0];
+  const setTab = (v: string) => f.set({ tab: v === tabs[0][0] ? null : v, sort: null });
   const empty = <Empty title="Nothing here" text="Nothing to show for this event yet." />;
   return (
     <div className="flex flex-col gap-6">
@@ -199,13 +202,13 @@ export function EventPage({ id }: { id: string }) {
         </div>
       </header>
       {entries.length ? (
-        <Tabs defaultValue={tabs[0][0]} className="gap-4">
-          <TabsList variant="line">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<span className="ml-1 text-xs text-muted-foreground">{n}</span></TabsTrigger>)}</TabsList>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as string)} className="gap-4">
+          <TabsList variant="line">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<NumberFlow value={n} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>)}</TabsList>
           <TabsContent value="podiums"><Ledger rows={divisions} loading={false} columns={podiumColumns} rowKey={(d) => d.name} empty={empty} /></TabsContent>
-          <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} empty={empty} sort={fought ? undefined : teamSort} onSort={setTeamSort} expand={roster} /></TabsContent>
+          <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} empty={empty} sort={fought ? undefined : teamSort} onSort={sortBy('expected')} expand={roster} /></TabsContent>
           <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user}
             empty={<Empty title="No athletes match" text="Widen the age range, lower the minimum wins, or clear the belt, country and search." action={resetAction(f)} />} /></TabsContent>
-          <TabsContent value="divisions"><Ledger rows={divisions} loading={false} columns={divisionColumns} rowKey={(d) => d.name} empty={empty} sort={bracketSort} onSort={setBracketSort} expand={bracket} /></TabsContent>
+          <TabsContent value="divisions"><Ledger rows={divisions} loading={false} columns={divisionColumns} rowKey={(d) => d.name} empty={empty} sort={bracketSort} onSort={sortBy('wins')} expand={bracket} /></TabsContent>
         </Tabs>
       ) : <Empty title="Nobody listed yet" text="This event's entrants arrive when someone with Mat Stats opens its participants or results page." />}
     </div>

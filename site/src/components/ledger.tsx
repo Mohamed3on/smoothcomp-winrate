@@ -19,6 +19,7 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   empty: React.ReactNode; expand?: (r: T) => React.ReactNode;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [fresh, setFresh] = useState<string | null>(null);
   const header = (
     <tr className="text-xs text-muted-foreground">
       {columns.map((c) => (
@@ -46,7 +47,7 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   // Each row, then its expansion when open: one flat list for the virtualizer.
   type Item = { row: T; index: number; detail: boolean };
   const items: Item[] = rows.flatMap((row, index) => (open.has(rowKey(row)) && expand ? [{ row, index, detail: false }, { row, index, detail: true }] : [{ row, index, detail: false }]));
-  const toggle = (key: string) => setOpen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+  const toggle = (key: string) => { setFresh(open.has(key) ? null : key); setOpen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; }); };
   return (
     <div className={cn('rounded-xl border bg-card transition-opacity', loading && 'opacity-60')} aria-busy={loading}>
       <TableVirtuoso
@@ -67,7 +68,7 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
         }}
         fixedHeaderContent={() => header}
         itemContent={(_, item) => item.detail
-          ? <td colSpan={columns.length} className="bg-primary/8 px-5 pb-4 pl-16">{expand!(item.row)}</td>
+          ? <td colSpan={columns.length} className="bg-primary/8 px-5 pb-4 pl-16"><div className={cn(rowKey(item.row) === fresh && 'transition-[opacity,translate] duration-200 ease-out-strong starting:-translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0')}>{expand!(item.row)}</div></td>
           : <>{columns.map((c) => <td key={c.key} className={cellClass(c, !!c.sort && c.sort === sort)}>{c.cell(item.row, item.index)}</td>)}</>}
       />
     </div>

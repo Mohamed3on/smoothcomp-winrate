@@ -163,6 +163,8 @@
   --color-bronze: #d59a68;
   --color-won: #5fd08a;
   --color-lost: #ff8a80;
+  /* A strong ease-out: quick to answer, soft to settle. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 @layer base {
