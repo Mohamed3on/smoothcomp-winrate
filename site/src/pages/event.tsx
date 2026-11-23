@@ -114,6 +114,8 @@ export function EventPage({ id }: { id: string }) {
   const matches = people.reduce((n, p) => n + p.w, 0);
 
   const rank = (i: number) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span>;
+  // Won and lost bars share one scale: the most finishes anyone shown won or lost.
+  const most = Math.max(1, ...shown.flatMap((p) => [winsOf(p.won, f.counted), winsOf(p.lost, f.counted)]));
   const athleteColumns: Column<Person>[] = [
     { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => rank(i) },
     // Once fought, each division and their place there sits under the name, as in the extension.
@@ -124,8 +126,8 @@ export function EventPage({ id }: { id: string }) {
     ...(fought ? [
       { key: 'record', label: 'Record', width: '5.5rem', cell: (p: Person) => <Record w={p.w} l={p.l} /> },
       { key: 'rate', label: 'Win rate', width: '5.5rem', title: 'Wins over matches here, counted finishes', cell: (p: Person) => <span className="font-semibold">{rate(p.w, p.l) ?? '–'}</span> },
-      { key: 'won', label: 'How they won', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.won, f.counted) ? <Mix types={p.won} f={f} /> : <span className="text-muted-foreground">–</span>) },
-      { key: 'lost', label: 'How they lost', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.lost, f.counted) ? <Mix types={p.lost} f={f} /> : <span className="text-muted-foreground">–</span>) },
+      { key: 'won', label: 'How they won', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.won, f.counted) ? <Mix types={p.won} f={f} scale={winsOf(p.won, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
+      { key: 'lost', label: 'How they lost', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.lost, f.counted) ? <Mix types={p.lost} f={f} scale={winsOf(p.lost, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
     ] : []),
     ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', title: 'Medals their brackets point to, by career wins', cell: (p: Person) => <Expected e={[0, 1, 2].map((m) => p.calls.filter((c) => c.medal === m).length)} /> }]),
     { key: 'career', label: 'Career wins', width: '8rem', title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },

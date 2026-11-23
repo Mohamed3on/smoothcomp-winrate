@@ -57,7 +57,7 @@ export function Hidden({ className }: { className?: string }) {
 export function Identity({ a, f, club = true, children }: { a: Person; f: Filters; club?: boolean; children?: React.ReactNode }) {
   const on = `Profile on ${f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}`;
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className={cn("flex min-w-0 gap-3", children ? "items-start" : "items-center")}>
       <Photo name={a.name} photo={a.photo} />
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex items-center gap-1.5">
@@ -87,13 +87,14 @@ const ordered = (types: Types) => Object.entries(types ?? {}).filter(([, n]) => 
   .sort(([a], [b]) => ((WIN_TYPES as readonly string[]).indexOf(a) + 1 || 99) - ((WIN_TYPES as readonly string[]).indexOf(b) + 1 || 99));
 
 // Every counted win, most decisive finish first: the extension's ramp.
-export function Mix({ types, f, large = false, legend = true }: { types: Types; f: Filters; large?: boolean; legend?: boolean }) {
+// scale: the bar's length as a share of the column's longest, so totals compare down a table.
+export function Mix({ types, f, large = false, legend = true, scale = 1 }: { types: Types; f: Filters; large?: boolean; legend?: boolean; scale?: number }) {
   const shown = ordered(types).filter(([t]) => f.counted(t));
   if (!shown.length) return <span className="text-xs text-muted-foreground">No counted wins</span>;
   const title = shown.map(([t, c]) => `${typeName(t)} ${c}`).join(' · ');
   return (
     <div className="flex min-w-0 flex-col gap-1" title={title}>
-      <div role="img" aria-label={title} className={cn('flex gap-px overflow-hidden rounded-full bg-muted', large ? 'h-2.5' : 'h-1.5')}>
+      <div role="img" aria-label={title} style={{ width: `${Math.max(scale, 0.04) * 100}%` }} className={cn('flex gap-px overflow-hidden rounded-full bg-muted', large ? 'h-2.5' : 'h-1.5')}>
         {shown.map(([t, c]) => <i key={t} className="block min-w-0.5" style={{ flex: Number(c), background: colour(t) }} />)}
       </div>
       {legend && <div className="text-xs text-muted-foreground">{shown.slice(0, 3).map(([t, c], i) => <span key={t}>{i ? ' · ' : ''}<b className="font-semibold text-foreground/80">{c}</b> {typeName(t).toLowerCase()}</span>)}</div>}
