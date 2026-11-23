@@ -69,6 +69,14 @@ const GROUPED = (k) => `CASE WHEN ${k} LIKE 'sub%' THEN 'submission' WHEN ${k} L
 export const GROUPS = ['submission', 'points', 'walkover', 'decision', 'disqualification', 'stoppage', 'fastest_escape', 'other'];
 const cols = (prefix) => GROUPS.map((g) => `${prefix}_${g}`).join(', ');
 
+// The highest belt an athlete's divisions name, for one with no belt read: a division naming
+// several ("Expert (Brown/Black)") names none.
+const NAMED = `'${JSON.stringify(BELTS)}'`;
+const namedBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each(${NAMED}) k
+      WHERE e.site = ?1 AND e.user = ${user} AND replace(lower(e.division), 'gray', 'grey') LIKE '%' || k.value || '%'
+        AND (SELECT count(*) FROM json_each(${NAMED}) j WHERE replace(lower(e.division), 'gray', 'grey') LIKE '%' || j.value || '%') = 1
+      ORDER BY k.key DESC LIMIT 1)`;
+
 // Every athlete with something to rank, one row each, rebuilt with their tally. A career is
 // Smoothcomp's, the latest read however old; with none readable (a profile not public, or not read yet), an
 // athlete's record stands in: wins by finish and losses from their profile's match lists where it was
@@ -82,7 +90,7 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
     SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last,
-      p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt) AS belt
+      p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt, ${namedBelt('us.user')}) AS belt
     FROM us
     LEFT JOIN athletes c ON c.site = ?1 AND c.user = us.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL
     LEFT JOIN tallies t ON t.site = ?1 AND t.user = us.user
