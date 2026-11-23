@@ -34,13 +34,12 @@ function filters(params) {
 // Every athlete with something to rank, with who they are. A career is Smoothcomp's;
 // with none readable (a profile not public, or not read yet), an athlete's results at
 // the events Mat Stats has read stand in: wins by finish, losses, placements, events.
-// Where a profile was opened, its match lists give a record too: `won`, `lost` (walkovers never
-// count there; its fastest escape is a career's fastest_escape), with the results read at any event
-// those lists don't hold yet. An athlete ranked on results has theirs.
+// A record (`won`, `lost`) comes from the match lists of their profile where it was opened (walkovers
+// never count there; its fastest escape is a career's fastest_escape) and the results read at every
+// event those lists don't hold: for an athlete whose profile nobody opened, every event read.
 // ?1 site, ?2 the finish types left out (JSON), ?3 oldest career kept.
-const CAREERS = `listed AS (SELECT DISTINCT user FROM outcomes WHERE site = ?1),
-  unlisted AS (
-    SELECT e.* FROM entries e JOIN listed USING (user)
+const CAREERS = `unlisted AS (
+    SELECT e.* FROM entries e
     WHERE e.site = ?1 AND e.fought = 1 AND NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = e.user AND x.event = e.event)),
   rated AS (
     SELECT user, total(w) AS won, total(l) AS lost FROM (

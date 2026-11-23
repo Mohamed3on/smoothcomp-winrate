@@ -25,7 +25,7 @@ const pct = (w: number, l: number) => `${Math.round((w / (w + l)) * 100)}%`;
 const tone = (w: number, l: number) => ({ color: `oklch(0.8 0.14 ${25 + 120 * Math.min(1, Math.max(0, (w / (w + l) - 0.4) / 0.45))})` });
 
 // Each finish they won or lost by: W–L from their profile's match lists with the results read at
-// any event those don't hold yet, or from the events read alone; a finish only the career names
+// every event those don't hold; a finish only the career names
 // (walkovers, the rarer ones) comes as wins alone.
 interface Finish { key: string; w: number; l: number | null }
 function finishes(career: Athlete | null, outcomes: Outcome[], entries: Entry[]): Finish[] {
@@ -35,7 +35,7 @@ function finishes(career: Athlete | null, outcomes: Outcome[], entries: Entry[])
     by.set(keyOf(t), { key: keyOf(t), w: (was?.w ?? 0) + w, l: (was?.l ?? 0) + l });
   };
   for (const o of outcomes) for (const [t, [w, l]] of Object.entries(o.out.types)) add(t, w, l);
-  if (outcomes.length || career?.source === 'results') for (const e of unlisted(entries, outcomes)) {
+  for (const e of unlisted(entries, outcomes)) {
     for (const [t, n] of Object.entries(e.wins ?? {})) add(t, Number(n) || 0, 0);
     for (const [t, n] of Object.entries(e.losses ?? {})) add(t, 0, Number(n) || 0);
   }
@@ -423,7 +423,8 @@ export function AthletePage({ id }: { id: string }) {
   // Won or lost alone lists just those matches, event by event; all keeps every event.
   const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOf(r.outcome).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
   const side = data.profile ? OnProfile({ p: data.profile, f, id }) : null;
-  const over = outcomes.length ? `across ${plural(outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size, 'event')}` : fromResults ? `at ${plural(career?.events ?? 0, 'event')} read` : '';
+  const rated = outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size;
+  const over = !rated ? '' : outcomes.length ? `across ${plural(rated, 'event')}` : `at ${plural(rated, 'event')} read`;
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center gap-5">
