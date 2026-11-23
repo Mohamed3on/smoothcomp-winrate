@@ -155,7 +155,7 @@ async function athlete(env, params) {
   const f = filters(params);
   const user = params.get('id') ?? '';
   if (!/^\d{1,12}$/.test(user)) return json({ error: 'Bad athlete' }, 400);
-  const [career, person, entries, seen, history, outcomes] = await env.DB.batch([
+  const [career, person, entries, seen, history, outcomes, belts] = await env.DB.batch([
     env.DB.prepare(`WITH ${CAREERS} SELECT * FROM careers WHERE user = ?4`).bind(f.site, f.off, Date.now() - KEPT, user),
     env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, v.title, v.start, v.city, v.country
@@ -165,6 +165,8 @@ async function athlete(env, params) {
       FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(f.site, user),
     // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
     env.DB.prepare(`SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(f.site, user),
+    // When each belt began, as their profile dates them.
+    env.DB.prepare("SELECT worn, starts FROM belts WHERE site = ?1 AND user = ?2").bind(f.site, user),
   ]);
   if (!career.results.length && !person.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
   return json({
@@ -174,6 +176,7 @@ async function athlete(env, params) {
     entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses) })),
     seen: seen.results[0]?.events ? seen.results[0] : null,
     outcomes: outcomes.results.map((o) => ({ ...o, out: JSON.parse(o.out) })),
+    belts: belts.results[0] ? { worn: JSON.parse(belts.results[0].worn), starts: JSON.parse(belts.results[0].starts) } : null,
   }, 200, 'no-store'); // a profile just opened shows at once
 }
 

@@ -91,3 +91,12 @@ CREATE TABLE IF NOT EXISTS outcomes (
   at INTEGER NOT NULL,
   PRIMARY KEY (site, user, event)
 );
+-- When each belt an athlete wore began (epoch ms, null for the first), from their profile's belt list.
+CREATE TABLE IF NOT EXISTS belts (
+  site TEXT NOT NULL,
+  user TEXT NOT NULL,
+  worn TEXT NOT NULL,
+  starts TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, user)
+);

@@ -207,7 +207,17 @@ async function keepOutcomes(env, { site, user, events }) {
   return json({ kept: rows.length });
 }
 
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes };
+// When each belt an athlete wore began, as their profile's belt list dates them: the stats site
+// splits their win rate by it. The latest read replaces the last.
+async function belts(env, { site, user, worn, starts }) {
+  if (!SITES.includes(site) || !validUser(user) || !Array.isArray(worn) || !worn.length || worn.length > BELTS.length || !worn.every(b => BELTS.includes(b))
+    || !Array.isArray(starts) || starts.length !== worn.length || !starts.every(t => t === null || Number.isSafeInteger(t))) return json({ error: 'Bad belts' }, 400);
+  await env.DB.prepare('INSERT OR REPLACE INTO belts (site, user, worn, starts, at) VALUES (?1, ?2, ?3, ?4, ?5)')
+    .bind(site, user, JSON.stringify(worn), JSON.stringify(starts), Date.now()).run();
+  return json({});
+}
+
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes, '/belts': belts };
 
 // A page of the site, with a CSP nonce made for this response alone. Cloudflare's bot
 // detection injects an inline script and signs it with the nonce it finds in this header.

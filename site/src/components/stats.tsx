@@ -22,7 +22,7 @@ export function Flag({ code, name }: { code: string | null; name?: string | null
   return glyph ? <span role="img" aria-label={label} title={label} className="leading-none">{glyph}</span> : null;
 }
 
-const BELT_COLOUR: Record<string, string> = { white: '#f4f5f6', grey: '#8d949d', yellow: '#e7bd28', orange: '#dc7627', green: '#2b8a56', blue: '#2871b8', purple: '#744ca3', brown: '#79472f', black: '#17191c' };
+export const BELT_COLOUR: Record<string, string> = { white: '#f4f5f6', grey: '#8d949d', yellow: '#e7bd28', orange: '#dc7627', green: '#2b8a56', blue: '#2871b8', purple: '#744ca3', brown: '#79472f', black: '#17191c' };
 export function Belt({ belt, className }: { belt: string | null; className?: string }) {
   if (!belt || !BELT_COLOUR[belt]) return null;
   return (

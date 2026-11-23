@@ -7,13 +7,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Toggle } from '@/components/ui/toggle';
 import { Empty } from '@/components/empty';
-import { Belt, Flag, Medals, Photo, Place, Record } from '@/components/stats';
+import { BELT_COLOUR, Belt, Flag, Medals, Photo, Place, Record } from '@/components/stats';
 import { useApi, type Athlete, type Entry, type Outcome, type Past } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, date, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; seen: { wins: number; losses: number; events: number } | null }
+interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; belts?: Belts | null; seen: { wins: number; losses: number; events: number } | null }
 
 // A profile's fastest escape is a career's fastest_escape: one finish, one switch.
 const keyOf = (t: string) => (t === 'escape' ? 'fastest_escape' : t);
@@ -102,8 +102,56 @@ function EventLink({ row, f }: { row: Row; f: Filters }) {
     : <a href={`${f.home}/en/event/${row.id}`} rel="noopener" className="inline-flex items-center gap-1 font-medium hover:text-primary">{title}<ExternalLink className="size-3 shrink-0 text-muted-foreground" /></a>;
 }
 
+// When each belt began (null for the first), as their profile dates them.
+interface Belts { worn: string[]; starts: (number | null)[] }
+// The win rate at each belt worn, highest first, as their profile splits it: an event takes the
+// belt worn on its date; undated ones count only overall. The current belt shows even with no events.
+interface Split { belt: string; w: number; l: number; events: number }
+function splitByBelt(belts: Belts | null | undefined, outcomes: Outcome[], entries: Entry[], f: Filters): Split[] | null {
+  if (!belts || belts.worn.length < 2) return null;
+  const beltOf = (start: string | null | undefined) => {
+    const t = Date.parse(start ?? "");
+    return Number.isNaN(t) ? null : belts.worn[belts.starts.findLastIndex((s) => (s ?? -Infinity) <= t)] ?? belts.worn[0];
+  };
+  const by = new Map(belts.worn.map((b) => [b, { belt: b, w: 0, l: 0, events: 0 }]));
+  const add = (start: string | null | undefined, pairs: [string, number, number][], event: boolean) => {
+    const t = by.get(beltOf(start) ?? "");
+    if (!t) return;
+    for (const [type, w, l] of pairs) if (f.counted(keyOf(type))) { t.w += w; t.l += l; }
+    if (event) t.events++;
+  };
+  for (const o of outcomes) add(o.start, Object.entries(o.out.types).map(([t, [w, l]]) => [t, w, l]), true);
+  const seen = new Set<string>();
+  if (outcomes.length) for (const e of unlisted(entries, outcomes)) {
+    add(e.start, [...Object.entries(e.wins ?? {}).map(([t, n]): [string, number, number] => [t, Number(n) || 0, 0]), ...Object.entries(e.losses ?? {}).map(([t, n]): [string, number, number] => [t, 0, Number(n) || 0])], !seen.has(e.event));
+    seen.add(e.event);
+  }
+  const current = belts.worn[belts.worn.length - 1];
+  return [...by.values()].filter((t) => t.belt === current || t.events).reverse();
+}
+
+function BeltSplit({ split }: { split: Split[] }) {
+  return (
+    <ul className="flex max-w-md flex-col gap-2" aria-label="Win rate at each belt">
+      {split.map(({ belt, w, l, events }) => {
+        const label = !events ? `No events at ${belt} yet` : `${w + l ? `${pct(w, l)} of matches won` : "No matches by these finishes"} at ${belt}: ${plural(w, "win")} and ${l} loss${l === 1 ? "" : "es"} in ${plural(events, "event")}`;
+        return (
+          <li key={belt} title={label} aria-label={label} className="grid grid-cols-[22px_3rem_1fr_4.5rem] items-center gap-3">
+            <Belt belt={belt} />
+            <b className="text-right font-semibold tabular-nums" style={w + l ? tone(w, l) : undefined}>{w + l ? pct(w, l) : <span className="text-muted-foreground">–</span>}</b>
+            <span className="h-1.5 overflow-hidden rounded-full bg-muted">
+              {w + l > 0 && <span className="block h-full rounded-full shadow-[inset_0_0_0_1px_rgb(255_255_255/0.2)]" style={{ width: `${(w / (w + l)) * 100}%`, background: BELT_COLOUR[belt] }} />}
+            </span>
+            <span className="text-right text-sm">{w + l ? <Record w={w} l={l} /> : null}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 // The headline: the win rate over the finishes switched on, and those switches, each with its W–L.
-function RecordBand({ fins, f, over }: { fins: Finish[]; f: Filters; over: string }) {
+function RecordBand({ fins, f, over, split }: { fins: Finish[]; f: Filters; over: string; split: Split[] | null }) {
   const on = fins.filter((x) => f.counted(x.key));
   const rated = on.filter((x) => x.l != null);
   const [w, l] = rated.reduce(([a, b], x) => [a + x.w, b + (x.l ?? 0)], [0, 0]);
@@ -137,6 +185,7 @@ function RecordBand({ fins, f, over }: { fins: Finish[]; f: Filters; over: strin
           </Toggle>
         ))}
       </div>
+      {split && <BeltSplit split={split} />}
     </Card>
   );
 }
@@ -343,7 +392,7 @@ export function AthletePage({ id }: { id: string }) {
         </div>
       </header>
 
-      {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} />
+      {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} split={splitByBelt(data.belts, outcomes, entries, f)} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
       <div className={cn('grid items-start gap-6', outcomes.length && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>

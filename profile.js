@@ -121,7 +121,7 @@
     const times = (b) => listed(b).flatMap(s => s.events ?? []).map(time);
     const starts = worn.map((b, i) => (!i ? -Infinity : times(b).length && listed(b).every(s => (s.events?.length ?? 0) >= s.competed_count)
       ? Math.min(...times(b)) : Math.max(...times(worn[i - 1])) + 1));
-    return { belt, worn, shown: new Set([belt, ...worn]).size, beltOf: (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0] };
+    return { belt, worn, starts, shown:new Set([belt, ...worn]).size, beltOf: (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0] };
   }
   // Each event's result is kept for good once it is settled (started a week ago or
   // more), so a visit draws at once from what is kept and reads only what is new: both
@@ -254,6 +254,8 @@
     let sent = !!kept?.shared || shared.size > 0;
     if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
     keep(key, { seen: Date.now(), shared: sent, events });
+    // When each belt began, so the stats site splits the win rate by belt as this profile does.
+    if (plan.belt) ask('/belts', { site, user, worn: plan.worn ?? [plan.belt], starts: (plan.starts ?? [null]).map(t => (Number.isFinite(t) ? t : null)) }).catch(() => {});
     // The event list rows read here join the athlete's history on the stats site: every
     // page on a first read, the new ones after.
     if (news.length) ask('/people', { site, athletes: { [user]: { name: document.title.split(' - ')[0].trim(), history: list.slice(0, 500).map(e => ({
