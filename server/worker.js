@@ -1,8 +1,15 @@
 // The career cache every install shares. Installs keep what they read here and
 // look up a whole event at once; each one cleans what it gets (career-cache.js),
 // so the worker only bounds what it stores.
-import { API } from './stats.js';
+import { WorkerEntrypoint } from 'cloudflare:workers';
+import { API, TALLY } from './stats.js';
 import { crawl, queue } from './crawl.js';
+
+// Recounts these athletes' totals (stats.js TALLY), a few hundred at a time.
+async function retally(env, site, users) {
+  const all = [...new Set(users)].filter(validUser);
+  for (let i = 0; i < all.length; i += 400) await env.DB.prepare(TALLY).bind(site, JSON.stringify(all.slice(i, i + 400))).run();
+}
 
 const KEPT = 30 * 24 * 60 * 60 * 1000; // the longest career-cache.js keeps anything
 const SITES = ['smoothcomp.com', 'ajptour.com'];
@@ -141,6 +148,8 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
 async function people(env, { site, athletes }) {
   if (!SITES.includes(site)) return json({ error: 'Bad people' }, 400);
   await identify(env, site, null, null, athletes, false);
+  // An event list read changes how many events they have and when they last fought.
+  await retally(env, site, Object.entries(athletes ?? {}).filter(([, a]) => Array.isArray(a?.history)).map(([user]) => user));
   return json({});
 }
 
@@ -161,6 +170,7 @@ async function record(env, { site, event, records, meta, athletes, read }) {
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4) WHERE NOT EXISTS (SELECT 1 FROM records WHERE site = ?1 AND event = ?2 AND at > ?3)`)
     .bind(site, event, at, JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
   await identify(env, site, event, meta, athletes, true, at);
+  await retally(env, site, [...rows.map(([user]) => user), ...Object.keys(athletes ?? {})]);
   return json({});
 }
 
@@ -207,6 +217,7 @@ async function keepOutcomes(env, { site, user, events }) {
     WHERE outcomes.at < unixepoch(outcomes.start) * 1000 + ?5
       OR (outcomes.out ->> '$.v' IS NOT 2 AND excluded.out ->> '$.v' = 2
         AND excluded.out ->> '$.types' = outcomes.out ->> '$.types' AND excluded.out ->> '$.losses' = outcomes.out ->> '$.losses')`).bind(site, user, Date.now(), JSON.stringify(rows), SETTLED).run();
+  if (rows.length) await retally(env, site, [user]);
   return json({ kept: rows.length });
 }
 
@@ -279,8 +290,16 @@ export default {
     // Each minute, results for events nobody opened; the queue is refilled every half hour.
     if (controller.cron === '* * * * *') {
       if (new Date(controller.scheduledTime).getUTCMinutes() % 30 === 0) await queue(env);
-      return crawl(env, record);
+      // Three lanes, each its own invocation with its own six connections, each on its own event.
+      return Promise.all([crawl(env, record), env.CRAWLER.run(), env.CRAWLER.run()]);
     }
     await env.DB.prepare('DELETE FROM athletes WHERE at <= ?1').bind(Date.now() - KEPT).run();
   },
 };
+
+// A crawl lane, called through the CRAWLER binding to this same Worker, so it runs as its own invocation.
+export class Crawler extends WorkerEntrypoint {
+  async run() {
+    await crawl(this.env, record);
+  }
+}

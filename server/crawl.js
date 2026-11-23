@@ -194,10 +194,10 @@ export async function crawl(env, record) {
   const { get, left } = client();
   const now = Date.now();
   while (left() > 10) {
-    const job = await env.DB.prepare(`SELECT * FROM crawls WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY start DESC LIMIT 1`).bind(now).first();
+    // Taken and held in one statement, so lanes running side by side never take the same event.
+    const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY start DESC LIMIT 1) RETURNING *`)
+      .bind(Date.now(), Date.now() + 10 * 60e3).first();
     if (!job) return;
-    // Held for this run, so an overlapping one takes the next event.
-    await env.DB.prepare('UPDATE crawls SET next = ?3 WHERE site = ?1 AND event = ?2').bind(job.site, job.event, now + 10 * 60e3).run();
     const host = HOSTS[job.site];
     const save = (state, data, next = 0, tries = job.tries) => env.DB.prepare('UPDATE crawls SET state = ?3, data = ?4, next = ?5, tries = ?6, at = ?7 WHERE site = ?1 AND event = ?2')
       .bind(job.site, job.event, state, data == null ? null : JSON.stringify(data), next, tries, Date.now()).run();

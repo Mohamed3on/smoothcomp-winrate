@@ -31,60 +31,60 @@ function filters(params) {
   };
 }
 
+// Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
+// ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:
+// `rec` from the match lists of their profile where it was opened (walkovers never count there;
+// its fastest escape is a career's fastest_escape) with the results read at every event those lists
+// don't hold (for an athlete whose profile nobody opened, every event read); `seen` from every
+// event read. Medals and events from the events read, `listed` the events their profile lists,
+// `last` their latest event. ?1 site, ?2 the athletes (JSON).
+export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last)
+  WITH us AS (SELECT DISTINCT value AS user FROM json_each(?2)),
+  fe AS (SELECT e.* FROM entries e JOIN us USING (user) WHERE e.site = ?1 AND e.fought = 1),
+  per AS (
+    SELECT o.user, iif(j.key = 'escape', 'fastest_escape', j.key) AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM outcomes o JOIN us USING (user), json_each(o.out, '$.types') j WHERE o.site = ?1
+    UNION ALL SELECT f.user, j.key, j.value, 0 FROM fe f, json_each(f.wins) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
+    UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)),
+  rec AS (SELECT user, json_group_object(t, json_array(w, l)) AS rec FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM per GROUP BY user, t) GROUP BY user),
+  read AS (SELECT f.user, j.key AS t, j.value AS w, 0 AS l FROM fe f, json_each(f.wins) j UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j),
+  seen AS (SELECT user, json_group_object(t, json_array(w, l)) AS seen FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM read GROUP BY user, t) GROUP BY user),
+  med AS (SELECT user, sum(place = 1) AS gold, sum(place = 2) AS silver, sum(place = 3) AS bronze, count(DISTINCT event) AS events FROM fe GROUP BY user),
+  listed AS (SELECT h.user, count(*) AS listed, max(substr(h.start, 1, 10)) AS last FROM history h JOIN us USING (user) WHERE h.site = ?1 GROUP BY h.user),
+  latest AS (SELECT f.user, max(substr(v.start, 1, 10)) AS last FROM fe f JOIN events v ON v.site = f.site AND v.event = f.event GROUP BY f.user)
+  SELECT ?1, us.user, rec.rec, seen.seen, coalesce(med.gold, 0), coalesce(med.silver, 0), coalesce(med.bronze, 0), coalesce(med.events, 0), coalesce(listed.listed, 0),
+    nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), '')
+  FROM us LEFT JOIN rec USING (user) LEFT JOIN seen USING (user) LEFT JOIN med USING (user) LEFT JOIN listed USING (user) LEFT JOIN latest USING (user)`;
+
 // Every athlete with something to rank, with who they are. A career is Smoothcomp's;
 // with none readable (a profile not public, or not read yet), an athlete's results at
 // the events Mat Stats has read stand in: wins by finish, losses, placements, events.
-// A record (`won`, `lost`) comes from the match lists of their profile where it was opened (walkovers
-// never count there; its fastest escape is a career's fastest_escape) and the results read at every
-// event those lists don't hold: for an athlete whose profile nobody opened, every event read.
+// The record (`won`, `lost`) is their tally's under the finishes counted.
 // ?1 site, ?2 the finish types left out (JSON), ?3 oldest career kept.
-const CAREERS = `unlisted AS (
-    SELECT e.* FROM entries e
-    WHERE e.site = ?1 AND e.fought = 1 AND NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = e.user AND x.event = e.event)),
-  rated AS (
-    SELECT user, total(w) AS won, total(l) AS lost FROM (
-      SELECT o.user, j.value ->> 0 AS w, j.value ->> 1 AS l FROM outcomes o, json_each(o.out, '$.types') j
-      WHERE o.site = ?1 AND iif(j.key = 'escape', 'fastest_escape', j.key) NOT IN (SELECT value FROM json_each(?2))
-      UNION ALL SELECT u.user, j.value, 0 FROM unlisted u, json_each(u.wins) j WHERE j.key NOT IN (SELECT value FROM json_each(?2))
-      UNION ALL SELECT u.user, 0, j.value FROM unlisted u, json_each(u.losses) j WHERE j.key NOT IN (SELECT value FROM json_each(?2)))
-    GROUP BY user),
-  seen_wins AS (
-    SELECT e.user, j.key AS type, sum(j.value) AS n FROM entries e, json_each(e.wins) j WHERE e.site = ?1 AND e.fought = 1 GROUP BY e.user, j.key),
-  seen_losses AS (
-    SELECT e.user, total(j.value) AS n FROM entries e, json_each(e.losses) j
-    WHERE e.site = ?1 AND e.fought = 1 AND j.key NOT IN (SELECT value FROM json_each(?2)) GROUP BY e.user),
-  seen AS (
-    SELECT e.user, sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, count(DISTINCT e.event) AS events
-    FROM entries e WHERE e.site = ?1 AND e.fought = 1 GROUP BY e.user),
+const CAREERS = `t AS (SELECT * FROM tallies WHERE site = ?1),
   readable AS (
     SELECT user, at, entry FROM athletes WHERE site = ?1 AND kind = 'careers' AND at > ?3 AND entry ->> '$.wins' IS NOT NULL),
   base AS (
-    SELECT user, at, 'career' AS source, entry ->> '$.wins' AS types, NULL AS losses,
+    SELECT readable.user, at, 'career' AS source, entry ->> '$.wins' AS types, NULL AS losses,
       coalesce(entry ->> '$.medals[0]', 0) AS gold, coalesce(entry ->> '$.medals[1]', 0) AS silver, coalesce(entry ->> '$.medals[2]', 0) AS bronze,
-      nullif(max(coalesce(entry ->> '$.events', 0), (SELECT count(*) FROM history h WHERE h.site = ?1 AND h.user = readable.user)), 0) AS events
-    FROM readable
+      nullif(max(coalesce(entry ->> '$.events', 0), coalesce(t.listed, 0)), 0) AS events
+    FROM readable LEFT JOIN t USING (user)
     UNION ALL
-    SELECT s.user, NULL, 'results', coalesce((SELECT json_group_object(type, n) FROM seen_wins w WHERE w.user = s.user), '{}'),
-      coalesce((SELECT n FROM seen_losses l WHERE l.user = s.user), 0), s.gold, s.silver, s.bronze, s.events
-    FROM seen s WHERE s.user NOT IN (SELECT user FROM readable)),
-  lasts AS (
-    SELECT user, max(substr(start, 1, 10)) AS last FROM (
-      SELECT user, start FROM history WHERE site = ?1
-      UNION ALL SELECT e.user, v.start FROM entries e JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.fought = 1)
-    GROUP BY user),
+    SELECT t.user, NULL, 'results', coalesce((SELECT json_group_object(key, value ->> 0) FROM json_each(t.seen) WHERE value ->> 0 > 0), '{}'),
+      (SELECT total(value ->> 1) FROM json_each(t.seen) WHERE key NOT IN (SELECT value FROM json_each(?2))), t.gold, t.silver, t.bronze, t.events
+    FROM t WHERE t.events > 0 AND t.user NOT IN (SELECT user FROM readable)),
   counted AS (
   SELECT b.*, (SELECT total(value) FROM json_each(b.types) WHERE key NOT IN (SELECT value FROM json_each(?2))) AS wins FROM base b),
   careers AS (
   SELECT b.user, b.at, b.source, b.losses, b.wins,
-    coalesce(rt.won, iif(b.source = 'results', b.wins, NULL)) AS won, coalesce(rt.lost, iif(b.source = 'results', b.losses, NULL)) AS lost,
+    coalesce((SELECT iif(count(*), total(value ->> 0), NULL) FROM json_each(tl.rec) WHERE key NOT IN (SELECT value FROM json_each(?2))), iif(b.source = 'results', b.wins, NULL)) AS won,
+    coalesce((SELECT iif(count(*), total(value ->> 1), NULL) FROM json_each(tl.rec) WHERE key NOT IN (SELECT value FROM json_each(?2))), iif(b.source = 'results', b.losses, NULL)) AS lost,
     coalesce(b.types ->> '$.walkover', 0) AS walkovers,
     coalesce(b.types ->> '$.submission', 0) AS submission,
     coalesce(b.types ->> '$.points', 0) AS points,
     b.types, b.gold, b.silver, b.bronze, b.events,
-    p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt) AS belt, ls.last
+    p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt) AS belt, tl.last
   FROM counted b
-  LEFT JOIN rated rt ON rt.user = b.user
-  LEFT JOIN lasts ls ON ls.user = b.user
+  LEFT JOIN t tl ON tl.user = b.user
   LEFT JOIN people p ON p.site = ?1 AND p.user = b.user
   LEFT JOIN athletes r ON r.site = ?1 AND r.user = b.user AND r.kind = 'ranks')`;
 

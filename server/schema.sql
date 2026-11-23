@@ -125,3 +125,18 @@ CREATE TABLE IF NOT EXISTS crawls (
   PRIMARY KEY (site, event)
 );
 CREATE INDEX IF NOT EXISTS crawls_next ON crawls (state, start);
+-- Each athlete's totals (stats.js TALLY), recounted whenever their results, match lists or event
+-- list change: per finish [won, lost] as rated (`rec`) and as read (`seen`), medals, events.
+CREATE TABLE IF NOT EXISTS tallies (
+  site TEXT NOT NULL,
+  user TEXT NOT NULL,
+  rec TEXT,
+  seen TEXT,
+  gold INTEGER NOT NULL DEFAULT 0,
+  silver INTEGER NOT NULL DEFAULT 0,
+  bronze INTEGER NOT NULL DEFAULT 0,
+  events INTEGER NOT NULL DEFAULT 0,
+  listed INTEGER NOT NULL DEFAULT 0,
+  last TEXT,
+  PRIMARY KEY (site, user)
+);
