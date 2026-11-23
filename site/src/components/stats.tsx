@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import { ExternalLink, Lock } from 'lucide-react';
+import { CircleDashed, ExternalLink, Lock } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { WIN_TYPES, type Filters } from '@/lib/filters';
@@ -86,18 +86,35 @@ const colour = (t: string) => `var(--color-win-${(WIN_TYPES as readonly string[]
 const ordered = (types: Types) => Object.entries(types ?? {}).filter(([, n]) => Number(n) > 0)
   .sort(([a], [b]) => ((WIN_TYPES as readonly string[]).indexOf(a) + 1 || 99) - ((WIN_TYPES as readonly string[]).indexOf(b) + 1 || 99));
 
+const SHORT: Record<string, string> = { submission: 'sub', stoppage: 'stop', points: 'pts', decision: 'dec', disqualification: 'DQ', walkover: 'WO' };
+
 // Every counted win, most decisive finish first: the extension's ramp.
 // scale: the bar's length as a share of the column's longest, so totals compare down a table.
-export function Mix({ types, f, large = false, legend = true, scale = 1 }: { types: Types; f: Filters; large?: boolean; legend?: boolean; scale?: number }) {
+// legend 'short': one line naming the two commonest finishes, in the ramp's order, and counting the rest, so the ramp's blues are never the only key.
+export function Mix({ types, f, large = false, legend = true, scale = 1, note }: { types: Types; f: Filters; large?: boolean; legend?: boolean | 'short'; scale?: number; note?: React.ReactNode }) {
   const shown = ordered(types).filter(([t]) => f.counted(t));
   if (!shown.length) return <span className="text-xs text-muted-foreground">No counted wins</span>;
   const title = shown.map(([t, c]) => `${typeName(t)} ${c}`).join(' · ');
+  const commonest = [...shown].sort(([, a], [, b]) => Number(b) - Number(a));
+  const named = new Set(commonest.slice(0, 2).map(([t]) => t));
+  const rest = commonest.slice(2).reduce((n, [, c]) => n + Number(c), 0);
   return (
     <div className="flex min-w-0 flex-col gap-1" title={title}>
       <div role="img" aria-label={title} style={{ width: `${Math.max(scale, 0.04) * 100}%` }} className={cn('flex gap-px overflow-hidden rounded-full bg-muted', large ? 'h-2.5' : 'h-1.5')}>
         {shown.map(([t, c]) => <i key={t} className="block min-w-0.5" style={{ flex: Number(c), background: colour(t) }} />)}
       </div>
-      {legend && <div className="text-xs text-muted-foreground">{shown.slice(0, 3).map(([t, c], i) => <span key={t}>{i ? ' · ' : ''}<b className="font-semibold text-foreground/80">{c}</b> {typeName(t).toLowerCase()}</span>)}</div>}
+      {legend === 'short' && (
+        <div className="flex items-center gap-2.5 whitespace-nowrap text-xs text-muted-foreground">
+          {shown.filter(([t]) => named.has(t)).map(([t, c]) => (
+            <span key={t} className="inline-flex items-center gap-1">
+              <i className="size-1.5 rounded-full" style={{ background: colour(t) }} /><b className="font-semibold text-foreground/80">{fmt(Number(c))}</b>{SHORT[t] ?? typeName(t).toLowerCase()}
+            </span>
+          ))}
+          {rest > 0 && <span>+{fmt(rest)}</span>}
+          {note}
+        </div>
+      )}
+      {legend === true && <div className="text-xs text-muted-foreground">{shown.slice(0, 3).map(([t, c], i) => <span key={t}>{i ? ' · ' : ''}<b className="font-semibold text-foreground/80">{c}</b> {typeName(t).toLowerCase()}</span>)}</div>}
     </div>
   );
 }
@@ -138,7 +155,8 @@ export function Place({ p }: { p: number | null }) {
 
 export function FromResults({ a }: { a: { source?: string; wins: number; losses: number | null; events: number | null } }) {
   if (a.source !== 'results') return null;
-  return <div className="text-xs text-muted-foreground" title="Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read">From {plural(a.events ?? 0, 'event')} read</div>;
+  const why = `Partial record: from ${plural(a.events ?? 0, 'event')} Mat Stats read, as Smoothcomp serves no career for this athlete`;
+  return <span role="img" title={why} aria-label={why} className="inline-flex text-muted-foreground/70"><CircleDashed className="size-3" /></span>;
 }
 
 export const Num = ({ n, dim = false }: { n: number | null | undefined; dim?: boolean }) =>

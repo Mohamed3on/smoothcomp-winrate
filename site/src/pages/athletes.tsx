@@ -19,7 +19,7 @@ export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => [
   { key: 'wins', label: 'Wins', width: '6%', sort: 'wins', title: 'Wins of the finish types switched on', cell: (a) => <Num n={a.wins} /> },
   { key: 'rate', label: 'Win rate', width: '8%', sort: 'winRate', title: 'Wins over matches, counted finishes, no walkovers: from their profile’s match lists where someone opened it, else their results at the events read',
     cell: (a) => (rate(a.won, a.lost) ? <div className="flex flex-col items-end"><span className="font-semibold">{rate(a.won, a.lost)}</span><span className="text-xs"><Record w={a.won!} l={a.lost!} /></span></div> : <span className="text-muted-foreground">–</span>) },
-  { key: 'mix', label: 'How they won', width: '12%', align: 'start', cell: (a) => <div className="flex flex-col gap-1"><Mix types={a.types} f={f} legend={false} /><FromResults a={a} /></div> },
+  { key: 'mix', label: 'How they won', width: '12%', align: 'start', cell: (a) => <Mix types={a.types} f={f} legend="short" note={<FromResults a={a} />} /> },
   { key: 'subs', label: 'Subs', width: '6%', sort: 'submission', narrow: true, title: 'Submission wins; dimmed when switched off', cell: (a) => <Num n={a.submission} dim={!f.counted('submission')} /> },
   { key: 'points', label: 'Points', width: '6%', sort: 'points', narrow: true, cell: (a) => <Num n={a.points} dim={!f.counted('points')} /> },
   { key: 'medals', label: 'Medals', width: '12%', sort: 'medals', title: 'Golds, then silvers, then bronzes', cell: (a) => <Medals g={a.gold} s={a.silver} b={a.bronze} /> },
