@@ -275,11 +275,11 @@ async function team(env, params) {
 
 async function events(env, params) {
   const f = filters(params);
-  // The counts are kept on each event (EVENT_COUNTS).
+  // The counts are kept on each event (EVENT_COUNTS); one listed but not read yet has no athletes and waits.
   const { results } = await env.DB.prepare(`SELECT v.event, v.title, v.start, v.city, v.country, v.organiser,
       coalesce(v.athletes, 0) AS athletes, coalesce(v.divisions, 0) AS divisions, coalesce(v.teams, 0) AS teams, v.fought
     FROM events v
-    WHERE v.site = ?1 AND (?2 = '' OR v.title LIKE '%' || ?2 || '%' OR v.city LIKE '%' || ?2 || '%')
+    WHERE v.site = ?1 AND v.athletes > 0 AND (?2 = '' OR v.title LIKE '%' || ?2 || '%' OR v.city LIKE '%' || ?2 || '%')
     ORDER BY v.start DESC, v.event DESC LIMIT ?3 OFFSET ?4`).bind(f.site, f.q, f.limit, f.offset).all();
   return json({ rows: results });
 }
