@@ -1,9 +1,7 @@
 // The career cache every install shares. Installs keep what they read here and
 // look up a whole event at once; each one cleans what it gets (career-cache.js),
 // so the worker only bounds what it stores.
-import { WorkerEntrypoint } from 'cloudflare:workers';
 import { API, TALLY } from './stats.js';
-import { crawl, queue } from './crawl.js';
 
 // Recounts these athletes' totals (stats.js TALLY), a few hundred at a time, at most as many as an
 // upload can store; one left with nothing to count loses its row.
@@ -18,7 +16,6 @@ async function retally(env, site, users) {
 }
 
 const KEPT = 30 * 24 * 60 * 60 * 1000; // the longest career-cache.js keeps anything
-const LANES = 9; // crawls side by side each minute
 const SITES = ['smoothcomp.com', 'ajptour.com'];
 const KINDS = ['careers', 'ranks'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -296,19 +293,9 @@ export default {
     return ROUTES[pathname](env, body ?? {});
   },
   async scheduled(controller, env) {
-    // Each minute, results for events nobody opened; the queue is refilled every half hour.
-    if (controller.cron === '* * * * *') {
-      if (new Date(controller.scheduledTime).getUTCMinutes() % 30 === 0) await queue(env);
-      // Nine lanes, each its own invocation with its own six connections, each on its own event.
-      return Promise.all([crawl(env, record), ...Array.from({ length: LANES - 1 }, () => env.CRAWLER.run())]);
-    }
     await env.DB.prepare('DELETE FROM athletes WHERE at <= ?1').bind(Date.now() - KEPT).run();
   },
 };
 
-// A crawl lane, called through the CRAWLER binding to this same Worker, so it runs as its own invocation.
-export class Crawler extends WorkerEntrypoint {
-  async run() {
-    await crawl(this.env, record);
-  }
-}
+// The crawler Worker (crawler.js) saves an event's results the way a results page does.
+export { record };

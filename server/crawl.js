@@ -19,19 +19,30 @@ const normalize = (s) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').
 class Gone extends Error {}
 class Busy extends Error {}
 
+// How a run spent its time, logged when it ends: requests, their average wait, how long at least
+// one was in flight (the rest went to the database and the counting), and events finished.
 function client() {
-  let used = 0;
-  const until = Date.now() + RUN;
+  let used = 0, waited = 0, open = 0, since = 0, busy = 0;
+  const started = Date.now();
+  const until = started + RUN;
   const left = () => (Date.now() < until ? BUDGET - used : 0);
   const get = async (url) => {
     if (!left()) throw new Busy('budget');
     used++;
-    const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
-    if (r.status === 429 || r.status >= 500) throw new Busy(`${r.status}`);
-    if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Gone(`${r.status}`);
-    return r.json();
+    const t = Date.now();
+    if (!open++) since = t;
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+      if (r.status === 429 || r.status >= 500) throw new Busy(`${r.status}`);
+      if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Gone(`${r.status}`);
+      return await r.json();
+    } finally {
+      waited += Date.now() - t;
+      if (!--open) busy += Date.now() - since;
+    }
   };
-  return { get, left };
+  const report = (done) => console.log('lane', JSON.stringify({ used, avg: Math.round(waited / (used || 1)), busy, wall: Date.now() - started, done }));
+  return { get, left, report };
 }
 
 // A few at a time; the first refusal stops the rest.
@@ -191,7 +202,12 @@ export async function queue(env) {
 }
 
 export async function crawl(env, record) {
-  const { get, left } = client();
+  const { get, left, report } = client();
+  let done = 0;
+  try { await lane(env, record, get, left, () => done++); } finally { report(done); }
+}
+
+async function lane(env, record, get, left, finished) {
   const now = Date.now();
   while (left() > 10) {
     // Taken and held in one statement, so lanes running side by side never take the same event.
@@ -219,6 +235,7 @@ export async function crawl(env, record) {
         await record(env, { site: job.site, event: job.event, records, athletes, read: Date.now(),
           meta: { title: job.title, start: iso(job.start), end: iso(data.ends), city: job.city } });
       }
+      finished();
       await save('done', { named: Object.keys(data.users).length, missed: data.missed?.length ?? 0, matches: data.matches.length });
     } catch (e) {
       // Out of time: the next run goes on from here. Told to slow down (429): this run stops. A site

@@ -9,14 +9,8 @@ binding = "DB"
 database_name = "mat-stats-careers"
 database_id = "63a2b393-f89d-4642-9ad7-e578cb2638e9"
 
-# The crawler's extra lanes: this Worker calling itself, each call its own invocation.
-[[services]]
-binding = "CRAWLER"
-service = "mat-stats"
-entrypoint = "Crawler"
-
 [triggers]
-crons = ["17 4 * * *", "* * * * *"]
+crons = ["17 4 * * *"]
 
 # The public stats site. The Worker answers first (pages get a fresh CSP nonce), except for the built files,
 # which keep site/public/_headers.

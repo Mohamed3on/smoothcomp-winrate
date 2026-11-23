@@ -1,0 +1,24 @@
+# The crawler Worker (crawler.js): reads results for events nobody opened. Deploy with
+# `wrangler deploy -c crawler.toml`.
+name = "mat-stats-crawler"
+main = "crawler.js"
+compatibility_date = "2026-11-01"
+workers_dev = false
+preview_urls = false
+
+# Nearest Smoothcomp's servers (measured: AWS Ireland).
+[placement]
+region = "aws:eu-west-1"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mat-stats-careers"
+database_id = "63a2b393-f89d-4642-9ad7-e578cb2638e9"
+
+# Its lanes: requests to itself, so each is placed and is its own invocation.
+[[services]]
+binding = "SELF"
+service = "mat-stats-crawler"
+
+[triggers]
+crons = ["* * * * *"]
