@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS events (
   organiser TEXT,
   at INTEGER NOT NULL,
   ends INTEGER, -- epoch ms
+  -- Kept counts (stats.js EVENT_COUNTS); a database made before them took them by ALTER TABLE ... ADD COLUMN.
+  athletes INTEGER, divisions INTEGER, teams INTEGER, fought INTEGER,
   PRIMARY KEY (site, event)
 );
 -- One row per athlete per division. A results page's rows (fought = 1) replace
@@ -165,8 +167,6 @@ CREATE TABLE IF NOT EXISTS clubs (
 );
 CREATE INDEX IF NOT EXISTS people_club ON people (site, club_id);
 CREATE INDEX IF NOT EXISTS events_start ON events (site, start);
--- events.athletes/divisions/teams/fought: kept counts (stats.js EVENT_COUNTS).
--- ALTER TABLE events ADD COLUMN athletes INTEGER; ALTER TABLE events ADD COLUMN divisions INTEGER; ALTER TABLE events ADD COLUMN teams INTEGER; ALTER TABLE events ADD COLUMN fought INTEGER;
 -- Small values the worker keeps: 'changed' = when an install last uploaded (ms), so the edge cache knows its copies are old.
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER);
 -- Search (stats.js search): athletes' names and academies, and events' titles and cities, indexed by

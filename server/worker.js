@@ -95,19 +95,15 @@ const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 // late arrival never undoes a newer read. Older installs send none and count as read now.
 const readAt = (read, now = Date.now()) => (Number.isSafeInteger(read) && read > now - 60 * 60 * 1000 ? Math.min(read, now) : now);
 
-async function identify(env, site, event, meta, athletes, fought, read = Date.now()) {
-  if (!athletes || typeof athletes !== 'object') return;
+// What an upload says, cleaned and bounded, with nothing written yet: the event (title, dates,
+// place), who each athlete is, their divisions there (an event's upload) and the events their
+// profile lists. Uploads are trusted; this only keeps them to the shapes the tables hold.
+export function upload(event, meta, athletes, now = Date.now()) {
+  if (!athletes || typeof athletes !== 'object') return null;
   // A date decides whose academy and photo win, so none from the future.
-  const start = typeof meta?.start === 'string' && ISO.test(meta.start) && Date.parse(meta.start) < Date.now() + 366 * 24 * 60 * 60 * 1000 ? meta.start : null;
-  const now = Date.now();
+  const start = typeof meta?.start === 'string' && ISO.test(meta.start) && Date.parse(meta.start) < now + 366 * 24 * 60 * 60 * 1000 ? meta.start : null;
   const ends = typeof meta?.end === 'string' && ISO.test(meta.end) && Date.parse(meta.end) < now + 366 * 24 * 60 * 60 * 1000 ? Date.parse(meta.end) : null;
-  const statements = [];
-  if (meta && typeof meta === 'object') {
-    statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at, ends) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-      ON CONFLICT (site, event) DO UPDATE SET title = coalesce(excluded.title, title), start = coalesce(excluded.start, start), city = coalesce(excluded.city, city),
-      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at, ends = coalesce(excluded.ends, ends)`)
-      .bind(site, event, text(meta.title, 200), start, text(meta.city, 100), text(meta.country, 8), text(meta.organiser, 200), now, ends));
-  }
+  const about = meta && typeof meta === 'object' ? { title: text(meta.title, 200), start, city: text(meta.city, 100), country: text(meta.country, 8), organiser: text(meta.organiser, 200), ends } : null;
   const people = [];
   const entries = [];
   const history = {};
@@ -133,6 +129,22 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
       const place = Number.isSafeInteger(e.place) && e.place > 0 && e.place < 1000 ? e.place : null;
       entries.push({ user, division, club, clubId, place, wins: JSON.stringify(tally(e.wins)), losses: JSON.stringify(tally(e.losses)), bouts: bouts(e.bouts) });
     }
+  }
+  return { about, people, entries, history };
+}
+
+async function identify(env, site, event, meta, athletes, fought, read = Date.now()) {
+  const now = Date.now();
+  const said = upload(event, meta, athletes, now);
+  if (!said) return;
+  const { about, people, entries, history } = said;
+  const start = about?.start ?? null;
+  const statements = [];
+  if (about) {
+    statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at, ends) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      ON CONFLICT (site, event) DO UPDATE SET title = coalesce(excluded.title, title), start = coalesce(excluded.start, start), city = coalesce(excluded.city, city),
+      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at, ends = coalesce(excluded.ends, ends)`)
+      .bind(site, event, about.title, about.start, about.city, about.country, about.organiser, now, about.ends));
   }
   // A newer event's academy, photo and name replace an older one's; an older event only fills gaps.
   const keep = (column) => `${column} = CASE WHEN excluded.seen >= people.seen THEN coalesce(excluded.${column}, people.${column}) ELSE coalesce(people.${column}, excluded.${column}) END`;
@@ -213,7 +225,7 @@ const SETTLED = 7 * 24 * 60 * 60 * 1000;
 const count = n => (Number.isSafeInteger(n) && n >= 0 && n < 1000 ? n : 0);
 const regOf = r => (Number.isSafeInteger(r) && r > 0 ? r : null);
 const finished = (type) => (typeof type === 'string' && type && finishOf(type) !== 'walkover' ? finishOf(type) : null);
-function cleanOut(out) {
+export function cleanOut(out) {
   const types = {};
   for (const [type, pair] of Object.entries(out?.types && typeof out.types === 'object' ? out.types : {})) {
     const t = finished(type);

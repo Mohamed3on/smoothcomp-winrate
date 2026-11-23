@@ -142,6 +142,10 @@ const careersOf = (off) => {
   FROM board WHERE site = ?1)`;
 };
 
+// An entry shown: an athlete's results at an event, else their registration there while no results are
+// read (`within` narrows the results that outrank it, as to one division). Entries are aliased e.
+const shown = (within = '') => `(e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user${within} AND x.fought = 1))`;
+
 const careerRow = (row) => ({ ...Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('w_'))), types: JSON.parse(row.types ?? '{}') });
 
 // A sort is a fixed expression, or one finish type's count; ?dir=asc reverses it, blanks still last.
@@ -212,7 +216,7 @@ async function athlete(env, params) {
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT * FROM careers WHERE user = ?4`).bind(f.site, f.off, Date.now() - KEPT, user),
     env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
-      FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND (e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user AND x.fought = 1)) ORDER BY v.start DESC, e.event DESC`).bind(f.site, user),
+      FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()} ORDER BY v.start DESC, e.event DESC`).bind(f.site, user),
     env.DB.prepare('SELECT sum(wins) AS wins, sum(losses) AS losses, count(*) AS events FROM records WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
       FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(f.site, user),
@@ -290,7 +294,7 @@ async function event(env, params) {
         p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt,
         c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.gold AS career_gold, c.silver AS career_silver, c.bronze AS career_bronze
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
-      WHERE e.site = ?1 AND e.event = ?4 AND (e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user AND x.fought = 1))`).bind(f.site, f.off, Date.now() - KEPT, id),
+      WHERE e.site = ?1 AND e.event = ?4 AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id),
   ]);
   if (!meta.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
   return json({
@@ -311,7 +315,7 @@ async function division(env, params) {
         p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt, c.wins AS career_wins
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
       WHERE e.site = ?1 AND e.event = ?4 AND trim(e.division) = ?5
-        AND (e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user AND x.division = e.division AND x.fought = 1))`)
+        AND ${shown(' AND x.division = e.division')}`)
       .bind(f.site, f.off, Date.now() - KEPT, id, name),
   ]);
   if (!entries.results.length) return json({ error: 'Not found' }, 404);
