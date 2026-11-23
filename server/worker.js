@@ -5,13 +5,20 @@ import { WorkerEntrypoint } from 'cloudflare:workers';
 import { API, TALLY } from './stats.js';
 import { crawl, queue } from './crawl.js';
 
-// Recounts these athletes' totals (stats.js TALLY), a few hundred at a time.
+// Recounts these athletes' totals (stats.js TALLY), a few hundred at a time, at most as many as an
+// upload can store; one left with nothing to count loses its row.
 async function retally(env, site, users) {
-  const all = [...new Set(users)].filter(validUser);
-  for (let i = 0; i < all.length; i += 400) await env.DB.prepare(TALLY).bind(site, JSON.stringify(all.slice(i, i + 400))).run();
+  const all = [...new Set(users)].filter(validUser).slice(0, 5000);
+  for (let i = 0; i < all.length; i += 400) {
+    const some = JSON.stringify(all.slice(i, i + 400));
+    await env.DB.batch([env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
+      AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
+      AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some)]);
+  }
 }
 
 const KEPT = 30 * 24 * 60 * 60 * 1000; // the longest career-cache.js keeps anything
+const LANES = 9; // crawls side by side each minute
 const SITES = ['smoothcomp.com', 'ajptour.com'];
 const KINDS = ['careers', 'ranks'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' };
@@ -149,7 +156,7 @@ async function people(env, { site, athletes }) {
   if (!SITES.includes(site)) return json({ error: 'Bad people' }, 400);
   await identify(env, site, null, null, athletes, false);
   // An event list read changes how many events they have and when they last fought.
-  await retally(env, site, Object.entries(athletes ?? {}).filter(([, a]) => Array.isArray(a?.history)).map(([user]) => user));
+  await retally(env, site, Object.entries(athletes ?? {}).filter(([, a]) => Array.isArray(a?.history)).slice(0, 20).map(([user]) => user));
   return json({});
 }
 
@@ -166,11 +173,13 @@ async function record(env, { site, event, records, meta, athletes, read }) {
   const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
   if (rows.length > 5000) return json({ error: 'Too many' }, 413);
   const at = readAt(read);
+  // Whoever this read drops from the event's results is recounted too.
+  const before = (await env.DB.prepare('SELECT DISTINCT user FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1').bind(site, event).all()).results.map((e) => e.user);
   await env.DB.prepare(`INSERT OR REPLACE INTO records (site, event, user, wins, losses, at)
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4) WHERE NOT EXISTS (SELECT 1 FROM records WHERE site = ?1 AND event = ?2 AND at > ?3)`)
     .bind(site, event, at, JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
   await identify(env, site, event, meta, athletes, true, at);
-  await retally(env, site, [...rows.map(([user]) => user), ...Object.keys(athletes ?? {})]);
+  await retally(env, site, [...before, ...rows.map(([user]) => user), ...Object.keys(athletes ?? {}).slice(0, 5000)]);
   return json({});
 }
 
@@ -290,8 +299,8 @@ export default {
     // Each minute, results for events nobody opened; the queue is refilled every half hour.
     if (controller.cron === '* * * * *') {
       if (new Date(controller.scheduledTime).getUTCMinutes() % 30 === 0) await queue(env);
-      // Three lanes, each its own invocation with its own six connections, each on its own event.
-      return Promise.all([crawl(env, record), env.CRAWLER.run(), env.CRAWLER.run()]);
+      // Nine lanes, each its own invocation with its own six connections, each on its own event.
+      return Promise.all([crawl(env, record), ...Array.from({ length: LANES - 1 }, () => env.CRAWLER.run())]);
     }
     await env.DB.prepare('DELETE FROM athletes WHERE at <= ?1').bind(Date.now() - KEPT).run();
   },
