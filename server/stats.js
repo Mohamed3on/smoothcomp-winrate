@@ -34,8 +34,13 @@ function filters(params) {
 // Every athlete with something to rank, with who they are. A career is Smoothcomp's;
 // with none readable (a profile not public, or not read yet), an athlete's results at
 // the events Mat Stats has read stand in: wins by finish, losses, placements, events.
+// Where a profile was opened, its match lists give a record too: `won`, `lost` (walkovers never
+// count there; its fastest escape is a career's fastest_escape). An athlete ranked on results has theirs.
 // ?1 site, ?2 the finish types left out (JSON), ?3 oldest career kept.
-const CAREERS = `seen_wins AS (
+const CAREERS = `rated AS (
+    SELECT o.user, total(j.value ->> 0) AS won, total(j.value ->> 1) AS lost FROM outcomes o, json_each(o.out, '$.types') j
+    WHERE o.site = ?1 AND iif(j.key = 'escape', 'fastest_escape', j.key) NOT IN (SELECT value FROM json_each(?2)) GROUP BY o.user),
+  seen_wins AS (
     SELECT e.user, j.key AS type, sum(j.value) AS n FROM entries e, json_each(e.wins) j WHERE e.site = ?1 AND e.fought = 1 GROUP BY e.user, j.key),
   seen_losses AS (
     SELECT e.user, total(j.value) AS n FROM entries e, json_each(e.losses) j
@@ -59,15 +64,18 @@ const CAREERS = `seen_wins AS (
       SELECT user, start FROM history WHERE site = ?1
       UNION ALL SELECT e.user, v.start FROM entries e JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.fought = 1)
     GROUP BY user),
+  counted AS (
+  SELECT b.*, (SELECT total(value) FROM json_each(b.types) WHERE key NOT IN (SELECT value FROM json_each(?2))) AS wins FROM base b),
   careers AS (
-  SELECT b.user, b.at, b.source, b.losses,
-    (SELECT total(value) FROM json_each(b.types) WHERE key NOT IN (SELECT value FROM json_each(?2))) AS wins,
+  SELECT b.user, b.at, b.source, b.losses, b.wins,
+    coalesce(rt.won, iif(b.source = 'results', b.wins, NULL)) AS won, coalesce(rt.lost, iif(b.source = 'results', b.losses, NULL)) AS lost,
     coalesce(b.types ->> '$.walkover', 0) AS walkovers,
     coalesce(b.types ->> '$.submission', 0) AS submission,
     coalesce(b.types ->> '$.points', 0) AS points,
     b.types, b.gold, b.silver, b.bronze, b.events,
     p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt) AS belt, ls.last
-  FROM base b
+  FROM counted b
+  LEFT JOIN rated rt ON rt.user = b.user
   LEFT JOIN lasts ls ON ls.user = b.user
   LEFT JOIN people p ON p.site = ?1 AND p.user = b.user
   LEFT JOIN athletes r ON r.site = ?1 AND r.user = b.user AND r.kind = 'ranks')`;
@@ -84,6 +92,7 @@ const ATHLETE_SORTS = {
   medals: 'gold DESC, silver DESC, bronze DESC, wins DESC',
   perEvent: 'wins * 1.0 / events DESC, wins DESC',
   last: 'last DESC, wins DESC',
+  winRate: 'won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, won + lost DESC, wins DESC',
 };
 
 async function athletes(env, params) {
@@ -137,7 +146,7 @@ async function athlete(env, params) {
   const f = filters(params);
   const user = params.get('id') ?? '';
   if (!/^\d{1,12}$/.test(user)) return json({ error: 'Bad athlete' }, 400);
-  const [career, person, entries, seen, history] = await env.DB.batch([
+  const [career, person, entries, seen, history, outcomes] = await env.DB.batch([
     env.DB.prepare(`WITH ${CAREERS} SELECT * FROM careers WHERE user = ?4`).bind(f.site, f.off, Date.now() - KEPT, user),
     env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, v.title, v.start, v.city, v.country
@@ -145,6 +154,8 @@ async function athlete(env, params) {
     env.DB.prepare('SELECT sum(wins) AS wins, sum(losses) AS losses, count(*) AS events FROM records WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
       FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(f.site, user),
+    // Each event's finishes won and lost and every loss, as their profile's match lists gave them.
+    env.DB.prepare(`SELECT event, start, title, json_remove(out, '$.faced') AS out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(f.site, user),
   ]);
   if (!career.results.length && !person.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
   return json({
@@ -153,6 +164,7 @@ async function athlete(env, params) {
     person: person.results[0] ?? null,
     entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses) })),
     seen: seen.results[0]?.events ? seen.results[0] : null,
+    outcomes: outcomes.results.map((o) => ({ ...o, out: JSON.parse(o.out) })),
   });
 }
 

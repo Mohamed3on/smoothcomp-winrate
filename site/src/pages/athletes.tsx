@@ -2,27 +2,29 @@ import { Link } from 'wouter';
 import { Count, Ledger, type Column } from '@/components/ledger';
 import { FilterBar } from '@/components/filter-bar';
 import { Empty, PageHead } from '@/components/empty';
-import { FromResults, Identity, Medals, Mix, Num, Photo } from '@/components/stats';
+import { FromResults, Identity, Medals, Mix, Num, Photo, Record } from '@/components/stats';
 import { useApi, type Athlete } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
-import { plural } from '@/lib/format';
+import { plural, rate } from '@/lib/format';
 
 export const ATHLETE_SORTS: [string, string][] = [['wins', 'Wins'], ['submission', 'Submissions'], ['points', 'Wins on points'], ['stoppage', 'Stoppages'], ['decision', 'Decisions'],
-  ['rate', 'Submission rate'], ['medals', 'Medals'], ['events', 'Events entered'], ['perEvent', 'Wins per event'], ['last', 'Last competed']];
+  ['rate', 'Submission rate'], ['winRate', 'Win rate'], ['medals', 'Medals'], ['events', 'Events entered'], ['perEvent', 'Wins per event'], ['last', 'Last competed']];
 export const RESET = ['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'q', 'athletes', 'active'];
 export const resetAction = (f: Filters) => ({ label: 'Reset filters', onClick: () => f.set(Object.fromEntries(RESET.map((k) => [k, null]))) });
 const perEvent = (a: Athlete) => (a.events ? (a.wins / a.events).toFixed(1) : '–');
 
 export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => [
   { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
-  { key: 'who', label: 'Athlete', width: club ? '25%' : '21%', align: 'start', cell: (a) => <Identity a={a} f={f} club={club} /> },
-  { key: 'wins', label: 'Wins', width: '7%', sort: 'wins', title: 'Wins of the finish types switched on', cell: (a) => <Num n={a.wins} /> },
-  { key: 'mix', label: 'How they won', width: '18%', align: 'start', cell: (a) => <div className="flex flex-col gap-1"><Mix types={a.types} f={f} /><FromResults a={a} /></div> },
-  { key: 'subs', label: 'Subs', width: '7%', sort: 'submission', narrow: true, title: 'Submission wins; dimmed when switched off', cell: (a) => <Num n={a.submission} dim={!f.counted('submission')} /> },
-  { key: 'points', label: 'Points', width: '7%', sort: 'points', narrow: true, cell: (a) => <Num n={a.points} dim={!f.counted('points')} /> },
-  { key: 'medals', label: 'Medals', width: '13%', sort: 'medals', title: 'Golds, then silvers, then bronzes', cell: (a) => <Medals g={a.gold} s={a.silver} b={a.bronze} /> },
-  { key: 'events', label: 'Events', width: '7%', sort: 'events', narrow: true, cell: (a) => <Num n={a.events} /> },
-  { key: 'per', label: 'Per event', width: '7%', sort: 'perEvent', narrow: true, title: 'Wins per event entered', cell: (a) => perEvent(a) },
+  { key: 'who', label: 'Athlete', width: club ? '22%' : '18%', align: 'start', cell: (a) => <Identity a={a} f={f} club={club} /> },
+  { key: 'wins', label: 'Wins', width: '6%', sort: 'wins', title: 'Wins of the finish types switched on', cell: (a) => <Num n={a.wins} /> },
+  { key: 'rate', label: 'Win rate', width: '8%', sort: 'winRate', title: 'Wins over matches, counted finishes, no walkovers: from their profile’s match lists where someone opened it, else their results at the events read',
+    cell: (a) => (rate(a.won, a.lost) ? <div className="flex flex-col items-end"><span className="font-semibold">{rate(a.won, a.lost)}</span><span className="text-xs"><Record w={a.won!} l={a.lost!} /></span></div> : <span className="text-muted-foreground">–</span>) },
+  { key: 'mix', label: 'How they won', width: '15%', align: 'start', cell: (a) => <div className="flex flex-col gap-1"><Mix types={a.types} f={f} /><FromResults a={a} /></div> },
+  { key: 'subs', label: 'Subs', width: '6%', sort: 'submission', narrow: true, title: 'Submission wins; dimmed when switched off', cell: (a) => <Num n={a.submission} dim={!f.counted('submission')} /> },
+  { key: 'points', label: 'Points', width: '6%', sort: 'points', narrow: true, cell: (a) => <Num n={a.points} dim={!f.counted('points')} /> },
+  { key: 'medals', label: 'Medals', width: '12%', sort: 'medals', title: 'Golds, then silvers, then bronzes', cell: (a) => <Medals g={a.gold} s={a.silver} b={a.bronze} /> },
+  { key: 'events', label: 'Events', width: '6%', sort: 'events', narrow: true, cell: (a) => <Num n={a.events} /> },
+  { key: 'per', label: 'Per event', width: '6%', sort: 'perEvent', narrow: true, title: 'Wins per event entered', cell: (a) => perEvent(a) },
   { key: 'last', label: 'Last competed', width: '9%', sort: 'last', narrow: true, title: 'The latest event they entered, as Smoothcomp lists it or Mat Stats read it', cell: (a) => <span className={a.last ? '' : 'text-muted-foreground'}>{a.last ? new Date(a.last).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '–'}</span> },
 ];
 

@@ -4,7 +4,7 @@ export type Types = Record<string, number>;
 export interface Athlete {
   user: string; name: string | null; club: string | null; club_id: string | null; country: string | null; country_name: string | null;
   photo: string | null; born: number | null; hidden: number | null; belt: string | null; source?: 'career' | 'results';
-  wins: number; losses: number | null; submission: number; points: number; types: Types; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
+  wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
 }
 export interface Team {
   club_id: string; club: string | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
@@ -16,6 +16,9 @@ export interface Entry {
   title?: string | null; start?: string | null; city?: string | null;
 }
 export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number }
+// One settled event as the athlete's profile match lists gave it: [won, lost] per finish, and each loss.
+export interface Loss { type: string; how: string; opponent: string | null; club: string | null; division: string | null; image: string | null; stage: string | null }
+export interface Outcome { event: string; start: string | null; title: string | null; out: { types: Record<string, [number, number]>; losses: Loss[] } }
 export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null }
 export interface EventRow extends EventMeta { athletes: number; divisions: number; teams: number; fought: number }
 export interface EventEntry extends Entry {
