@@ -140,3 +140,5 @@ CREATE TABLE IF NOT EXISTS tallies (
   last TEXT,
   PRIMARY KEY (site, user)
 );
+-- crawls.priority (added 2026-11-23): higher is read first (Berlin 2, the rest of Germany 1, set by hand).
+-- ALTER TABLE crawls ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;

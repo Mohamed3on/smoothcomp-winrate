@@ -219,7 +219,7 @@ async function lane(env, record, get, left, finished) {
   const now = Date.now();
   while (left() > 10) {
     // Taken and held in one statement, so lanes running side by side never take the same event.
-    const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY start DESC LIMIT 1) RETURNING *`)
+    const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY priority DESC, start DESC LIMIT 1) RETURNING *`)
       .bind(Date.now(), Date.now() + 10 * 60e3).first();
     if (!job) return;
     const host = HOSTS[job.site];
