@@ -1,4 +1,7 @@
 // rules.js for TypeScript: the one global it sets.
+type Types = Record<string, [number, number]>;
+interface EventRecord { event: string; start: string | null; types: Types; divisions: string[] }
+interface Rival { key: string; name: string; w: number; l: number }
 declare global {
   var SCWRRules: {
     normalize(text: unknown): string;
@@ -12,6 +15,13 @@ declare global {
     beltsIn(label: unknown): string[];
     beltOf(label: unknown): string | null;
     isGrade(field: unknown): boolean;
+    eventRecords(
+      outcomes: { event: string | number; start?: string | null; out?: { types?: Types; faced?: { division?: string | null }[]; losses?: { division?: string | null }[] } }[],
+      entries: { event: string | number; start?: string | null; division: string; wins?: Record<string, number> | null; losses?: Record<string, number> | null; fought?: number | boolean }[],
+    ): EventRecord[];
+    totals(records: EventRecord[]): Types;
+    beltSplit(records: EventRecord[], worn: string[], starts: (number | null)[]): { belt: string; types: Types; events: number }[];
+    rivalsOf<M extends { name: string; won: boolean }>(meetings: M[]): (Omit<M, 'won'> & Rival)[];
   };
 }
 export {};

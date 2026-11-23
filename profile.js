@@ -57,14 +57,6 @@
       .then(body => (each?.(body), body), () => (failed++, {}))));
     return { data: bodies.flatMap(body => body.data ?? []), failed };
   };
-  const add = (into, types) => {
-    for (const [type, [won, lost]] of Object.entries(types)) {
-      into[type] ??= [0, 0];
-      into[type][0] += won;
-      into[type][1] += lost;
-    }
-    return into;
-  };
   // The athlete's matches at one event, as [won, lost] by finish, and each loss with
   // who beat them, in what division and how; each win names the same, for a
   // head-to-head. Walkovers left out. v 2 marks the wins' details.
@@ -150,36 +142,19 @@
       faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string').map(m => (m.type ? { ...m, type: finished(m.type) ?? undefined } : m)),
       ...(out?.v === 2 ? { v: 2 } : {}), ...(out?.extra === true ? { extra: true } : {}) };
   };
-  // Everything shown, worked out from the kept events with no request; newest first, so
-  // each rival takes the club and photo of the latest meeting.
+  // Everything shown, worked out from the kept events with no request, by the rules the stats
+  // site counts by too; newest first, so each rival takes the club and photo of the latest meeting.
   function tally(events) {
     events = [...events].sort((a, b) => (Date.parse(b.start_date) || 0) - (Date.parse(a.start_date) || 0));
-    const types = events.map(e => e.out.types).reduce(add, {});
+    const records = SCWRRules.eventRecords(events.map(e => ({ event: e.id, start: e.start_date, out: e.out })), []);
+    const types = SCWRRules.totals(records);
     const losses = events.flatMap(e => e.out.losses.map(loss => ({ ...loss, event: e.id, title: e.title, date: e.start_date })));
     // Their wins, for a head-to-head: who, where and when only.
     const wins = events.flatMap(e => e.out.faced.filter(f => f.won).map(f => ({ ...f, won: true, opponent: f.name, event: e.id, title: e.title, date: e.start_date })));
-    let belts = null;
-    if (!plan.whole) {
-      const by = new Map([plan.belt, ...plan.worn].map(b => [b, { events: 0, types: {} }]));
-      for (const e of events) {
-        if (!Date.parse(e.start_date)) continue;
-        const t = by.get(plan.beltOf(e));
-        add(t.types, e.out.types);
-        t.events++;
-      }
-      // A lower belt no event fell to has nothing to show; the current one says it has no events yet.
-      belts = [...by].filter(([b, t]) => b === plan.belt || t.events).sort(([a], [b]) => BELTS.indexOf(b) - BELTS.indexOf(a));
-    }
-    // Everyone who beat them, with the whole head-to-head: opponents are known by name,
-    // as registrations change per event, and the newest meeting gives the club, photo
-    // and registration to link.
-    const met = new Map();
-    for (const e of events) for (const f of e.out.faced) {
-      const who = person(f.name);
-      if (!met.has(who)) met.set(who, { key: who, name: f.name, club: f.club, image: f.image, reg: f.reg, event: e.id, w: 0, l: 0 });
-      met.get(who)[f.won ? 'w' : 'l']++;
-    }
-    const rivals = [...met.values()].filter(r => r.l > 1).sort((a, b) => b.l - a.l || a.w - b.w).slice(0, 5);
+    // A lower belt no event fell to has nothing to show; the current one says it has no events yet.
+    const belts = plan.whole ? null : SCWRRules.beltSplit(records, plan.worn, plan.starts).map(b => [b.belt, b]);
+    // Everyone who beat them more than once, the newest meeting giving the club, photo and registration to link.
+    const rivals = SCWRRules.rivalsOf(events.flatMap(e => e.out.faced.map(f => ({ name: f.name, won: f.won, club: f.club, image: f.image, reg: f.reg, event: e.id })))).slice(0, 5);
     return { types, belts, losses, wins, rivals };
   }
   async function readStats(whole = false) {

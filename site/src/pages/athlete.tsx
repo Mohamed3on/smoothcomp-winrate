@@ -12,7 +12,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, finishOf, normalize } from '@/lib/rules';
+import { BELTS, beltOf, beltSplit, eventRecords, finishOf, normalize, rivalsOf, totals } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { DivisionLink } from '@/pages/division';
 
@@ -20,32 +20,24 @@ interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: n
 
 // Every finish is counted under its group (rules.js): an older match list's "escape" is a fastest escape.
 const dot = (t: string) => `var(--color-win-${finishOf(t)}, var(--color-win-other))`;
-// Opponents are known by name (normalize), as registrations change per event.
 const pct = (w: number, l: number) => `${Math.round((w / (w + l)) * 100)}%`;
 // A rate's hue runs from red at 40% or under, through amber, to green at 85% and over, as on the profile.
 const tone = (w: number, l: number) => ({ color: `oklch(0.8 0.14 ${25 + 120 * Math.min(1, Math.max(0, (w / (w + l) - 0.4) / 0.45))})` });
 
-// Each finish they won or lost by: W–L from their profile's match lists with the results read at
-// every event those don't hold; a finish only the career names
-// (walkovers, the rarer ones) comes as wins alone.
+// Their record event by event, as the rankings count it (rules.js eventRecords).
+type Records = ReturnType<typeof eventRecords>;
+// W–L over the finishes counted.
+const recordIn = (types: Record<string, [number, number]>, f: Filters) =>
+  Object.entries(types).reduce(([w, l], [t, [a, b]]) => (f.counted(t) ? [w + a, l + b] : [w, l]), [0, 0]);
+
+// Each finish they won or lost by, as their record gives it; a finish only the career names
+// (the rarer ones) comes as wins alone.
 interface Finish { key: string; w: number; l: number | null }
-function finishes(career: Athlete | null, outcomes: Outcome[], entries: Entry[]): Finish[] {
-  const by = new Map<string, Finish>();
-  const add = (t: string, w: number, l: number) => {
-    const was = by.get(finishOf(t));
-    by.set(finishOf(t), { key: finishOf(t), w: (was?.w ?? 0) + w, l: (was?.l ?? 0) + l });
-  };
-  for (const o of outcomes) for (const [t, [w, l]] of Object.entries(o.out.types)) add(t, w, l);
-  for (const e of unlisted(entries, outcomes)) {
-    for (const [t, n] of Object.entries(e.wins ?? {})) add(t, Number(n) || 0, 0);
-    for (const [t, n] of Object.entries(e.losses ?? {})) add(t, 0, Number(n) || 0);
-  }
+function finishes(career: Athlete | null, records: Records): Finish[] {
+  const by = new Map<string, Finish>(Object.entries(totals(records)).map(([key, [w, l]]) => [key, { key, w, l }]));
   for (const [t, n] of Object.entries(career?.types ?? {})) if (Number(n) > 0 && !by.has(finishOf(t))) by.set(finishOf(t), { key: finishOf(t), w: Number(n), l: null });
   return [...by.values()].filter((x) => x.w + (x.l ?? 0) > 0).sort((a, b) => b.w + (b.l ?? 0) - a.w - (a.l ?? 0));
 }
-
-// The divisions whose results were read at events their profile's match lists don't hold.
-const unlisted = (entries: Entry[], outcomes: Outcome[]) => entries.filter((e) => e.fought && !outcomes.some((o) => o.event === e.event));
 
 // Every match the profile's lists give, in the order fought: each win (its finish too from v 2),
 // each loss with its finish. A loss the match list names twice is matched once.
@@ -86,19 +78,9 @@ function scoreOf(m: Meeting): string | null {
 const countedMatch = (m: Meeting, f: Filters) => !m.type || f.counted(finishOf(m.type));
 type Show = 'all' | 'won' | 'lost';
 
-// Everyone who beat them more than once, with the whole head-to-head; the newest meeting
-// gives the club and photo. Furthest behind first.
+// Everyone who beat them more than once (rules.js rivalsOf), the newest meeting giving the club and photo.
 interface Rival { key: string; name: string; club: string | null; image: string | null; w: number; l: number }
-function rivalsOf(rows: Row[]): Rival[] {
-  const met = new Map<string, Rival>();
-  for (const m of rows.flatMap(meetingsOfRow)) {
-    const key = normalize(m.opponent);
-    if (!key) continue;
-    if (!met.has(key)) met.set(key, { key, name: m.opponent!, club: m.club, image: m.image, w: 0, l: 0 });
-    met.get(key)![m.won ? 'w' : 'l']++;
-  }
-  return [...met.values()].filter((r) => r.l > 1).sort((a, b) => b.l - b.w - (a.l - a.w) || b.l - a.l);
-}
+const rivalsIn = (rows: Row[]): Rival[] => rivalsOf(rows.flatMap(meetingsOfRow).map((m) => ({ name: m.opponent ?? '', won: m.won, club: m.club, image: m.image })));
 
 // One event as the page shows it: what Smoothcomp lists, joined to the divisions Mat Stats read
 // and to the record their profile's match lists gave.
@@ -131,54 +113,31 @@ interface Belts { worn: string[]; starts: (number | null)[] }
 // The win rate at each belt worn, highest first, as their profile splits it: an event takes the
 // belt worn on its date; undated ones count only overall. The current belt shows even with no events.
 interface Split { belt: string; w: number; l: number; events: number }
-// Without their profile's belt timeline, each division counts at the belt it names; one naming none
-// takes the belt of their latest earlier division that does (or the first one after).
-function splitByDivision(outcomes: Outcome[], entries: Entry[], f: Filters): Split[] | null {
-  type Item = { start: string | null | undefined; belt: string | null; event: string; pairs: [string, number, number][] };
-  const items: Item[] = [];
-  for (const o of outcomes) {
-    const named = [...(o.out.faced ?? []).map((m) => m.division), ...o.out.losses.map((l) => l.division)].map(beltOf).find(Boolean) ?? null;
-    items.push({ start: o.start, belt: named, event: o.event, pairs: Object.entries(o.out.types).map(([t, [w, l]]) => [t, w, l]) });
-  }
-  for (const e of unlisted(entries, outcomes)) items.push({ start: e.start, belt: beltOf(e.division), event: e.event,
-    pairs: [...Object.entries(e.wins ?? {}).map(([t, n]): [string, number, number] => [t, Number(n) || 0, 0]), ...Object.entries(e.losses ?? {}).map(([t, n]): [string, number, number] => [t, 0, Number(n) || 0])] });
-  items.sort((x, y) => String(x.start ?? '').localeCompare(String(y.start ?? '')));
-  let last: string | null = items.find((i) => i.belt)?.belt ?? null;
-  for (const i of items) { if (i.belt) last = i.belt; else i.belt = last; }
-  const by = new Map<string, Split & { seen: Set<string> }>();
-  for (const i of items) {
-    if (!i.belt) continue;
-    const t = by.get(i.belt) ?? { belt: i.belt, w: 0, l: 0, events: 0, seen: new Set<string>() };
-    by.set(i.belt, t);
-    for (const [type, w, l] of i.pairs) if (f.counted(finishOf(type))) { t.w += w; t.l += l; }
-    if (!t.seen.has(i.event)) { t.seen.add(i.event); t.events++; }
-  }
+// Without their profile's belt timeline, each event counts at the belt its divisions name; one naming
+// none takes the belt of their latest earlier event that does (or the first one after).
+function splitByDivision(records: Records, f: Filters): Split[] | null {
+  const named = records.map((r) => r.divisions.map(beltOf).find(Boolean) ?? null);
+  let last = named.find(Boolean) ?? null;
+  const by = new Map<string, Split>();
+  records.forEach((r, i) => {
+    last = named[i] ?? last;
+    if (!last) return;
+    const t = by.get(last) ?? { belt: last, w: 0, l: 0, events: 0 };
+    by.set(last, t);
+    const [w, l] = recordIn(r.types, f);
+    t.w += w; t.l += l; t.events++;
+  });
   if (by.size < 2) return null;
-  return [...by.values()].map(({ seen: _, ...t }) => t).sort((x, y) => BELTS.indexOf(y.belt) - BELTS.indexOf(x.belt));
+  return [...by.values()].sort((x, y) => BELTS.indexOf(y.belt) - BELTS.indexOf(x.belt));
 }
 
-function splitByBelt(belts: Belts | null | undefined, outcomes: Outcome[], entries: Entry[], f: Filters): Split[] | null {
-  if (!belts) return splitByDivision(outcomes, entries, f);
+function splitByBelt(belts: Belts | null | undefined, records: Records, f: Filters): Split[] | null {
+  if (!belts) return splitByDivision(records, f);
   if (belts.worn.length < 2) return null;
-  const beltOf = (start: string | null | undefined) => {
-    const t = Date.parse(start ?? "");
-    return Number.isNaN(t) ? null : belts.worn[belts.starts.findLastIndex((s) => (s ?? -Infinity) <= t)] ?? belts.worn[0];
-  };
-  const by = new Map(belts.worn.map((b) => [b, { belt: b, w: 0, l: 0, events: 0 }]));
-  const add = (start: string | null | undefined, pairs: [string, number, number][], event: boolean) => {
-    const t = by.get(beltOf(start) ?? "");
-    if (!t) return;
-    for (const [type, w, l] of pairs) if (f.counted(finishOf(type))) { t.w += w; t.l += l; }
-    if (event) t.events++;
-  };
-  for (const o of outcomes) add(o.start, Object.entries(o.out.types).map(([t, [w, l]]) => [t, w, l]), true);
-  const seen = new Set<string>();
-  if (outcomes.length) for (const e of unlisted(entries, outcomes)) {
-    add(e.start, [...Object.entries(e.wins ?? {}).map(([t, n]): [string, number, number] => [t, Number(n) || 0, 0]), ...Object.entries(e.losses ?? {}).map(([t, n]): [string, number, number] => [t, 0, Number(n) || 0])], !seen.has(e.event));
-    seen.add(e.event);
-  }
-  const current = belts.worn[belts.worn.length - 1];
-  return [...by.values()].filter((t) => t.belt === current || t.events).reverse();
+  return beltSplit(records, belts.worn, belts.starts).map(({ belt, types, events }) => {
+    const [w, l] = recordIn(types, f);
+    return { belt, w, l, events };
+  });
 }
 
 function BeltSplit({ split }: { split: Split[] }) {
@@ -504,7 +463,7 @@ export function AthletePage({ id }: { id: string }) {
   const upcoming = all.filter((r) => isUpcoming(r.start) && !r.read?.some((e) => e.fought));
   const past = all.filter((r) => !upcoming.includes(r));
   const age = ageOf(a.born);
-  const rivals = rivalsOf(all.filter((r) => !isUpcoming(r.start) || r.read?.some((e) => e.fought)));
+  const rivals = rivalsIn(all.filter((r) => !isUpcoming(r.start) || r.read?.some((e) => e.fought)));
   const met = past.flatMap(meetingsOfRow);
   const losses = met.filter((m) => !m.won).length;
   const pick = (r: Rival | null) => { setAgainst(r); if (r) document.getElementById('events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
@@ -515,8 +474,8 @@ export function AthletePage({ id }: { id: string }) {
   const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOfRow(r).some((m) => (!against || normalize(m.opponent) === against.key) && (show === 'all' || m.won === (show === 'won'))));
   const side = data.profile ? OnProfile({ p: data.profile, f, id }) : null;
   const arts = artsOf(data.profile);
-  const rated = outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size;
-  const over = !rated ? '' : outcomes.length ? `across ${plural(rated, 'event')}` : `at ${plural(rated, 'event')} read`;
+  const records = eventRecords(outcomes, entries);
+  const over = !records.length ? '' : outcomes.length ? `across ${plural(records.length, 'event')}` : `at ${plural(records.length, 'event')} read`;
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center gap-5">
@@ -543,7 +502,7 @@ export function AthletePage({ id }: { id: string }) {
         </div>
       </header>
 
-      {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} split={splitByBelt(data.belts, outcomes, entries, f)} career={career} />
+      {career || outcomes.length ? <RecordBand fins={finishes(career, records)} f={f} over={over} split={splitByBelt(data.belts, records, f)} career={career} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
       <Form list={past} f={f} />

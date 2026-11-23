@@ -52,5 +52,68 @@ globalThis.SCWRRules = (() => {
   // "Skill level" or "Grade", depending on the event and whether the division is gi or no-gi.
   const isGrade = (field) => /belt|level|rank|skill|grade/i.test(String(field ?? ''));
 
-  return { normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade };
+  // An athlete's record, event by event: their profile's match lists where one was read (with the
+  // results' walkovers there, which match lists leave out), else the results read there.
+  // `outcomes` are { event, start, out } as profiles give them, `entries` { event, start, division,
+  // wins, losses, fought } as results do. Each event comes back as { event, start, types: { finish:
+  // [won, lost] }, divisions }, oldest first. The server's TALLY counts the same (tests/records.test.cjs).
+  const add = (into, finish, w, l) => {
+    const t = (into[finish] ??= [0, 0]);
+    t[0] += w;
+    t[1] += l;
+    return into;
+  };
+  function eventRecords(outcomes = [], entries = []) {
+    const listed = new Set(outcomes.map((o) => String(o.event)));
+    const by = new Map();
+    const at = (event, start) => by.get(event) ?? by.set(event, { event, start: start ?? null, types: {}, divisions: [] }).get(event);
+    for (const o of outcomes) {
+      const r = at(String(o.event), o.start);
+      for (const [t, [w, l]] of Object.entries(o.out?.types ?? {})) add(r.types, finishOf(t), Number(w) || 0, Number(l) || 0);
+      r.divisions.push(...[...(o.out?.faced ?? []), ...(o.out?.losses ?? [])].map((m) => m.division).filter(Boolean));
+    }
+    for (const e of entries.filter((x) => x.fought)) {
+      const r = at(String(e.event), e.start);
+      r.start ??= e.start ?? null;
+      const counts = listed.has(r.event) ? (t) => finishOf(t) === 'walkover' : () => true;
+      for (const [t, n] of Object.entries(e.wins ?? {})) if (counts(t)) add(r.types, finishOf(t), Number(n) || 0, 0);
+      for (const [t, n] of Object.entries(e.losses ?? {})) if (counts(t)) add(r.types, finishOf(t), 0, Number(n) || 0);
+      if (!listed.has(r.event)) r.divisions.push(e.division);
+    }
+    return [...by.values()].sort((a, b) => String(a.start ?? '').localeCompare(String(b.start ?? '')));
+  }
+  // Every event's [won, lost] by finish, summed.
+  const totals = (records) => records.reduce((into, r) => {
+    for (const [t, [w, l]] of Object.entries(r.types)) add(into, t, w, l);
+    return into;
+  }, {});
+  // The record at each belt worn, highest first, as a profile's belt list dates them: `worn` lowest
+  // first, `starts` when each began (the first null, or -Infinity). An event takes the belt worn on its
+  // date, and an undated one counts only overall; the current belt shows even with no events yet.
+  function beltSplit(records, worn, starts) {
+    const by = new Map(worn.map((belt) => [belt, { belt, types: {}, events: 0 }]));
+    for (const r of records) {
+      const t = Date.parse(r.start ?? '');
+      if (Number.isNaN(t)) continue;
+      const b = by.get(worn[starts.findLastIndex((s) => (s ?? -Infinity) <= t)] ?? worn[0]);
+      for (const [f, [w, l]] of Object.entries(r.types)) add(b.types, f, w, l);
+      b.events++;
+    }
+    return [...by.values()].filter((b) => b.belt === worn[worn.length - 1] || b.events).reverse();
+  }
+  // Everyone who beat them more than once, with the whole head-to-head. Opponents are known by name,
+  // as registrations change per event. `meetings` run newest first, each { name, won, ... }, and the
+  // newest gives the rest (club, photo). Furthest behind first, then the most losses.
+  function rivalsOf(meetings) {
+    const met = new Map();
+    for (const { won, ...m } of meetings) {
+      const key = normalize(m.name);
+      if (!key) continue;
+      if (!met.has(key)) met.set(key, { ...m, key, w: 0, l: 0 });
+      met.get(key)[won ? 'w' : 'l']++;
+    }
+    return [...met.values()].filter((r) => r.l > 1).sort((a, b) => b.l - b.w - (a.l - a.w) || b.l - a.l);
+  }
+
+  return { normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, totals, beltSplit, rivalsOf };
 })();
