@@ -2,6 +2,7 @@
 // look up a whole event at once; each one cleans what it gets (career-cache.js),
 // so the worker only bounds what it stores.
 import { API } from './stats.js';
+import { crawl, queue } from './crawl.js';
 
 const KEPT = 30 * 24 * 60 * 60 * 1000; // the longest career-cache.js keeps anything
 const SITES = ['smoothcomp.com', 'ajptour.com'];
@@ -274,7 +275,12 @@ export default {
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
     return ROUTES[pathname](env, body ?? {});
   },
-  async scheduled(_, env) {
+  async scheduled(controller, env) {
+    // Each minute, results for events nobody opened; the queue is refilled every half hour.
+    if (controller.cron === '* * * * *') {
+      if (new Date(controller.scheduledTime).getUTCMinutes() % 30 === 0) await queue(env);
+      return crawl(env, record);
+    }
     await env.DB.prepare('DELETE FROM athletes WHERE at <= ?1').bind(Date.now() - KEPT).run();
   },
 };

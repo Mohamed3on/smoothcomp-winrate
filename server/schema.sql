@@ -109,3 +109,19 @@ CREATE TABLE IF NOT EXISTS profiles (
   at INTEGER NOT NULL,
   PRIMARY KEY (site, user)
 );
+-- Events the server reads results for itself (crawl.js): queued, reading (the schedule and the
+-- registrations named so far in `data`), done, gone (no schedule after three tries) or failed.
+CREATE TABLE IF NOT EXISTS crawls (
+  site TEXT NOT NULL,
+  event TEXT NOT NULL,
+  state TEXT NOT NULL,
+  start TEXT,
+  title TEXT,
+  city TEXT,
+  data TEXT,
+  tries INTEGER NOT NULL DEFAULT 0,
+  next INTEGER NOT NULL DEFAULT 0,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, event)
+);
+CREATE INDEX IF NOT EXISTS crawls_next ON crawls (state, start);
