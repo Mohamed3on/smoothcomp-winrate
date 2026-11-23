@@ -58,19 +58,21 @@ export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: 
   return (
     <div className="flex min-w-0 items-center gap-3">
       <Photo name={a.name} photo={a.photo} />
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex items-center gap-1.5">
           <Link href={f.link(`/athlete/${a.user}`)} className={cn('font-medium break-words hover:text-primary', !a.name && 'italic text-muted-foreground')}>
             {a.name ?? `Athlete ${a.user}`}
           </Link>
           {a.hidden === 1 && <Hidden />}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Flag code={a.country ?? null} name={a.country_name} />
           <Belt belt={a.belt ?? null} />
           <Age born={a.born ?? null} />
+          {club && a.club && (a.club_id
+            ? <Link href={f.link(`/academy/${a.club_id}`)} className="min-w-0 break-words hover:text-primary">{a.club}</Link>
+            : <span className="min-w-0 break-words">{a.club}</span>)}
         </div>
-        {club && a.club && (a.club_id
-          ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-xs text-muted-foreground break-words hover:text-primary">{a.club}</Link>
-          : <span className="text-xs text-muted-foreground">{a.club}</span>)}
       </div>
     </div>
   );
@@ -131,7 +133,7 @@ export function Place({ p }: { p: number | null }) {
 
 export function FromResults({ a }: { a: { source?: string; wins: number; losses: number | null; events: number | null } }) {
   if (a.source !== 'results') return null;
-  return <div className="text-xs text-muted-foreground" title="Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read">From results: <Record w={a.wins} l={a.losses ?? 0} /> at {plural(a.events ?? 0, 'event')} read</div>;
+  return <div className="text-xs text-muted-foreground" title="Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read">From {plural(a.events ?? 0, 'event')} read</div>;
 }
 
 export const Num = ({ n, dim = false }: { n: number | null | undefined; dim?: boolean }) =>

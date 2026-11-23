@@ -51,7 +51,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
         <div className="flex flex-wrap gap-1" role="group" aria-label="Wins that count">
           {WIN_TYPES.map((t) => (
             <Toggle key={t} variant="outline" size="sm" pressed={f.counted(t)} onPressedChange={() => toggleType(t)}
-              className="rounded-full aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground text-muted-foreground">
+              className="h-8 rounded-full aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground text-muted-foreground">
               <i className={cn('size-2 rounded-full transition-opacity', !f.counted(t) && 'opacity-35')} style={{ background: `var(--color-win-${t})` }} />
               {typeName(t)}
             </Toggle>
@@ -62,7 +62,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
         <div className="flex flex-wrap gap-1" role="group" aria-label="Belt">
           {BELTS.filter((b) => !['grey', 'yellow', 'orange', 'green'].includes(b) || belts.has(b)).map((b) => (
             <Toggle key={b} variant="outline" size="sm" pressed={belts.has(b)} onPressedChange={() => toggleBelt(b)} aria-label={`${b} belt`}
-              className="rounded-full px-2.5 aria-pressed:border-primary/60 aria-pressed:bg-primary/12">
+              className="h-8 rounded-full px-2.5 aria-pressed:border-primary/60 aria-pressed:bg-primary/12">
               <Belt belt={b} className={cn('transition-opacity', !belts.has(b) && 'opacity-45')} />
             </Toggle>
           ))}
@@ -96,8 +96,8 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
           <SelectContent>{sortItems.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
-      <Field label="Name"><Debounced f={f} name="q" type="search" label="Filter by name" placeholder="Filter by name" className="w-44" /></Field>
-      <Button variant="ghost" className="ml-auto text-muted-foreground" onClick={() => f.set(Object.fromEntries(['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'q', 'athletes', 'active'].map((k) => [k, null])))}>Reset</Button>
+      <Field label="Name" className="min-w-44 flex-1"><Debounced f={f} name="q" type="search" label="Filter by name" placeholder="Filter by name" className="w-full max-w-md" /></Field>
+      <Button variant="ghost" className="text-muted-foreground" onClick={() => f.set(Object.fromEntries(['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'q', 'athletes', 'active'].map((k) => [k, null])))}>Reset</Button>
     </div>
   );
 }
