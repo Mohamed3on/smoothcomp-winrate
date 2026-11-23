@@ -6,6 +6,7 @@ import { FromResults, Identity, Medals, Mix, Num, Photo, Record } from '@/compon
 import { useApi, type Athlete } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { plural, rate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 export const ATHLETE_SORTS: [string, string][] = [['wins', 'Wins'], ['submission', 'Submissions'], ['points', 'Wins on points'], ['stoppage', 'Stoppages'], ['decision', 'Decisions'],
   ['rate', 'Submission rate'], ['winRate', 'Win rate'], ['medals', 'Medals'], ['events', 'Events entered'], ['perEvent', 'Wins per event'], ['last', 'Last competed']];
@@ -14,23 +15,23 @@ export const resetAction = (f: Filters) => ({ label: 'Reset filters', onClick: (
 const perEvent = (a: Athlete) => (a.events ? (a.wins / a.events).toFixed(1) : '–');
 
 export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => [
-  { key: 'rank', label: '#', width: '3rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
+  { key: 'rank', label: '#', width: '3.5rem', compact: '3rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
   { key: 'who', label: 'Athlete', align: 'start', cell: (a) => <Identity a={a} f={f} club={club} /> },
   { key: 'wins', label: 'Wins', width: '6%', compact: '4rem', sort: 'wins', title: 'Wins of the finish types switched on', cell: (a) => <Num n={a.wins} /> },
   { key: 'rate', label: 'Win rate', width: '8%', compact: '5rem', sort: 'winRate', title: 'Wins over matches, counted finishes, no walkovers: from their profile’s match lists where someone opened it, else their results at the events read',
     cell: (a) => (rate(a.won, a.lost) ? <div className="flex flex-col items-end"><span className="font-semibold">{rate(a.won, a.lost)}</span><span className="text-xs"><Record w={a.won!} l={a.lost!} /></span></div> : <span className="text-muted-foreground">–</span>) },
-  { key: 'mix', label: 'How they won', width: '12%', align: 'start', narrow: true, cell: (a) => <Mix types={a.types} f={f} legend="short" note={<FromResults a={a} />} /> },
-  { key: 'subs', label: 'Subs', width: '6%', sort: 'submission', narrow: true, title: 'Submission wins; dimmed when switched off', cell: (a) => <Num n={a.submission} dim={!f.counted('submission')} /> },
-  { key: 'points', label: 'Points', width: '6%', sort: 'points', narrow: true, cell: (a) => <Num n={a.points} dim={!f.counted('points')} /> },
-  { key: 'medals', label: 'Medals', width: '12%', sort: 'medals', narrow: true, title: 'Golds, then silvers, then bronzes', cell: (a) => <Medals g={a.gold} s={a.silver} b={a.bronze} /> },
-  { key: 'events', label: 'Events', width: '6%', sort: 'events', narrow: true, cell: (a) => <Num n={a.events} /> },
-  { key: 'per', label: 'Per event', width: '6%', sort: 'perEvent', narrow: true, title: 'Wins per event entered', cell: (a) => perEvent(a) },
-  { key: 'last', label: 'Last competed', width: '9%', sort: 'last', narrow: true, title: 'The latest event they entered, as Smoothcomp lists it or Mat Stats read it', cell: (a) => <span className={a.last ? '' : 'text-muted-foreground'}>{a.last ? new Date(a.last).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '–'}</span> },
+  { key: 'mix', label: 'How they won', width: '11rem', align: 'start', narrow: true, cell: (a) => <Mix types={a.types} f={f} legend="short" note={<FromResults a={a} />} /> },
+  { key: 'subs', label: 'Subs', width: '6%', sort: 'submission', narrow: 'xl', title: 'Submission wins; dimmed when switched off', cell: (a) => <Num n={a.submission} dim={!f.counted('submission')} /> },
+  { key: 'points', label: 'Points', width: '6%', sort: 'points', narrow: 'xl', cell: (a) => <Num n={a.points} dim={!f.counted('points')} /> },
+  { key: 'medals', label: 'Medals', width: '9rem', sort: 'medals', narrow: true, title: 'Golds, then silvers, then bronzes', cell: (a) => <Medals g={a.gold} s={a.silver} b={a.bronze} /> },
+  { key: 'events', label: 'Events', width: '6%', sort: 'events', narrow: 'xl', cell: (a) => <Num n={a.events} /> },
+  { key: 'per', label: 'Per event', width: '6%', sort: 'perEvent', narrow: 'xl', title: 'Wins per event entered', cell: (a) => perEvent(a) },
+  { key: 'last', label: 'Last competed', width: '9%', sort: 'last', narrow: 'xl', title: 'The latest event they entered, as Smoothcomp lists it or Mat Stats read it', cell: (a) => <span className={cn('whitespace-nowrap', !a.last && 'text-muted-foreground')}>{a.last ? new Date(a.last).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '–'}</span> },
 ];
 
 export function AthletesPage() {
   const f = useFilters();
-  const { data, isFetching, isLoading } = useApi<{ rows: Athlete[]; total: number }>('athletes', { ...f.query, limit: 2000 });
+  const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Athlete[]; total: number }>('athletes', { ...f.query, limit: 2000 });
   return (
     <>
       <PageHead title="Athletes" aside={data && <Count n={data.total} unit={data.total === 1 ? 'athlete' : 'athletes'} />}
@@ -38,7 +39,7 @@ export function AthletesPage() {
       <div className="flex flex-col gap-3">
         <FilterBar f={f} sorts={ATHLETE_SORTS} />
         <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={athleteColumns(f)} rowKey={(a) => a.user} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
-          empty={<Empty title="No athletes match" text="Lower the minimums, widen the age range, switch more finish types on, or clear the belt and country." action={resetAction(f)} />} />
+          empty={error ? <Empty title="Couldn’t load the ranking" text="Mat Stats didn’t answer. Try again in a moment." action={{ label: 'Try again', onClick: () => refetch() }} /> : <Empty title="No athletes match" text="Lower the minimums, widen the age range, switch more finish types on, or clear the belt and country." action={resetAction(f)} />} />
       </div>
     </>
   );

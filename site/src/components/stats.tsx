@@ -58,23 +58,23 @@ export function Identity({ a, f, club = true, children }: { a: Person; f: Filter
   const on = `Profile on ${f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}`;
   return (
     <div className={cn("flex min-w-0 gap-3", children ? "items-start" : "items-center")}>
-      <Photo name={a.name} photo={a.photo} />
+      <Photo name={a.name} photo={a.photo} className="max-sm:hidden" />
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex items-center gap-1.5">
-          <Link href={f.link(`/athlete/${a.user}`)} className={cn('font-medium break-words hover:text-primary', !a.name && 'italic text-muted-foreground')}>
+          <Link href={f.link(`/athlete/${a.user}`)} className={cn('min-w-0 font-medium break-words hover:text-primary', !a.name && 'italic text-muted-foreground')}>
             {a.name ?? `Athlete ${a.user}`}
           </Link>
           {a.hidden === 1 && <Hidden />}
           <a href={`${f.home}/en/profile/${a.user}`} rel="noopener" title={on} aria-label={on}
-            className="-m-1 shrink-0 rounded p-1 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><ExternalLink className="size-3" /></a>
+            className="-m-1 shrink-0 rounded p-1 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring max-sm:hidden"><ExternalLink className="size-3" /></a>
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <Flag code={a.country ?? null} name={a.country_name} className="text-sm" />
           <Belt belt={a.belt ?? null} />
           <Age born={a.born ?? null} />
           {club && a.club && (a.club_id
-            ? <Link href={f.link(`/academy/${a.club_id}`)} className="min-w-0 break-words hover:text-primary">{a.club}</Link>
-            : <span className="min-w-0 break-words">{a.club}</span>)}
+            ? <Link href={f.link(`/academy/${a.club_id}`)} title={a.club} className="line-clamp-2 min-w-0 break-words hover:text-primary">{a.club}</Link>
+            : <span title={a.club} className="line-clamp-2 min-w-0 break-words">{a.club}</span>)}
         </div>
         {children}
       </div>
@@ -144,7 +144,7 @@ export function Medals({ g, s, b, className }: { g: number; s: number; b: number
 }
 
 export function Record({ w, l }: { w: number; l: number }) {
-  return <span className="whitespace-nowrap font-semibold"><span className={w ? 'text-won' : 'text-muted-foreground'}>{w}</span><span className="px-0.5 text-muted-foreground">–</span><span className={l ? 'text-lost' : 'text-muted-foreground'}>{l}</span></span>;
+  return <span className="whitespace-nowrap font-semibold"><span className={w ? 'text-won' : 'text-muted-foreground'}>{fmt(w)}</span><span className="px-0.5 text-muted-foreground">–</span><span className={l ? 'text-lost' : 'text-muted-foreground'}>{fmt(l)}</span></span>;
 }
 
 export function Place({ p }: { p: number | null }) {

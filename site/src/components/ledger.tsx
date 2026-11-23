@@ -6,14 +6,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 
-// width: the column's width from lg up; compact: its width below lg (width by default); narrow: left off below lg.
+// width: the column's width from lg up; compact: its width below lg (width by default); narrow: left off below lg, or below xl with 'xl'.
 export interface Column<T> {
-  key: string; label: string; width?: string; compact?: string; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean;
+  key: string; label: string; width?: string; compact?: string; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean | 'xl';
   cell: (row: T, index: number) => React.ReactNode;
 }
 
-const cellClass = (c: { align?: string; narrow?: boolean }, sorted: boolean) =>
-  cn('px-2 py-2.5 align-middle first:pl-3 last:pr-3 sm:px-3 sm:first:pl-5 sm:last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
+const cellClass = (c: { align?: string; narrow?: boolean | 'xl' }, sorted: boolean) =>
+  cn('px-2 py-2.5 align-middle first:pl-3 last:pr-3 sm:px-3 sm:first:pl-5 sm:last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow === 'xl' ? 'max-xl:hidden' : c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
 
 // A ranked ledger: sortable headers, every row reachable, only the rows on screen drawn.
 export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, loading, empty, expand, openAll }: {
@@ -23,7 +23,8 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   const [open, setOpen] = useState<Set<string>>(() => new Set(openAll ? rows?.map(rowKey) : []));
   const [fresh, setFresh] = useState<string | null>(null);
   // An expansion spans only the columns shown: spanning hidden ones would add empty columns that take width.
-  const span = useMedia('(width >= 64rem)') ? columns.length : columns.filter((c) => !c.narrow).length;
+  const lg = useMedia('(width >= 64rem)'), xl = useMedia('(width >= 80rem)');
+  const span = columns.filter((c) => !c.narrow || (c.narrow === 'xl' ? xl : lg)).length;
   const header = (
     <tr className="text-xs text-muted-foreground">
       {columns.map((c) => (
@@ -80,5 +81,5 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
 }
 
 export const Count = ({ n, unit }: { n: number; unit: string }) => (
-  <span className="text-sm text-muted-foreground"><NumberFlow value={n} className="font-semibold text-foreground" /> {unit} match</span>
+  <span className="text-sm text-muted-foreground"><NumberFlow value={n} className="font-semibold text-foreground" /> {unit} {n === 1 ? 'matches' : 'match'}</span>
 );

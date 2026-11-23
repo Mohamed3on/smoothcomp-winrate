@@ -30,7 +30,7 @@ export function App() {
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur-md">
         {/* On phones the nav takes a second row under the logo and controls. */}
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-8 px-4 sm:h-14 sm:flex-nowrap sm:px-6">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 px-4 sm:h-14 sm:gap-x-8 sm:flex-nowrap sm:px-6">
           <Link href={f.link('/')} className="flex h-14 items-center gap-2 font-semibold tracking-tight whitespace-nowrap"><img src="/icon.svg" alt="" className="size-6" />Mat Stats</Link>
           <nav className="flex h-10 w-full gap-6 text-sm max-sm:order-last sm:h-full sm:w-auto">
             {nav.map(([key, href, label]) => (
@@ -38,7 +38,7 @@ export function App() {
                 className={cn('relative flex items-center text-muted-foreground transition-colors hover:text-foreground', section === key && 'text-foreground after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary')}>{label}</Link>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <Search f={f} />
             <Select items={SITES} value={f.site} onValueChange={(v) => {
               // Ids are per site, so a profile page goes back to its list.
