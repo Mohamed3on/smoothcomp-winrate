@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Ledger, type Column } from '@/components/ledger';
 import { Empty } from '@/components/empty';
-import { Age, Belt, Flag, Identity, Medals, Mix, Num, Photo, Place, Record } from '@/components/stats';
+import { Age, Belt, Flag, Hidden, Identity, Medals, Mix, Num, Photo, Place, Record } from '@/components/stats';
 import { useApi, type EventEntry, type EventMeta, type Types } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, plural, rate, winsOf } from '@/lib/format';
@@ -38,8 +38,23 @@ function Dot({ call }: { call: Call | null }) {
 // No medal pointed to reads as a dash, not three zeros.
 const Expected = ({ e }: { e: number[] }) => (e.some(Boolean) ? <Medals g={e[0]} s={e[1]} b={e[2]} /> : <span className="text-muted-foreground">–</span>);
 
-const NameLink = ({ e, f }: { e: EventEntry; f: Filters }) =>
-  <Link href={f.link(`/athlete/${e.user}`)} className="hover:text-primary">{e.name ?? `Athlete ${e.user}`}</Link>;
+const NameLink = ({ e, f }: { e: EventEntry; f: Filters }) => (
+  <span className="inline-flex min-w-0 items-center gap-1.5">
+    <Link href={f.link(`/athlete/${e.user}`)} className="hover:text-primary">{e.name ?? `Athlete ${e.user}`}</Link>{e.hidden === 1 && <Hidden />}
+  </span>
+);
+// What a bracket seeds by: career win rate and record; their wins where no record is read, else that nothing is.
+function Seed({ r, row = false }: { r: EventEntry & { career: number | null }; row?: boolean }) {
+  const pct = rate(r.career_won, r.career_lost);
+  if (pct) return (
+    <span className={cn('flex shrink-0 items-end', row ? 'items-center gap-2' : 'flex-col leading-tight')} title={`Seeded by career win rate: ${r.career_won} won, ${r.career_lost} lost`}>
+      <span className="font-semibold">{pct}</span><span className="text-xs"><Record w={r.career_won!} l={r.career_lost!} /></span>
+    </span>
+  );
+  return r.career != null
+    ? <span className="shrink-0 text-xs text-muted-foreground" title="No match record read, so they seed by wins per event, after everyone with one">{plural(r.career, 'win')}</span>
+    : <span className="shrink-0 text-xs text-muted-foreground" title="Mat Stats hasn’t read their career, so they seed last">Not read</span>;
+}
 
 export function EventPage({ id }: { id: string }) {
   const f = useFilters();
@@ -83,15 +98,19 @@ export function EventPage({ id }: { id: string }) {
   const medalOrder = (a: number[], b: number[]) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
   const expectedOf = (p: Person) => [0, 1, 2].map((m) => p.calls.filter((c) => c.medal === m).length);
   const byWins = (a: Person, b: Person) => (b.career ?? -1) - (a.career ?? -1) || byCareer(a.rows[0], b.rows[0]);
-  // Ranked by a header: expected medals or career wins; once fought, by place unless a header is picked.
+  const subsOf = (p: Person) => p.rows[0].tally?.[1] ?? -1;
+  // Ranked by a header: expected medals, career win rate, wins or submissions; once fought, by place unless a header is picked.
   const athleteSort = f.get('sort') || (fought ? '' : 'expected');
+  const athleteOrder: Record<string, (a: Person, b: Person) => number> = {
+    expected: (a, b) => medalOrder(expectedOf(a), expectedOf(b)) || byWins(a, b), career: byWins,
+    rate: (a, b) => byCareer(a.rows[0], b.rows[0]), submission: (a, b) => subsOf(b) - subsOf(a) || byWins(a, b),
+  };
   const people: Person[] = [...Map.groupBy(divisions.flatMap((d) => d.rows), (e) => e.user).values()].map((rows) => rows.toSorted(bySeat)).map((rows) => ({
     ...rows[0], belt: beltAt(rows.map((r) => r.division)), rows, w: rows.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), l: rows.reduce((n, r) => n + winsOf(r.losses, f.counted), 0),
     won: sum(rows.map((r) => r.wins)), lost: sum(rows.map((r) => r.losses)),
     best: Math.min(...rows.map((r) => r.place ?? 999)), career: rows[0].career,
     calls: (calls.get(rows[0].user) ?? []).map((r) => r.call!).sort((a, b) => a.medal - b.medal),
-  })).sort(athleteSort === 'career' ? byWins : athleteSort === 'expected' ? (a, b) => medalOrder(expectedOf(a), expectedOf(b)) || byWins(a, b)
-    : (a, b) => a.best - b.best || b.w - a.w || a.l - b.l);
+  })).sort(athleteOrder[athleteSort] ?? ((a, b) => a.best - b.best || b.w - a.w || a.l - b.l));
   // The athletes tab answers to the leaderboard's filters: belt, age, country, fewest career wins, and a search.
   const q = f.get('q').trim().toLowerCase(), belts = f.get('belt').split(',').filter(Boolean);
   const [agemin, agemax, least] = ['agemin', 'agemax', 'wins'].map((k) => (f.get(k) === '' ? null : Number(f.get(k))));
@@ -136,6 +155,10 @@ export function EventPage({ id }: { id: string }) {
       { key: 'lost', label: 'How they lost', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.lost, f.counted) ? <Mix types={p.lost} f={f} scale={winsOf(p.lost, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
     ] : []),
     ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', sort: 'expected', title: 'Rank by the medals their brackets point to, then career wins', cell: (p: Person) => <Expected e={expectedOf(p)} /> }]),
+    ...(fought ? [] : [
+      { key: 'seed', label: 'Win rate', width: '6.5rem', sort: 'rate', title: 'Rank by career win rate, as brackets are seeded: a short record leans to 50%', cell: (p: Person) => <Seed r={p} /> },
+      { key: 'subs', label: 'Subs', width: '5.5rem', sort: 'submission', title: 'Rank by career wins by submission', cell: (p: Person) => <Num n={p.rows[0].tally?.[1]} /> },
+    ]),
     { key: 'career', label: 'Career wins', width: '8rem', sort: 'career', title: 'Rank by wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },
   ];
   const academyColumns: Column<Academy>[] = [
@@ -174,7 +197,7 @@ export function EventPage({ id }: { id: string }) {
           <Dot call={r.call} />
           <Photo name={r.name} photo={r.photo} className="size-6" />
           <span className="flex min-w-0 flex-1 flex-col"><NameLink e={r} f={f} /><span className="truncate text-xs text-muted-foreground">{r.club}</span></span>
-          <span className="shrink-0 font-semibold">{r.career ?? '–'}</span>
+          <Seed r={r} />
         </li>
       ))}
     </ol>
@@ -190,8 +213,8 @@ export function EventPage({ id }: { id: string }) {
     { key: 'name', label: 'Division', width: '40%', align: 'start', cell: (d) => <DivisionLink event={id} name={d.name} f={f} className="font-medium" /> },
     { key: 'size', label: 'Athletes', width: '7rem', sort: 'athletes', cell: (d) => <Num n={d.rows.length} /> },
     { key: 'wins', label: 'Career wins', width: '9rem', sort: 'wins', title: "Rank by the entrants' career wins added up", cell: (d) => <div className="flex flex-col items-end"><Num n={d.wins} /><span className="text-xs text-muted-foreground">{fmt(Math.round(d.wins / d.rows.length))} per athlete</span></div> },
-    { key: 'top', label: fought ? 'Podium, or the expected one by career wins' : 'Expected podium, by career wins', align: 'start', cell: (d) => (
-      <div className="flex flex-col gap-1">{d.rows.slice(0, 3).map((r) => <span key={r.user} className="flex items-center gap-2 text-xs">{r.place != null ? <Place p={r.place} /> : <Dot call={r.call} />}<Photo name={r.name} photo={r.photo} className="size-5" /><NameLink e={r} f={f} /><b className="ml-auto font-semibold">{r.career ?? '–'}</b></span>)}</div>
+    { key: 'top', label: fought ? 'Podium, or the expected one by win rate' : 'Expected podium, by win rate', align: 'start', cell: (d) => (
+      <div className="flex flex-col gap-1">{d.rows.slice(0, 3).map((r) => <span key={r.user} className="flex items-center gap-2 text-xs">{r.place != null ? <Place p={r.place} /> : <Dot call={r.call} />}<Photo name={r.name} photo={r.photo} className="size-5" /><NameLink e={r} f={f} /><span className="ml-auto"><Seed r={r} row /></span></span>)}</div>
     ) },
   ];
   const tabs = fought
