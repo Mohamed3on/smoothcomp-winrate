@@ -423,7 +423,7 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
           {list.map((row) => {
             const read = row.read?.filter((e) => e.fought) ?? [];
             const all = meetingsOfRow(row);
-            const shown = all.filter((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won')));
+            const shown = all.filter((m) => (!against || person(m.opponent) === against.key) && (show === 'all' || m.won === (show === 'won')));
             // Divisions read from the results, else the ones the match lists name.
             const named = [...new Set(all.map((m) => m.division).filter(Boolean))] as string[];
             const divisions: (Entry | string[])[] = row.read?.length ? row.read : [named];
@@ -509,8 +509,9 @@ export function AthletePage({ id }: { id: string }) {
   const pick = (r: Rival | null) => { setAgainst(r); if (r) document.getElementById('events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   const matches = met.filter((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)));
   const won = matches.filter((m) => m.won).length;
-  // Won or lost alone lists just those matches, event by event; all keeps every event.
-  const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOfRow(r).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
+  // Won or lost alone lists just those matches, event by event; all keeps every event. The lists keep the
+  // finish types switched off too: only the counts and records leave them out.
+  const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOfRow(r).some((m) => (!against || person(m.opponent) === against.key) && (show === 'all' || m.won === (show === 'won'))));
   const side = data.profile ? OnProfile({ p: data.profile, f, id }) : null;
   const arts = artsOf(data.profile);
   const rated = outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size;
