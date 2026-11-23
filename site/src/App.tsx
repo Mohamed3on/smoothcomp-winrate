@@ -2,7 +2,7 @@ import { Link, Route, Switch, useLocation } from 'wouter';
 import { lazy, Suspense, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search } from '@/components/search';
-import { useFilters } from '@/lib/filters';
+import { KEPT, useFilters, usedBy } from '@/lib/filters';
 import { cn } from '@/lib/utils';
 import { AthletesPage } from '@/pages/athletes';
 import { AcademiesPage } from '@/pages/academies';
@@ -20,6 +20,8 @@ export function App() {
   const f = useFilters();
   const [location, navigate] = useLocation();
   useEffect(() => { scrollTo(0, 0); }, [location]);
+  // Each page's address keeps only the filters it reads.
+  useEffect(() => f.set(Object.fromEntries(KEPT.filter((k) => !usedBy(location).includes(k)).map((k) => [k, null]))), [location]); // eslint-disable-line react-hooks/exhaustive-deps
   const section = location.startsWith('/academ') ? 'academies' : location.startsWith('/event') ? 'events' : 'athletes';
   const nav = [['athletes', '/', 'Athletes'], ['academies', '/academies', 'Academies'], ['events', '/events', 'Events']] as const;
   return (
