@@ -60,3 +60,19 @@ test('a division is placed by the round each side went out in, a round robin by 
   const places = poolPlaces([{ key: 'a', wins: 1, subs: 0 }, { key: 'b', wins: 2, subs: 0 }, { key: 'c', wins: 1, subs: 0 }], (x, y) => x === 'c' && y === 'a');
   assert.deepEqual(JSON.parse(JSON.stringify([...places])), [['b', 1], ['c', 2], ['a', 3]]);
 });
+
+test('a bracket seeds by win rate where a record is known, then wins per event', () => {
+  const { bySeed, sureSeed } = context.SCWRRules;
+  const seeds = {
+    rate: { won: 9, lost: 1, wins: 10, events: 10 },            // 90%
+    deep: { won: 8, lost: 2, wins: 40, events: 10 },            // 80%, though 4 wins per event
+    same: { won: 18, lost: 2, wins: 18, events: 9 },            // 90% over more matches
+    career: { wins: 30, events: 10 },                           // no record: 3 per event
+    unknown: {},
+  };
+  const order = Object.keys(seeds).sort((a, b) => bySeed(seeds[a], seeds[b]));
+  assert.deepEqual(JSON.parse(JSON.stringify(order)), ['same', 'rate', 'deep', 'career', 'unknown']);
+  const list = order.map((k) => seeds[k]);
+  assert.deepEqual(list.map((_, i) => sureSeed(list, i)), [true, true, true, true, false]);
+  assert.equal(sureSeed([{ won: 1, lost: 1 }, { won: 2, lost: 2 }, { won: 1, lost: 1 }], 0), false);
+});

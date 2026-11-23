@@ -43,6 +43,11 @@ async function lookup(env, { site, users }) {
   const seen = await env.DB.prepare('SELECT user, sum(wins) wins, sum(losses) losses, count(*) events FROM records WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
     .bind(site, JSON.stringify(users)).all();
   for (const row of seen.results) kept.seen[row.user] = [row.wins, row.losses, row.events];
+  // Each athlete's record by finish, [won, lost], as the stats site rates them (stats.js TALLY): a
+  // participants page seeds its brackets by win rate.
+  const rated = await env.DB.prepare('SELECT user, rec FROM tallies WHERE site = ?1 AND rec IS NOT NULL AND user IN (SELECT value FROM json_each(?2))')
+    .bind(site, JSON.stringify(users)).all();
+  kept.records = Object.fromEntries(rated.results.map((row) => [row.user, JSON.parse(row.rec)]));
   // When the latest event each athlete entered ended, so a career read before it is read again.
   // An event whose end no page has sent yet counts as over at its start.
   const over = 'coalesce(v.ends, unixepoch(v.start) * 1000)';

@@ -13,10 +13,11 @@ import { FilterBar } from '@/components/filter-bar';
 import { resetAction } from '@/pages/athletes';
 import { cn } from '@/lib/utils';
 import { DivisionLink } from '@/pages/division';
+import { bySeed, sureSeed } from '@/lib/rules';
 
-// The medal a bracket's career ranking points to: first gold, second silver, third bronze, fourth nothing.
-// A call is sure when the athlete's career is known and nobody else in the bracket has as many wins;
-// a tie, or a career of their own not known, makes it a ring. Unknown rivals rank last, as in the extension.
+// The medal a bracket's seeding points to (rules.js, as in the extension): first gold, second silver, third
+// bronze, fourth nothing. Seeded by win rate where a record is known, then wins per event and career wins.
+// A call is sure when the athlete's figures stand apart from everyone else's in the bracket; else a ring.
 interface Call { medal: number; sure: boolean; bracket: string; seed: number; of: number }
 type Ranked = EventEntry & { career: number | null; tally: number[] | null; call: Call | null };
 type Person = EventEntry & { rows: Ranked[]; w: number; l: number; won: Types; lost: Types; best: number; career: number | null; calls: Call[] };
@@ -31,7 +32,7 @@ const MEDAL_RING = ['ring-gold', 'ring-silver', 'ring-bronze'];
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 function Dot({ call }: { call: Call | null }) {
   if (!call) return <i className="size-2 shrink-0 rounded-full bg-muted-foreground/25" aria-hidden />;
-  const label = `${call.sure ? '' : 'Maybe '}${MEDAL[call.medal]}: ${ordinal(call.seed)} of ${call.of} by career wins in ${call.bracket}`;
+  const label = `${call.sure ? '' : 'Maybe '}${MEDAL[call.medal]}: seeded ${ordinal(call.seed)} of ${call.of} by win rate in ${call.bracket}`;
   return <i title={label} aria-label={label} className={cn('size-2 shrink-0 rounded-full', call.sure ? MEDAL_BG[call.medal] : ['ring-[1.5px] ring-inset', MEDAL_RING[call.medal]])} />;
 }
 // No medal pointed to reads as a dash, not three zeros.
@@ -57,20 +58,20 @@ export function EventPage({ id }: { id: string }) {
   document.title = `${title} · Mat Stats`;
   const fought = results.length > 0;
   const stamp = (t: number) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  // Most counted wins first, then most by submission, most on points, the younger athlete; unknown careers last.
+  // Counted career wins, by submission and on points; null with no career read.
   const tallyOf = (e: EventEntry) => {
     if (e.career_wins == null) return null;
     const t: Record<string, number> = JSON.parse(e.career_types ?? '{}');
     return [winsOf(t, f.counted), f.counted('submission') ? Number(t.submission) || 0 : 0, f.counted('points') ? Number(t.points) || 0 : 0];
   };
-  const key = (r: Ranked) => [...(r.tally ?? [-1, -1, -1]), r.born ?? -Infinity];
-  const byCareer = (a: Ranked, b: Ranked) => key(a).reduce((o, x, i) => o || key(b)[i] - x, 0) || a.user.localeCompare(b.user);
+  const seedOf = (r: Ranked) => ({ won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, submission: r.tally?.[1], points: r.tally?.[2], born: r.born });
+  const byCareer = (a: Ranked, b: Ranked) => bySeed(seedOf(a), seedOf(b)) || a.user.localeCompare(b.user);
   const divisions: Division[] = [...Map.groupBy(entries, (e) => e.division.trim())].map(([name, list]) => {
     const rows: Ranked[] = list.map((r) => ({ ...r, tally: tallyOf(r), career: tallyOf(r)?.[0] ?? null, call: null })).sort(byCareer);
     const decided = rows.some((r) => r.place != null);
     if (decided) rows.sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || byCareer(a, b));
     rows.forEach((r, i) => {
-      if (i < 3 && !decided && (!fought || live)) r.call = { medal: i, bracket: name, seed: i + 1, of: rows.length, sure: rows.length === 1 || (r.career != null && rows.every((o, j) => j === i || o.career !== r.career)) };
+      if (i < 3 && !decided && (!fought || live)) r.call = { medal: i, bracket: name, seed: i + 1, of: rows.length, sure: rows.length === 1 || sureSeed(rows.map(seedOf), i) };
     });
     return { name, rows, wins: rows.reduce((n, r) => n + (r.career ?? 0), 0) };
   });

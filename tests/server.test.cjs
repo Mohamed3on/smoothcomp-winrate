@@ -80,4 +80,7 @@ test("a results page's upload reads back on the stats site", async () => {
   await post('/roster', { site: 'smoothcomp.com', event: '900', meta, athletes: { 11: { name: 'Kim Lee', entries: [{ division: 'Adult / Blue / -76 kg' }] } }, read: Date.now() });
   const after = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=11'))).json();
   assert.deepEqual(after.entries.map((e) => [e.event, e.fought]), [['900', 1]]);
+  // A participants page's lookup gets each athlete's record by finish, to seed brackets by win rate.
+  const looked = await (await post('/lookup', { site: 'smoothcomp.com', users: ['11', '12', '13'] })).json();
+  assert.deepEqual(looked.records, { 11: { submission: [3, 0], walkover: [1, 0] }, 12: { points: [1, 0], submission: [0, 2] } });
 });

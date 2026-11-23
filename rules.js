@@ -132,5 +132,24 @@ globalThis.SCWRRules = (() => {
   const isPool = (stages) => stages.length > 0 && stages.every((s) => /^Match \d+\/\d+$/.test(s ?? ''));
   const poolPlaces = (rows, beat) => new Map([...rows].sort((a, b) => b.wins - a.wins || b.subs - a.subs || (beat(a.key, b.key) ? -1 : beat(b.key, a.key) ? 1 : 0)).map((r, i) => [r.key, i + 1]));
 
-  return { normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, totals, beltSplit, rivalsOf, placeOf, roundOf, isPool, poolPlaces };
+  // A bracket's seeding, best first, which points to its medals: the best win rate where their record
+  // is known (at one rate, more matches first), then wins per event, the most wins, most by submission,
+  // most on points, and the younger athlete; any figure unknown ranks after every known one. A seed is
+  // { won, lost, wins, events, submission, points, born } (born: a higher number is younger).
+  const seedKey = ({ won, lost, wins, events, submission, points, born }) => [
+    ...(won + lost > 0 ? [won / (won + lost), won + lost] : [-1, -1]), wins != null && events ? wins / events : -1,
+    wins ?? -1, submission ?? -1, points ?? -1, born ?? -Infinity,
+  ];
+  const bySeed = (a, b) => {
+    const [x, y] = [seedKey(a), seedKey(b)];
+    return x.reduce((order, n, i) => order || (y[i] === n ? 0 : y[i] > n ? 1 : -1), 0);
+  };
+  // A medal call is sure when the athlete's rate or wins per event is known and nobody else in the
+  // bracket has the same rate, matches and wins per event; else it is a maybe.
+  const sureSeed = (seeds, i) => {
+    const k = seedKey(seeds[i]);
+    return (k[0] >= 0 || k[2] >= 0) && seeds.every((s, j) => j === i || seedKey(s).slice(0, 3).some((n, m) => n !== k[m]));
+  };
+
+  return { seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, totals, beltSplit, rivalsOf, placeOf, roundOf, isPool, poolPlaces };
 })();

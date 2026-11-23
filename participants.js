@@ -78,6 +78,18 @@ const seenRate = (user) => {
   return seen && seen[0] + seen[1] ? [seen[0] / (seen[0] + seen[1]), seen[0] + seen[1]] : [-1, -1];
 };
 const unread = (user) => !fresh(user) || needsEvents(user);
+// Their record under the finishes counted, [won, lost], as the stats site rates them (their
+// profile's match lists where opened, else the results read); null where none is kept.
+const recordOf = (user) => {
+  const record = SCWRCareers.records?.[user];
+  return record ? Object.entries(record).reduce(([w, l], [type, [a, b]]) => (counted(type) ? [w + a, l + b] : [w, l]), [0, 0]) : null;
+};
+// What a bracket seeds them by (rules.js seedKey): win rate where a record is known, then wins per event, and so on.
+const seedOf = (r) => {
+  const t = tally(r.user_id);
+  const [won, lost] = recordOf(r.user_id) ?? [];
+  return { won, lost, wins: t?.[0], events: eventsOf(r.user_id), submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age };
+};
 
 // How much of a whole-event read is still to come: the athletes among these
 // registrations whose career is not read yet. The progress bar fills from the
@@ -95,34 +107,30 @@ let place; // each registration's index in Smoothcomp's own order
 let first; // each bracket's index in Smoothcomp's own order
 const ranked = new Set();
 
-// Brackets lead with wins per event (lead 2): how deep an athlete usually goes, so
-// a long career of early exits no longer outranks a short one of finals. Then most
-// wins, most by submission, most by points, and the younger athlete; anything still
-// level keeps Smoothcomp's own order. The athletes view picks its own lead. A career
-// that is unread or hidden sorts after every known one, as does an unknown age.
+// Brackets (lead 2) are seeded as the stats site seeds them (rules.js seedKey): the best win
+// rate where a record is known, then wins per event, so a long career of early exits doesn't
+// outrank a short one of finals; then most wins, by submission, by points, and the younger
+// athlete. The athletes view picks its own lead. Anything unknown sorts after every known
+// figure; anything still level keeps Smoothcomp's own order.
 function rank(group, lead = 2) {
   const key = (r) => {
     const t = tally(r.user_id) ?? [-1, -1, -1];
-    return [...(lead === 2 ? perEvent(r.user_id) : [t[lead]]), ...t, ...seenRate(r.user_id), -(r.age ?? Infinity), -place.get(r.id)];
+    const own = lead === 2 ? SCWRRules.seedKey(seedOf(r)) : [t[lead], ...t];
+    return [...own, ...seenRate(r.user_id), -(r.age ?? Infinity), -place.get(r.id)];
   };
   return group.registrations.map((r) => [r, key(r)])
     .sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0))
     .map(([r]) => r);
 }
 
-// The medal a bracket's ranking points to at each place: first gold, second
-// silver, third bronze; a fourth place wins nothing. A call is sure when the
-// athlete's wins per event are known and no one else in it has the same; a tie, or a
-// career of their own not known, makes it a ring. A hidden rival ranks last, as in the
-// bracket, rather than clouding every call beside them.
+// The medal a bracket's seeding points to at each place: first gold, second silver,
+// third bronze; a fourth place wins nothing. A call is sure when every career in it is
+// read and the athlete's figures stand apart (rules.js sureSeed); else it is a ring.
 const MEDALS = ['gold', 'silver', 'bronze'];
 function calls(rows) {
-  const wins = rows.map((r) => (perEvent(r.user_id)[0] >= 0 ? perEvent(r.user_id)[0] : undefined));
+  const seeds = rows.map(seedOf);
   const complete = rows.every(r => !r.user_id || fresh(r.user_id));
-  return rows.map((r, i) => i < 3 && {
-    medal: i,
-    sure: rows.length === 1 || (complete && wins[i] !== undefined && wins.every((w, j) => j === i || w !== wins[i])),
-  });
+  return rows.map((r, i) => i < 3 && { medal: i, sure: rows.length === 1 || (complete && SCWRRules.sureSeed(seeds, i)) });
 }
 const dot = (call) => (call ? `<i class="scwr-medal" data-medal="${MEDALS[call.medal]}"${call.sure ? '' : ' data-tied'}></i>` : '');
 
@@ -540,12 +548,16 @@ const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${fig
 const haul = (medals) => (medals.some(Boolean)
   ? `<div class="scwr-haul">${medals.map((n, i) => `<span${n ? '' : ' class="muted"'} title="${plural(n, MEDALS[i])}"><i class="scwr-medal" data-medal="${MEDALS[i]}"></i>${n}</span>`).join('')}</div>`
   : '<div class="muted">No medals</div>');
-// Brackets lead with wins per event, as they rank by it, the wins, subs and points under it;
+// Brackets lead with the win rate where a record is known (its W–L and wins per event under it),
+// else wins per event, as they seed by them, the wins, subs and points under it;
 // the athletes view by wins per event says how many events, and its other sorts lead with
 // the wins, wins per event beside them. A career with no events counted yet leads with its wins.
 // Someone who has never competed says so, apart from someone who has and never won.
-const figures = (t, medals, events, entered, lead) => (entered === 0
+const figures = (t, medals, events, entered, lead, record) => (entered === 0
   ? column(0, 'First event', 'no past events')
+  : lead && record?.[0] + record?.[1]
+    ? column(record[0], `<b>${Math.round((record[0] / (record[0] + record[1])) * 100)}%</b><span class="muted"> win rate</span>`,
+      `${record[0]}–${record[1]}${entered ? ` · ${(t[0] / entered).toFixed(1)} wins per event` : ''}`)
   : !t[0] && entered
     ? column(0, `<b>0.0</b><span class="muted"> per event</span>`, `0 wins in ${plural(entered, 'event')}`)
   : Number.isInteger(events)
@@ -562,14 +574,15 @@ function draw(cell, user) {
   const events = t && order === 'event' && careers[user].events;
   const entered = t && careers[user].events;
   const lead = order === null;
-  const state = user === 'head' ? `head|${order === 'event' || lead}` : t ? `${t}|${medals}|${events}|${entered}|${lead}` : !user ? '' : fresh(user) ? `hidden|${SCWRCareers.seen[user] ?? ''}` : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
+  const record = lead && t ? recordOf(user) : null;
+  const state = user === 'head' ? `head|${order === 'event' || lead}` : t ? `${t}|${medals}|${events}|${entered}|${lead}|${record}` : !user ? '' : fresh(user) ? `hidden|${SCWRCareers.seen[user] ?? ''}` : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';
   if (cell.dataset.state === state) return;
   cell.dataset.state = state;
   cell.title = '';
   if (user === 'head') {
-    cell.innerHTML = (order === 'event' || lead ? ['Wins per event', COLUMNS[1]] : COLUMNS).map((label) => `<span>${label}</span>`).join('');
+    cell.innerHTML = (lead ? ['Win rate', COLUMNS[1]] : order === 'event' ? ['Wins per event', COLUMNS[1]] : COLUMNS).map((label) => `<span>${label}</span>`).join('');
   } else if (t) {
-    cell.innerHTML = figures(t, medals, events, entered, lead);
+    cell.innerHTML = figures(t, medals, events, entered, lead, record);
     const by =(keep) => Object.entries(careers[user].wins).filter(([type]) => counted(type) === keep)
       .map(([type, n]) => `${n} by ${type}`).join(', ');
     cell.title = `${plural(t[0], 'career win')}: ${by(true) || 'none'}${by(false) ? `, not counting ${by(false)}` : ''}.`;
