@@ -137,6 +137,11 @@ async function name(get, host, data, keep) {
   }
 }
 
+// Where a match falls in its division, for listing them in the order fought: pool matches by number,
+// then the knockout rounds up to the final.
+const ROUNDS = ['Eighth-finals', 'Quarterfinals', 'Semifinals', 'Bronze match', 'Final'];
+const round = (stage) => Number(/^Match (\d+)\//.exec(stage ?? '')?.[1] ?? NaN) || (ROUNDS.includes(stage) ? 1001 + ROUNDS.indexOf(stage) : 1000);
+
 // The event as a results page would send it: each athlete's divisions, wins and losses by finish,
 // and a place where the matches give one. A bracket's final and bronze match give its medals (both
 // semifinal losers share bronze when there is no bronze match); a round robin (matches named
@@ -161,15 +166,19 @@ function results(data, start) {
     const of = (s) => {
       const u = data.users[s[0]];
       if (!u) return null;
-      if (!entries.has(u.id)) entries.set(u.id, { user: u, e: { division, place: null, wins: {}, losses: {} }, w: 0, sub: 0, shown: false });
+      if (!entries.has(u.id)) entries.set(u.id, { user: u, e: { division, place: null, wins: {}, losses: {}, bouts: [] }, w: 0, sub: 0, shown: false });
       return entries.get(u.id);
     };
-    for (const [, , stage, finish, sides] of matches) {
+    for (const [, , stage, finish, sides] of [...matches].sort((a, b) => round(a[2]) - round(b[2]) || a[0] - b[0])) {
       const seats = sides.map(of);
       if (!finish) continue;
       sides.forEach((s, i) => {
         const x = seats[i];
         if (!x) return;
+        // Who they met: the other side, named as their bracket card names them where it was read.
+        const k = 1 - i;
+        const them = sides[k] && (data.users[sides[k][0]] ?? null);
+        if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage });
         const bucket = s[1] ? x.e.wins : x.e.losses;
         bucket[finish] = (bucket[finish] ?? 0) + 1;
         if (s[1]) { x.w++; if (/^sub/.test(finish)) x.sub++; }
@@ -207,15 +216,19 @@ export async function queue(env) {
       SELECT site, event, start, title, city FROM events UNION ALL SELECT site, event, start, title, city FROM history) k
     WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
     GROUP BY k.site, k.event`).bind(Date.now()).run();
+  // Events a results page sent before matches were kept: read for their matches alone.
+  await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at)
+    SELECT e.site, e.event, 'queued', v.start, v.title, v.city, 0, ?1 FROM entries e JOIN events v ON v.site = e.site AND v.event = e.event
+    WHERE e.fought = 1 AND v.start < datetime('now', '-1 day') GROUP BY e.site, e.event HAVING max(e.bouts IS NOT NULL) = 0`).bind(Date.now()).run();
 }
 
-export async function crawl(env, record) {
+export async function crawl(env, record, addBouts) {
   const { get, left, report } = client();
   let done = 0, why = 'time';
-  try { why = (await lane(env, record, get, left, () => done++)) ?? why; } finally { report(done, why); }
+  try { why = (await lane(env, record, addBouts, get, left, () => done++)) ?? why; } finally { report(done, why); }
 }
 
-async function lane(env, record, get, left, finished) {
+async function lane(env, record, addBouts, get, left, finished) {
   const now = Date.now();
   while (left() > 10) {
     // Taken and held in one statement, so lanes running side by side never take the same event.
@@ -236,12 +249,16 @@ async function lane(env, record, get, left, finished) {
       }
       try { await name(get, host, Object.assign(data, { left }), () => save('reading', data)); } finally { delete data.left; delete data.room; }
       // Results a page sent meanwhile stand.
-      const has = await env.DB.prepare('SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 LIMIT 1').bind(job.site, job.event).first();
-      if (!has) {
-        const { athletes, records } = results(data, job.start);
+      // (A crawl reading an event again replaces its own copy: results written by the time it last wrote.)
+      const has = await env.DB.prepare('SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 AND at > ?3 LIMIT 1').bind(job.site, job.event, job.wrote ?? 0).first();
+      const { athletes, records } = results(data, job.start);
+      // Results a page sent stand; the matches are added to them.
+      if (has) await addBouts(env, job.site, job.event, athletes);
+      else {
         const iso = (t) => (t && !Number.isNaN(Date.parse(t)) ? new Date(t).toISOString() : null);
         await record(env, { site: job.site, event: job.event, records, athletes, read: Date.now(),
           meta: { title: job.title, start: iso(job.start), end: iso(data.ends), city: job.city } });
+        await env.DB.prepare('UPDATE crawls SET wrote = ?3 WHERE site = ?1 AND event = ?2').bind(job.site, job.event, Date.now()).run();
       }
       finished();
       await save('done', { named: Object.keys(data.users).length, missed: data.missed?.length ?? 0, matches: data.matches.length });

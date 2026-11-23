@@ -1397,7 +1397,9 @@
       for (const e of a.entries) { record[0] += count(e.wins); record[1] += count(e.losses); }
       if (a.userId && record[0] + record[1]) records[a.userId] = record;
       if (a.userId) athletes[a.userId] = { name: a.name, club: a.club, clubId: a.clubId, country: a.country, countryName: a.countryName, belt: a.belt, age: a.age, photo: a.logo, hidden: a.hidden ?? undefined,
-        entries: a.entries.map((e) => ({ division: model.brackets.get(e.bracketId)?.name, place: e.placement, wins: e.wins, losses: e.losses })) };
+        entries: a.entries.map((e) => ({ division: model.brackets.get(e.bracketId)?.name, place: e.placement, wins: e.wins, losses: e.losses,
+          // Each match, for the stats site's athlete pages: who they met and how it ended.
+          bouts: e.bouts.map((b) => ({ won: b.won, type: b.type, opponent: b.opponent?.name ?? null, user: b.opponent?.userId ?? null, club: b.opponent?.club ?? null, stage: b.stage ?? null })) })) };
     }
     document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'record', event: SCWRSite.eventId(), records, meta: await SCWRSite.event(), athletes, read }) }));
   }

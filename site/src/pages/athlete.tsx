@@ -48,7 +48,7 @@ const unlisted = (entries: Entry[], outcomes: Outcome[]) => entries.filter((e) =
 
 // Every match the profile's lists give, in the order fought: each win (its finish too from v 2),
 // each loss with its finish. A loss the match list names twice is matched once.
-interface Meeting { won: boolean; opponent: string | null; club: string | null; image: string | null; type?: string; how?: string; division?: string | null; stage?: string | null }
+interface Meeting { won: boolean; opponent: string | null; club: string | null; image: string | null; type?: string; how?: string; division?: string | null; stage?: string | null; user?: string | null }
 function meetingsOf(o: Outcome | undefined): Meeting[] {
   if (!o) return [];
   const losses = [...o.out.losses];
@@ -59,6 +59,12 @@ function meetingsOf(o: Outcome | undefined): Meeting[] {
   });
   return [...out, ...losses.map((l) => ({ ...l, won: false }))];
 }
+// An event's matches: their profile's match list where it was read, else the matches the results
+// read there give, each division's in the order fought.
+const meetingsOfRow = (r: Row): Meeting[] => r.outcome ? meetingsOf(r.outcome)
+  : (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
+    won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user,
+  })));
 // A match counts under the finishes switched on; a win from before v 2 names none, so it always shows.
 const countedMatch = (m: Meeting, f: Filters) => !m.type || f.counted(keyOf(m.type));
 type Show = 'all' | 'won' | 'lost';
@@ -66,11 +72,12 @@ type Show = 'all' | 'won' | 'lost';
 // Everyone who beat them more than once, with the whole head-to-head; the newest meeting
 // gives the club and photo. Furthest behind first.
 interface Rival { key: string; name: string; club: string | null; image: string | null; w: number; l: number }
-function rivalsOf(outcomes: Outcome[]): Rival[] {
+function rivalsOf(rows: Row[]): Rival[] {
   const met = new Map<string, Rival>();
-  for (const o of outcomes) for (const m of o.out.faced ?? []) {
-    const key = person(m.name);
-    if (!met.has(key)) met.set(key, { key, name: m.name, club: m.club, image: m.image, w: 0, l: 0 });
+  for (const m of rows.flatMap(meetingsOfRow)) {
+    const key = person(m.opponent);
+    if (!key) continue;
+    if (!met.has(key)) met.set(key, { key, name: m.opponent!, club: m.club, image: m.image, w: 0, l: 0 });
     met.get(key)![m.won ? 'w' : 'l']++;
   }
   return [...met.values()].filter((r) => r.l > 1).sort((a, b) => b.l - b.w - (a.l - a.w) || b.l - a.l);
@@ -281,11 +288,12 @@ function Form({ list, f }: { list: Row[]; f: Filters }) {
   const points = list.filter((r) => r.outcome || r.read?.some((e) => e.fought) || r.listed?.wins != null).reverse().map((r) => {
     const fin = r.outcome && Object.entries(r.outcome.out.types).reduce(([a, b], [t, [w, l]]) => (f.counted(keyOf(t)) ? [a + w, b + l] : [a, b]), [0, 0]);
     const read = r.read?.filter((e) => e.fought) ?? [];
+    const best = Math.min(...read.map((e) => e.place ?? 99));
     return {
       name: r.title ?? '', date: date(r.start), tick: r.start ? new Date(r.start).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }) : '–',
       wins: fin ? fin[0] : read.length ? read.reduce((n, e) => n + winsOf(e.wins, f.counted), 0) : r.listed!.wins!,
       losses: fin ? -fin[1] : -read.reduce((n, e) => n + winsOf(e.losses, f.counted), 0),
-      medal: r.listed?.gold ? 'var(--color-gold)' : r.listed?.silver ? 'var(--color-silver)' : r.listed?.bronze ? 'var(--color-bronze)' : 'var(--color-win-decision)',
+      medal: (r.listed?.gold || best === 1) ? 'var(--color-gold)' : (r.listed?.silver || best === 2) ? 'var(--color-silver)' : (r.listed?.bronze || best === 3) ? 'var(--color-bronze)' : 'var(--color-win-decision)',
     };
   });
   if (points.length < 2) return null;
@@ -315,12 +323,12 @@ function Form({ list, f }: { list: Row[]; f: Filters }) {
   );
 }
 
-function MatchLine({ m, divisions }: { m: Meeting; divisions: boolean }) {
+function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisions: boolean }) {
   return (
     <li className="flex min-w-0 items-center gap-2.5 text-sm">
       <Photo name={m.opponent} photo={m.image} className="size-6" />
       <span className={cn('shrink-0 text-xs font-semibold', m.won ? 'text-won' : 'text-lost')}>{m.won ? 'Beat' : 'Lost to'}</span>
-      <span className="min-w-0 break-words"><span className="font-medium">{m.opponent ?? 'Unknown opponent'}</span>{m.club && <span className="text-muted-foreground"> · {m.club}</span>}</span>
+      <span className="min-w-0 break-words">{m.user ? <Link href={f.link(`/athlete/${m.user}`)} className="font-medium hover:text-primary">{m.opponent ?? 'Unknown opponent'}</Link> : <span className="font-medium">{m.opponent ?? 'Unknown opponent'}</span>}{m.club && <span className="text-muted-foreground"> · {m.club}</span>}</span>
       <span className="ml-auto flex max-w-[55%] flex-wrap items-center justify-end gap-x-1.5 pl-3 text-right text-xs text-muted-foreground">
         {m.type && <><i className="size-2 rounded-full" style={{ background: dot(m.type) }} /><span className="text-foreground/85">{m.how || typeName(m.type)}</span></>}
         {m.stage && <span>{m.type ? '· ' : ''}{m.stage}</span>}
@@ -341,7 +349,7 @@ function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; agai
         <TableBody>
           {list.map((row) => {
             const read = row.read?.filter((e) => e.fought) ?? [];
-            const all = meetingsOf(row.outcome);
+            const all = meetingsOfRow(row);
             const shown = all.filter((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won')));
             // Divisions read from the results, else the ones the match lists name.
             const named = [...new Set(all.map((m) => m.division).filter(Boolean))] as string[];
@@ -373,7 +381,7 @@ function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; agai
                 <TableRow key={`${row.id}-m`} className="hover:bg-transparent">
                   <TableCell />
                   <TableCell colSpan={4} className="pt-0 pr-5 pb-3 whitespace-normal">
-                    <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">{shown.map((m, i) => <MatchLine key={i} m={m} divisions={(row.read?.length ?? named.length) > 1} />)}</ul>
+                    <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">{shown.map((m, i) => <MatchLine key={i} m={m} f={f} divisions={(row.read?.length ?? named.length) > 1} />)}</ul>
                   </TableCell>
                 </TableRow>
               ),
@@ -415,13 +423,14 @@ export function AthletePage({ id }: { id: string }) {
   const past = all.filter((r) => !upcoming.includes(r));
   const age = ageOf(a.born);
   const fromResults = career?.source === 'results';
-  const rivals = rivalsOf(outcomes);
-  const losses = outcomes.reduce((n, o) => n + o.out.losses.length, 0);
+  const rivals = rivalsOf(all.filter((r) => !isUpcoming(r.start) || r.read?.some((e) => e.fought)));
+  const met = past.flatMap(meetingsOfRow);
+  const losses = met.filter((m) => !m.won).length;
   const pick = (r: Rival | null) => { setAgainst(r); if (r) document.getElementById('events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  const matches = past.flatMap((r) => meetingsOf(r.outcome)).filter((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)));
+  const matches = met.filter((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)));
   const won = matches.filter((m) => m.won).length;
   // Won or lost alone lists just those matches, event by event; all keeps every event.
-  const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOf(r.outcome).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
+  const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOfRow(r).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
   const side = data.profile ? OnProfile({ p: data.profile, f, id }) : null;
   const rated = outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size;
   const over = !rated ? '' : outcomes.length ? `across ${plural(rated, 'event')}` : `at ${plural(rated, 'event')} read`;
@@ -455,9 +464,9 @@ export function AthletePage({ id }: { id: string }) {
       {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} split={splitByBelt(data.belts, outcomes, entries, f)} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
-      <div className={cn('grid items-start gap-6', (outcomes.length > 0 || side) && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
-        {(outcomes.length > 0 || side) && <div className="flex min-w-0 flex-col gap-6">
-          {outcomes.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
+      <div className={cn('grid items-start gap-6', (met.length > 0 || side) && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
+        {(met.length > 0 || side) && <div className="flex min-w-0 flex-col gap-6">
+          {met.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
           {side}
         </div>}
         <Form list={past} f={f} />

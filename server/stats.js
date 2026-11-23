@@ -39,17 +39,18 @@ function filters(params) {
 // event read. Medals and events from the events read, `listed` the events their profile lists,
 // `last` their latest event. ?1 site, ?2 the athletes (JSON).
 export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last)
-  WITH us AS (SELECT DISTINCT value AS user FROM json_each(?2)),
-  fe AS (SELECT e.* FROM entries e JOIN us USING (user) WHERE e.site = ?1 AND e.fought = 1),
+  WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
+  -- CROSS JOIN keeps these athletes the outer loop, so each table is read by athlete, never whole.
+  fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1),
   per AS (
-    SELECT o.user, iif(j.key = 'escape', 'fastest_escape', j.key) AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM outcomes o JOIN us USING (user), json_each(o.out, '$.types') j WHERE o.site = ?1
+    SELECT o.user, iif(j.key = 'escape', 'fastest_escape', j.key) AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM us CROSS JOIN outcomes o, json_each(o.out, '$.types') j WHERE o.site = ?1 AND o.user = us.user
     UNION ALL SELECT f.user, j.key, j.value, 0 FROM fe f, json_each(f.wins) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
     UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)),
   rec AS (SELECT user, json_group_object(t, json_array(w, l)) AS rec FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM per GROUP BY user, t) GROUP BY user),
   read AS (SELECT f.user, j.key AS t, j.value AS w, 0 AS l FROM fe f, json_each(f.wins) j UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j),
   seen AS (SELECT user, json_group_object(t, json_array(w, l)) AS seen FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM read GROUP BY user, t) GROUP BY user),
   med AS (SELECT user, sum(place = 1) AS gold, sum(place = 2) AS silver, sum(place = 3) AS bronze, count(DISTINCT event) AS events FROM fe GROUP BY user),
-  listed AS (SELECT h.user, count(*) AS listed, max(substr(h.start, 1, 10)) AS last FROM history h JOIN us USING (user) WHERE h.site = ?1 GROUP BY h.user),
+  listed AS (SELECT h.user, count(*) AS listed, max(substr(h.start, 1, 10)) AS last FROM us CROSS JOIN history h WHERE h.site = ?1 AND h.user = us.user GROUP BY h.user),
   latest AS (SELECT f.user, max(substr(v.start, 1, 10)) AS last FROM fe f JOIN events v ON v.site = f.site AND v.event = f.event GROUP BY f.user)
   SELECT ?1, us.user, rec.rec, seen.seen, coalesce(med.gold, 0), coalesce(med.silver, 0), coalesce(med.bronze, 0), coalesce(med.events, 0), coalesce(listed.listed, 0),
     nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), '')
@@ -165,7 +166,7 @@ async function athlete(env, params) {
   const [career, person, entries, seen, history, outcomes, belts, extras] = await env.DB.batch([
     env.DB.prepare(`WITH ${CAREERS} SELECT * FROM careers WHERE user = ?4`).bind(f.site, f.off, Date.now() - KEPT, user),
     env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(f.site, user),
-    env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, v.title, v.start, v.city, v.country
+    env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
       FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND (e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user AND x.fought = 1)) ORDER BY v.start DESC, e.event DESC`).bind(f.site, user),
     env.DB.prepare('SELECT sum(wins) AS wins, sum(losses) AS losses, count(*) AS events FROM records WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
@@ -182,7 +183,7 @@ async function athlete(env, params) {
     history: history.results,
     career: career.results[0] ? careerRow(career.results[0]) : null,
     person: person.results[0] ?? null,
-    entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses) })),
+    entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses), bouts: e.bouts ? JSON.parse(e.bouts) : null })),
     seen: seen.results[0]?.events ? seen.results[0] : null,
     outcomes: outcomes.results.map((o) => ({ ...o, out: JSON.parse(o.out) })),
     profile: extras.results[0] ? JSON.parse(extras.results[0].entry) : null,

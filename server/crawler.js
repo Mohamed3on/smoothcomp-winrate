@@ -4,14 +4,14 @@
 // to requests, so each minute's cron sends one request per lane to this same Worker. Its workers.dev
 // address answers only a request carrying the CRAWL_KEY secret (a lane started by hand).
 import { crawl, queue } from './crawl.js';
-import { record } from './worker.js';
+import { addBouts, record } from './worker.js';
 
 const LANES = 3;
 
 export default {
   async fetch(request, env) {
     if (!env.CRAWL_KEY || request.headers.get('x-crawl-key') !== env.CRAWL_KEY) return new Response(null, { status: 404 });
-    await crawl(env, record);
+    await crawl(env, record, addBouts);
     return new Response(null, { status: 204 });
   },
   async scheduled(controller, env) {

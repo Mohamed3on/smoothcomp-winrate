@@ -140,7 +140,7 @@ const SCWRModel = (() => {
         bucket[winners[0].won] = (bucket[winners[0].won] ?? 0) + 1;
         const place = bracket.provisional && PODIUM[match.stage]?.[side === winners[0] ? 0 : 1];
         if (place) entry.placement = place;
-        entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, opponent: match.sides.find((s) => s !== side) });
+        entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, opponent: match.sides.find((s) => s !== side), stage: match.stage });
       }
       if (attached < 2) {
         if (isWalkover) noShows++;

@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS entries (
   losses TEXT,
   fought INTEGER NOT NULL,
   at INTEGER NOT NULL,
+  bouts TEXT, -- each match in the division: won, finish, opponent and their user, round (JSON)
   PRIMARY KEY (site, event, user, division)
 );
 CREATE INDEX IF NOT EXISTS entries_user ON entries (site, user);
@@ -122,6 +123,8 @@ CREATE TABLE IF NOT EXISTS crawls (
   tries INTEGER NOT NULL DEFAULT 0,
   next INTEGER NOT NULL DEFAULT 0,
   at INTEGER NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 0, -- higher is read first (Berlin 2, the rest of Germany 1, set by hand)
+  wrote INTEGER, -- when the crawler last wrote the event's results: reading it again replaces only its own copy
   PRIMARY KEY (site, event)
 );
 CREATE INDEX IF NOT EXISTS crawls_next ON crawls (state, start);
@@ -140,5 +143,3 @@ CREATE TABLE IF NOT EXISTS tallies (
   last TEXT,
   PRIMARY KEY (site, user)
 );
--- crawls.priority (added 2026-11-23): higher is read first (Berlin 2, the rest of Germany 1, set by hand).
--- ALTER TABLE crawls ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;

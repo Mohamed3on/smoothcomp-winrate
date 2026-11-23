@@ -13,8 +13,10 @@ export interface Team {
 }
 export interface Entry {
   event: string; user: string; division: string; club: string | null; club_id: string | null; place: number | null; wins: Types; losses: Types; fought: number; at?: number;
-  title?: string | null; start?: string | null; city?: string | null;
+  title?: string | null; start?: string | null; city?: string | null; bouts?: Bout[] | null;
 }
+// One match of a division, as the results read give it: won or lost, its finish, who they met and in which round.
+export interface Bout { won: boolean; type: string; how: string | null; opponent: string | null; user: string | null; club: string | null; stage: string | null }
 export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number; image?: string | null }
 // What else their Smoothcomp profile shows, as it last sent it.
 export interface Club { id: number | null; name: string; city: string | null; country: string | null; logo: string | null }

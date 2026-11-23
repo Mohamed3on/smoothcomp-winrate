@@ -72,6 +72,19 @@ export const finishOf = (code) => {
   return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'fastest_escape' : /walk/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
     : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
 };
+// A finish's detail as the profile writes it: "submission_armbar" is "Submission (armbar)".
+const detailOf = (code) => {
+  const w = String(code ?? '').toLowerCase();
+  const kind = ['submission', 'decision', 'points'].find((k) => w.startsWith(k));
+  const rest = kind && w.slice(kind.length).replace(/[^a-z]+/g, ' ').trim();
+  return rest ? `${kind[0].toUpperCase()}${kind.slice(1)} (${rest})` : null;
+};
+// An athlete's matches in a division, in order: won or lost, the finish (grouped, with its detail),
+// and who they met (name, user, academy) in which round.
+const bouts = (list) => (Array.isArray(list) && list.length ? JSON.stringify(list.slice(0, 40).filter((b) => b && typeof b === 'object').map((b) => ({
+  won: b.won === true, type: finishOf(b.type ?? ''), how: text(b.how, 60) ?? text(detailOf(b.type), 60), opponent: text(b.opponent, 120), user: validUser(String(b.user ?? '')) ? String(b.user) : null,
+  club: text(b.club, 160), stage: text(b.stage, 60),
+}))) : null);
 const tally = (bucket) => {
   const out = {};
   for (const [type, n] of Object.entries(bucket && typeof bucket === 'object' ? bucket : {})) {
@@ -127,7 +140,7 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
       const division = text(e?.division, 200);
       if (!division) continue;
       const place = Number.isSafeInteger(e.place) && e.place > 0 && e.place < 1000 ? e.place : null;
-      entries.push({ user, division, club, clubId, place, wins: JSON.stringify(tally(e.wins)), losses: JSON.stringify(tally(e.losses)) });
+      entries.push({ user, division, club, clubId, place, wins: JSON.stringify(tally(e.wins)), losses: JSON.stringify(tally(e.losses)), bouts: bouts(e.bouts) });
     }
   }
   // A newer event's academy, photo and name replace an older one's; an older event only fills gaps.
@@ -146,8 +159,8 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
     const layer = Number(fought);
     const newer = 'NOT EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND at > ?4)';
     statements.push(env.DB.prepare(`DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND ${newer}`).bind(site, event, layer, read));
-    statements.push(env.DB.prepare(`INSERT OR ${fought ? 'REPLACE' : 'IGNORE'} INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at)
-      SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4 FROM json_each(?5) WHERE ${newer}`)
+    statements.push(env.DB.prepare(`INSERT OR ${fought ? 'REPLACE' : 'IGNORE'} INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at, bouts)
+      SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4, value ->> 'bouts' FROM json_each(?5) WHERE ${newer}`)
       .bind(site, event, layer, read, JSON.stringify(entries)));
   }
   // An athlete's events join the ones kept: a career read sends its newest page, a
@@ -310,5 +323,14 @@ export default {
   },
 };
 
-// The crawler Worker (crawler.js) saves an event's results the way a results page does.
+// The crawler Worker (crawler.js) saves an event's results the way a results page does, or, where a
+// results page already did, adds each athlete's matches to its rows and leaves the rest as published.
 export { record };
+export async function addBouts(env, site, event, athletes) {
+  const rows = Object.entries(athletes ?? {}).filter(([user]) => validUser(user))
+    .flatMap(([user, a]) => (a.entries ?? []).map((e) => [user, e.division, bouts(e.bouts)])).filter(([, division, list]) => division && list);
+  if (!rows.length) return;
+  await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 2 FROM json_each(?3) j
+    WHERE entries.site = ?1 AND entries.event = ?2 AND entries.fought = 1 AND entries.bouts IS NULL AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`)
+    .bind(site, event, JSON.stringify(rows)).run();
+}
