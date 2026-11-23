@@ -115,5 +115,22 @@ globalThis.SCWRRules = (() => {
     return [...met.values()].filter((r) => r.l > 1).sort((a, b) => b.l - b.w - (a.l - a.w) || b.l - a.l);
   }
 
-  return { normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, totals, beltSplit, rivalsOf };
+  // Places in a division whose results aren't published, read off its matches as Smoothcomp's
+  // published results give them (checked on 25902). A bracket's final and bronze match give its
+  // medals, the bronze-match loser 4th, quarterfinal losers 5th, eighth-final 9th, the round before
+  // 17th; semifinal losers share 3rd where no bronze match is fought (`bronze`: whether one is).
+  const OUT = { Final: 2, 'Bronze match': 4, Quarterfinals: 5, 'Eighth-finals': 9 };
+  const placeOf = (stage, won, bronze) => (won ? ({ Final: 1, 'Bronze match': 3 })[stage] ?? null
+    : OUT[stage] ?? (Number(/^(\d+)(?:st|nd|rd|th)-finals$/i.exec(stage ?? '')?.[1]) + 1 || (stage === 'Semifinals' && !bronze ? 3 : null)));
+  // Where a match falls in its division, for the order fought: pool matches by number, then the
+  // knockout rounds up to the final.
+  const ROUNDS = ['Eighth-finals', 'Quarterfinals', 'Semifinals', 'Bronze match', 'Final'];
+  const roundOf = (stage) => Number(/^Match (\d+)\//.exec(stage ?? '')?.[1] ?? NaN) || (ROUNDS.includes(stage) ? 1001 + ROUNDS.indexOf(stage) : 1000);
+  // A round robin is a division whose every match is named like "Match 2/10". Once fought, it ranks
+  // everyone by wins, then submissions, then who beat whom (Smoothcomp's own order in 131 of 132
+  // checked). `rows` are { key, wins, subs }, `beat(a, b)` whether a beat b; places by key.
+  const isPool = (stages) => stages.length > 0 && stages.every((s) => /^Match \d+\/\d+$/.test(s ?? ''));
+  const poolPlaces = (rows, beat) => new Map([...rows].sort((a, b) => b.wins - a.wins || b.subs - a.subs || (beat(a.key, b.key) ? -1 : beat(b.key, a.key) ? 1 : 0)).map((r, i) => [r.key, i + 1]));
+
+  return { normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, totals, beltSplit, rivalsOf, placeOf, roundOf, isPool, poolPlaces };
 })();

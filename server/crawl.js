@@ -19,7 +19,7 @@ const AT_ONCE = 6;
 // so the lane stops until the next minute.
 const SLOW = 300;
 const DAY = 864e5;
-const { finishOf, normalize } = globalThis.SCWRRules;
+const { finishOf, normalize, placeOf, roundOf, isPool, poolPlaces } = globalThis.SCWRRules;
 
 class Gone extends Error {}
 class Busy extends Error {}
@@ -148,23 +148,9 @@ async function name(get, host, data) {
   }
 }
 
-// Where a match falls in its division, for listing them in the order fought: pool matches by number,
-// then the knockout rounds up to the final.
-const ROUNDS = ['Eighth-finals', 'Quarterfinals', 'Semifinals', 'Bronze match', 'Final'];
-// A bracket's places, by the round each side won or went out in, as Smoothcomp's published results
-// give them (checked on 25902): bronze-match loser 4th, quarterfinal losers 5th, eighth-final 9th,
-// the round before 17th. Semifinal losers are 3rd where no bronze match is fought.
-const OUT = { Final: 2, 'Bronze match': 4, Quarterfinals: 5, 'Eighth-finals': 9 };
-const placeOf = (stage, won, bronze) => (won ? ({ Final: 1, 'Bronze match': 3 })[stage] ?? null
-  : OUT[stage] ?? (Number(/^(\d+)(?:st|nd|rd|th)-finals$/i.exec(stage ?? '')?.[1]) + 1 || (stage === 'Semifinals' && !bronze ? 3 : null)));
-const round = (stage) => Number(/^Match (\d+)\//.exec(stage ?? '')?.[1] ?? NaN) || (ROUNDS.includes(stage) ? 1001 + ROUNDS.indexOf(stage) : 1000);
-
 // The event as a results page would send it: each athlete's divisions, wins and losses by finish,
-// and a place where the matches give one. A bracket's final and bronze match give its medals (both
-// semifinal losers share bronze when there is no bronze match); a round robin (matches named
-// "Match 2/10" alone) ranks everyone by wins, then submissions, then who beat whom, which gave
-// Smoothcomp's own order in 131 of 132 round robins checked. No-shows (walkover losses alone) are
-// left out, as published results leave them out.
+// and a place where the matches give one (rules.js placeOf, poolPlaces), in the order fought.
+// No-shows (walkover losses alone) are left out, as published results leave them out.
 function results(data, start) {
   const athletes = {};
   const records = {};
@@ -187,7 +173,7 @@ function results(data, start) {
       return entries.get(u.id);
     };
     const bronze = matches.some((m) => m[2] === 'Bronze match');
-    for (const [id, , stage, finish, sides] of [...matches].sort((a, b) => round(a[2]) - round(b[2]) || a[0] - b[0])) {
+    for (const [id, , stage, finish, sides] of [...matches].sort((a, b) => roundOf(a[2]) - roundOf(b[2]) || a[0] - b[0])) {
       const card = data.cards?.[id];
       const seats = sides.map(of);
       if (!finish) continue;
@@ -210,9 +196,9 @@ function results(data, start) {
       if (a && b) beat.add(`${(sides[0][1] ? a : b).user.id}>${(sides[0][1] ? b : a).user.id}`);
     }
     const shown = [...entries.values()].filter((x) => x.shown || !Object.keys(x.e.losses).length);
-    if (matches.every((m) => /^Match \d+\/\d+$/.test(m[2])) && matches.some((m) => m[3])) {
-      const h2h = (a, b) => (beat.has(`${a.user.id}>${b.user.id}`) ? -1 : beat.has(`${b.user.id}>${a.user.id}`) ? 1 : 0);
-      shown.sort((a, b) => b.w - a.w || b.sub - a.sub || h2h(a, b)).forEach((x, i) => { x.e.place = i + 1; });
+    if (isPool(matches.map((m) => m[2])) && matches.some((m) => m[3])) {
+      const places = poolPlaces(shown.map((x) => ({ key: x.user.id, wins: x.w, subs: x.sub })), (a, b) => beat.has(`${a}>${b}`));
+      for (const x of shown) x.e.place = places.get(x.user.id);
     }
     for (const { user: u, e } of shown) {
       const a = athletes[u.id] ??= { name: u.name, club: u.club, clubId: u.clubId, affiliation: u.affiliation, country: u.country, countryName: u.countryName, belt: division,

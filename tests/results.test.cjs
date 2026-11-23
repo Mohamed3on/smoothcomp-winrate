@@ -88,15 +88,16 @@ test('an unpublished division fought in pools is one bracket, medalled by its fi
   assert.deepEqual(plain(division.map((b) => [b.id, b.provisional, b.size])), [['2204353', true, 9]]);
   const entries = [...division[0].entries.values()];
   assert.equal(entries.reduce((n, e) => n + Object.values(e.wins).reduce((a, b) => a + b, 0), 0), 20);
-  // Its final and bronze match are decided, so the medals are known; the rest
-  // of the placements wait for the results.
+  // Its final and bronze match are decided, so the medals and fourth place are
+  // known, as the published results will give them; the pools' places wait for them.
   assert.deepEqual(plain(entries.filter((e) => e.placement).sort((a, b) => a.placement - b.placement)
-    .map((e) => [model.athletes.get(e.key).name, e.placement])), [['Athlete 211', 1], ['Athlete 110', 2], ['Athlete 226', 3]]);
+    .map((e) => [model.athletes.get(e.key).name, e.placement])), [['Athlete 211', 1], ['Athlete 110', 2], ['Athlete 226', 3], ['Athlete 210', 4]]);
   const rows = SCWRModel.leaderboard(model, { table: 'brackets', types: COUNTED, sort: 'size' }).filter((r) => r.provisional);
   const row = rows.find((r) => r.name === name);
   assert.deepEqual([row.champion.name, row.leader.name, row.gapCount], ['Athlete 211', 'Athlete 110', 2]);
-  // A division whose final is still to come has no gold to measure against.
-  assert.deepEqual([rows.length, rows.filter((r) => r.awaitingGold).length], [12, 10]);
+  // A division whose final is still to come has no gold to measure against; a round robin
+  // fought out has one, its places read off its record.
+  assert.deepEqual([rows.length, rows.filter((r) => r.awaitingGold).length], [12, 7]);
   assert.equal(model.unmatched, 0);
 });
 

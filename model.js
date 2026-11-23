@@ -6,9 +6,6 @@ const SCWRModel = (() => {
   const athleteKey = (p, bracketId) => p.target?.user_id
     ? `user:${p.target.user_id}` : `placement:${bracketId}:${p.id}`;
   const identity = (name, club) => `${normalize(name)}\0${normalize(club)}`;
-  // Until a division's results are published, its playoff awards the medals:
-  // the final's winner and loser, then whoever wins the bronze match.
-  const PODIUM = { Final: [1, 2], 'Bronze match': [3] };
 
   // One event, joined: the published results, the schedule's matches, and the
   // registration list, which says whose each scheduled side is and carries the
@@ -56,11 +53,16 @@ const SCWRModel = (() => {
     // placement, so their matches count. Pools and the playoff after them are
     // one division, as its results will be, filed under the bracket of its final.
     const finals = new Map(schedule.filter((m) => m.stage === 'Final').map((m) => [normalize(m.cat), m.bracketId]));
+    // Until it is published, its matches place it as the published results will (rules.js): the
+    // playoff by round, a round robin by its record once every match is fought.
+    const divisions = Map.groupBy(schedule, (m) => normalize(m.cat));
     const pending = new Map();
     for (const match of schedule) {
       const name = normalize(match.cat);
       if (!match.sides.length || categories.has(name) || brackets.has(match.bracketId)) continue;
-      const bracket = pending.get(name) ?? { id: finals.get(name) ?? match.bracketId, name: match.cat, size: 0, entries: new Map(), names: new Map(), provisional: true };
+      const all = divisions.get(name);
+      const bracket = pending.get(name) ?? { id: finals.get(name) ?? match.bracketId, name: match.cat, size: 0, entries: new Map(), names: new Map(), provisional: true,
+        bronze: all.some((m) => m.stage === 'Bronze match'), pool: SCWRRules.isPool(all.map((m) => m.stage)) && all.every((m) => m.finished) };
       pending.set(name, bracket);
       const id = bracket.id;
       for (const side of match.sides) {
@@ -138,14 +140,22 @@ const SCWRModel = (() => {
         attached++;
         const bucket = side === winners[0] ? entry.wins : entry.losses;
         bucket[winners[0].won] = (bucket[winners[0].won] ?? 0) + 1;
-        const place = bracket.provisional && PODIUM[match.stage]?.[side === winners[0] ? 0 : 1];
+        const place = bracket.provisional && SCWRRules.placeOf(match.stage, side === winners[0], bracket.bronze);
         if (place) entry.placement = place;
         entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, how: match.how ?? null, opponent: match.sides.find((s) => s !== side), stage: match.stage });
       }
+      if (bracket.pool && attached === 2) (bracket.beat ??= new Set()).add(`${entryOf(bracket, winners[0]).key}>${entryOf(bracket, match.sides.find((s) => s !== winners[0])).key}`);
       if (attached < 2) {
         if (isWalkover) noShows++;
         else unmatched++;
       }
+    }
+    // A round robin fought out takes its places from its record; no-shows (walkover losses alone) stay unplaced.
+    for (const bracket of brackets.values()) {
+      if (!bracket.pool) continue;
+      const rows = [...bracket.entries.values()].filter((e) => Object.keys(e.wins).length || !Object.keys(e.losses).every((t) => t === 'walkover'))
+        .map((e) => ({ key: e.key, wins: Object.values(e.wins).reduce((n, c) => n + c, 0), subs: e.wins.submission ?? 0 }));
+      for (const [key, place] of SCWRRules.poolPlaces(rows, (a, b) => bracket.beat?.has(`${a}>${b}`))) bracket.entries.get(key).placement = place;
     }
     return { athletes, brackets, matches, unpublished, noShows, unmatched, unresolved, walkovers, fought: completed - walkovers };
   }

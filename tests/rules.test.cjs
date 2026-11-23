@@ -50,3 +50,13 @@ test('a label names one belt, or none', () => {
   for (const field of ['Belt', 'Level', 'Rank', 'Skill level', 'Grade']) assert.ok(isGrade(field), field);
   for (const field of ['Weight', 'Age', 'Gender', 'Division']) assert.ok(!isGrade(field), field);
 });
+
+test('a division is placed by the round each side went out in, a round robin by its record', () => {
+  const { placeOf, isPool, poolPlaces } = context.SCWRRules;
+  assert.deepEqual([placeOf('Final', true, true), placeOf('Final', false, true), placeOf('Bronze match', true, true), placeOf('Bronze match', false, true)], [1, 2, 3, 4]);
+  assert.deepEqual([placeOf('Semifinals', false, false), placeOf('Semifinals', false, true), placeOf('Quarterfinals', false, true), placeOf('16th-finals', false, true), placeOf('Semifinals', true, true)], [3, null, 5, 17, null]);
+  assert.ok(isPool(['Match 1/3', 'Match 3/3']) && !isPool(['Match 1/3', 'Final']) && !isPool([]));
+  // Level on wins and submissions, the one who beat the other goes first.
+  const places = poolPlaces([{ key: 'a', wins: 1, subs: 0 }, { key: 'b', wins: 2, subs: 0 }, { key: 'c', wins: 1, subs: 0 }], (x, y) => x === 'c' && y === 'a');
+  assert.deepEqual(JSON.parse(JSON.stringify([...places])), [['b', 1], ['c', 2], ['a', 3]]);
+});

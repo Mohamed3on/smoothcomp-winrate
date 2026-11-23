@@ -21,6 +21,10 @@ declare global {
     ): EventRecord[];
     totals(records: EventRecord[]): Types;
     beltSplit(records: EventRecord[], worn: string[], starts: (number | null)[]): { belt: string; types: Types; events: number }[];
+    placeOf(stage: string | null | undefined, won: boolean, bronze: boolean): number | null;
+    roundOf(stage: string | null | undefined): number;
+    isPool(stages: (string | null | undefined)[]): boolean;
+    poolPlaces<K>(rows: { key: K; wins: number; subs: number }[], beat: (a: K, b: K) => boolean): Map<K, number>;
     rivalsOf<M extends { name: string; won: boolean }>(meetings: M[]): (Omit<M, 'won'> & Rival)[];
   };
 }
