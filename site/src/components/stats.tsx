@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import { Lock } from 'lucide-react';
+import { ExternalLink, Lock } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { WIN_TYPES, type Filters } from '@/lib/filters';
@@ -55,6 +55,7 @@ export function Hidden({ className }: { className?: string }) {
   return <Lock role="img" aria-label={HIDDEN} className={cn('size-3 shrink-0 text-muted-foreground', className)}><title>{HIDDEN}</title></Lock>;
 }
 export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: boolean }) {
+  const on = `Profile on ${f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}`;
   return (
     <div className="flex min-w-0 items-center gap-3">
       <Photo name={a.name} photo={a.photo} />
@@ -64,6 +65,8 @@ export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: 
             {a.name ?? `Athlete ${a.user}`}
           </Link>
           {a.hidden === 1 && <Hidden />}
+          <a href={`${f.home}/en/profile/${a.user}`} rel="noopener" title={on} aria-label={on}
+            className="-m-1 shrink-0 rounded p-1 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><ExternalLink className="size-3" /></a>
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Flag code={a.country ?? null} name={a.country_name} className="text-sm" />
