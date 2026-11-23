@@ -48,9 +48,10 @@ export function EventPage({ id }: { id: string }) {
   const { event } = data;
   const read = (rows: EventEntry[]) => Math.max(0, ...rows.map((e) => e.at ?? 0));
   const results = data.entries.filter((e) => e.fought), registered = data.entries.filter((e) => !e.fought);
-  // Results arrive while the registration list still stands: until the event is two days
-  // old (a weekend), registrants without a result are still to fight; after that they didn't show.
-  const live = results.length > 0 && registered.length > 0 && !!event.start && Date.parse(event.start) > Date.now() - 2 * 864e5;
+  // Results arrive while the registration list still stands: until the event ends (when its end isn't
+  // known, two days from its start: a weekend), registrants without a result are still to fight; after that they didn't show.
+  const over = event.ends ?? (event.start ? Date.parse(event.start) + 2 * 864e5 : 0);
+  const live = results.length > 0 && registered.length > 0 && Date.now() < over;
   const entries = results.length && !live ? results : data.entries;
   const title = event.title ?? `Event ${id}`;
   document.title = `${title} · Mat Stats`;

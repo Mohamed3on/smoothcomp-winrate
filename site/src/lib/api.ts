@@ -34,7 +34,7 @@ export interface Loss { type: string; how: string; opponent: string | null; club
 // Everyone met there; a win names its finish, division and round too (from v 2).
 export interface Faced { name: string; club: string | null; image: string | null; reg: number | null; won: boolean; type?: string; how?: string; division?: string | null; bracket?: number | null; stage?: string | null; user?: string | null }
 export interface Outcome { event: string; start: string | null; title: string | null; out: { v?: 2; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean } }
-export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null }
+export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null; ends?: number | null }
 export interface EventRow extends EventMeta { athletes: number; divisions: number; teams: number; fought: number }
 export interface EventEntry extends Entry {
   name: string | null; country: string | null; country_name: string | null; photo: string | null; hidden: number | null; born: number | null; belt: string | null;
