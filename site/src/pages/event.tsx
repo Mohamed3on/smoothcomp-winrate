@@ -148,7 +148,7 @@ export function EventPage({ id }: { id: string }) {
     { key: 'who', label: 'Athlete', width: fought ? undefined : '34%', align: 'start', cell: (p) => <Identity a={p} f={f}>{fought &&
       <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Place p={r.place} /><DivisionLink event={id} name={r.division} f={f} className="min-w-0 break-words" /></li>)}</ul>}</Identity> },
     ...(fought ? [] : [{ key: 'div', label: 'Brackets', align: 'start' as const, narrow: true, cell: (p: Person) =>
-      <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Dot call={r.call} /><span className="min-w-0 break-words">{r.division.trim()}</span></li>)}</ul> }]),
+      <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Dot call={r.call} /><DivisionLink event={id} name={r.division} f={f} className="min-w-0 break-words" /></li>)}</ul> }]),
     ...(fought ? [
       { key: 'record', label: 'Record', width: '5.5rem', cell: (p: Person) => <Record w={p.w} l={p.l} /> },
       { key: 'rate', label: 'Win rate', width: '5.5rem', title: 'Wins over matches here, counted finishes', cell: (p: Person) => <span className="font-semibold">{rate(p.w, p.l) ?? '–'}</span> },
@@ -183,7 +183,7 @@ export function EventPage({ id }: { id: string }) {
           <Photo name={p.name} photo={p.photo} className="size-6" />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex items-center gap-2"><NameLink e={p} f={f} /><Belt belt={p.belt} /><Age born={p.born} /></span>
-            <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">{p.rows.map((r) => <span key={r.division} className="inline-flex items-center gap-1.5"><Dot call={r.call} />{r.division.trim()}</span>)}</span>
+            <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">{p.rows.map((r) => <span key={r.division} className="inline-flex items-center gap-1.5"><Dot call={r.call} /><DivisionLink event={id} name={r.division} f={f} /></span>)}</span>
           </span>
           <span className="shrink-0 font-semibold">{p.career ?? '–'}</span>
         </li>
