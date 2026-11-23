@@ -64,8 +64,21 @@ async function keep(env, body) {
 // Strings are capped and finish types follow the career cache's rule.
 const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
 const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
-const tally = (bucket) => Object.fromEntries(Object.entries(bucket && typeof bucket === 'object' ? bucket : {})
-  .filter(([type, n]) => /^[\w -]{1,40}$/.test(type) && Number.isSafeInteger(n) && n > 0 && n < 100));
+// A finish grouped as the profile groups it (profile.js finish(): "submission_armbar" is a submission,
+// "tko" a stoppage, a judo "fullippon" other), named as careers name it (fastest_escape), so every
+// source counts under the same switches.
+export const finishOf = (code) => {
+  const w = String(code).toLowerCase();
+  return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'fastest_escape' : /walk/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
+    : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
+};
+const tally = (bucket) => {
+  const out = {};
+  for (const [type, n] of Object.entries(bucket && typeof bucket === 'object' ? bucket : {})) {
+    if (/^[\w -]{1,40}$/.test(type) && Number.isSafeInteger(n) && n > 0 && n < 100) out[finishOf(type)] = (out[finishOf(type)] ?? 0) + n;
+  }
+  return out;
+};
 // Photos only from the sites' own hosts.
 const photo = (url) => (typeof url === 'string' && /^https:\/\/([\w-]+\.)*(smoothcomp\.com|ajptour\.com)\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
 // A grade label names one belt, or none: "Purple/Brown" and "All belts" name none.

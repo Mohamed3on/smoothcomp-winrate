@@ -56,6 +56,12 @@ export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gol
   FROM us LEFT JOIN rec USING (user) LEFT JOIN seen USING (user) LEFT JOIN med USING (user) LEFT JOIN listed USING (user) LEFT JOIN latest USING (user)
   WHERE rec.rec IS NOT NULL OR seen.seen IS NOT NULL OR med.events IS NOT NULL OR listed.listed IS NOT NULL`;
 
+// A finish code grouped as the profile groups it (worker.js finishOf), in SQL.
+const GROUPED = (k) => `CASE WHEN ${k} LIKE 'sub%' THEN 'submission' WHEN ${k} LIKE '%escape%' THEN 'fastest_escape' WHEN ${k} LIKE '%walk%' THEN 'walkover'
+  WHEN ${k} LIKE '%dq%' OR ${k} LIKE '%disq%' THEN 'disqualification' WHEN ${k} LIKE 'point%' OR ${k} LIKE '%advantage%' OR ${k} LIKE '%penalt%' THEN 'points'
+  WHEN ${k} LIKE '%decision%' OR ${k} LIKE '%referee%' OR ${k} LIKE '%judge%' THEN 'decision'
+  WHEN ${k} LIKE '%stoppage%' OR ${k} LIKE '%ko' OR ${k} LIKE '%ko %' OR ${k} LIKE '%ko-%' THEN 'stoppage' ELSE 'other' END`;
+
 // Every athlete with something to rank, with who they are. A career is Smoothcomp's;
 // with none readable (a profile not public, or not read yet), an athlete's results at
 // the events Mat Stats has read stand in: wins by finish, losses, placements, events.
@@ -65,7 +71,8 @@ const CAREERS = `t AS (SELECT * FROM tallies WHERE site = ?1),
   readable AS (
     SELECT user, at, entry FROM athletes WHERE site = ?1 AND kind = 'careers' AND at > ?3 AND entry ->> '$.wins' IS NOT NULL),
   base AS (
-    SELECT readable.user, at, 'career' AS source, entry ->> '$.wins' AS types, NULL AS losses,
+    SELECT readable.user, at, 'career' AS source,
+      (SELECT json_group_object(g, n) FROM (SELECT ${GROUPED('key')} AS g, sum(value) AS n FROM json_each(entry, '$.wins') GROUP BY g)) AS types, NULL AS losses,
       coalesce(entry ->> '$.medals[0]', 0) AS gold, coalesce(entry ->> '$.medals[1]', 0) AS silver, coalesce(entry ->> '$.medals[2]', 0) AS bronze,
       nullif(max(coalesce(entry ->> '$.events', 0), coalesce(t.listed, 0)), 0) AS events
     FROM readable LEFT JOIN t USING (user)
