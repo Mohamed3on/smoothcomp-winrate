@@ -33,7 +33,7 @@ function filters(params) {
 
 // Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
 // ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:
-// `rec` from the match lists of their profile where it was opened (walkovers never count there;
+// `rec` from the match lists of their profile where it was opened (with the results' walkovers there;
 // its fastest escape is a career's fastest_escape) with the results read at every event those lists
 // don't hold (for an athlete whose profile nobody opened, every event read); `seen` from every
 // event read. Medals and events from the events read, `listed` the events their profile lists,
@@ -45,7 +45,9 @@ export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gol
   per AS (
     SELECT o.user, iif(j.key = 'escape', 'fastest_escape', j.key) AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM us CROSS JOIN outcomes o, json_each(o.out, '$.types') j WHERE o.site = ?1 AND o.user = us.user
     UNION ALL SELECT f.user, j.key, j.value, 0 FROM fe f, json_each(f.wins) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
-    UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)),
+    UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
+    -- The match lists leave walkovers out: the results give them there.
+    UNION ALL SELECT f.user, 'walkover', coalesce(f.wins ->> '$.walkover', 0), coalesce(f.losses ->> '$.walkover', 0) FROM fe f WHERE EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)),
   rec AS (SELECT user, json_group_object(t, json_array(w, l)) AS rec FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM per GROUP BY user, t) GROUP BY user),
   read AS (SELECT f.user, j.key AS t, j.value AS w, 0 AS l FROM fe f, json_each(f.wins) j UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j),
   seen AS (SELECT user, json_group_object(t, json_array(w, l)) AS seen FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM read GROUP BY user, t) GROUP BY user),
@@ -69,9 +71,10 @@ const cols = (prefix) => GROUPS.map((g) => `${prefix}_${g}`).join(', ');
 
 // Every athlete with something to rank, one row each, rebuilt with their tally. A career is
 // Smoothcomp's, the latest read however old; with none readable (a profile not public, or not read yet), an
-// athlete's results at the events Mat Stats has read stand in: wins by finish, losses, placements,
-// events. Per finish group: w_ the wins (career or results), rw_/rl_ the record their tally gives
-// (profile match lists, else results), sl_ results losses. ?1 site, ?2 the athletes (JSON),
+// athlete's record stands in: wins by finish and losses from their profile's match lists where it was
+// opened, else the results read; placements from the events read; events the more of those read and
+// those their profile lists. Per finish group: w_ the wins (career or record), rw_/rl_ the record
+// their tally gives, sl_ the record's losses. ?1 site, ?2 the athletes (JSON),
 // ?3 the oldest career read that counts (0: all).
 export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ?3 IS NOT NULL`,
 `INSERT INTO board (site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
@@ -88,15 +91,15 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
   b AS (
     SELECT *, iif(entry IS NOT NULL, 'career', 'results') AS source,
       iif(entry IS NOT NULL, (SELECT json_group_object(g, n) FROM (SELECT ${GROUPED('key')} AS g, sum(value) AS n FROM json_each(entry, '$.wins') GROUP BY g)),
-        coalesce((SELECT json_group_object(key, value ->> 0) FROM json_each(seen) WHERE value ->> 0 > 0), '{}')) AS types
+        coalesce((SELECT json_group_object(key, value ->> 0) FROM json_each(rec) WHERE value ->> 0 > 0), '{}')) AS types
     FROM src WHERE entry IS NOT NULL OR te > 0)
   SELECT ?1, user, source, iif(source = 'career', at, NULL), types, name, club, club_id, country, country_name, photo, born, hidden, belt, last,
-    iif(source = 'career', nullif(max(coalesce(entry ->> '$.events', 0), coalesce(listed, 0)), 0), te),
+    iif(source = 'career', nullif(max(coalesce(entry ->> '$.events', 0), coalesce(listed, 0)), 0), max(te, coalesce(listed, 0))),
     iif(source = 'career', coalesce(entry ->> '$.medals[0]', 0), tg), iif(source = 'career', coalesce(entry ->> '$.medals[1]', 0), ts), iif(source = 'career', coalesce(entry ->> '$.medals[2]', 0), tb),
     ${GROUPS.map((g) => `coalesce(types ->> '$.${g}', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[0]', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')},
-    ${GROUPS.map((g) => `coalesce(seen ->> '$.${g}[1]', 0)`).join(', ')}
+    ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')}
   FROM b`];
 
 // Each academy's latest name (as its athletes' latest events give it) and its podiums and events
