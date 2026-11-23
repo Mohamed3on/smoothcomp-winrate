@@ -8,12 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Toggle } from '@/components/ui/toggle';
 import { Empty } from '@/components/empty';
 import { BELT_COLOUR, Belt, Flag, Medals, Photo, Place, Record } from '@/components/stats';
-import { useApi, type Athlete, type Entry, type Outcome, type Past } from '@/lib/api';
+import { useApi, type Athlete, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
-import { ageOf, date, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
+import { ageOf, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
-interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; belts?: Belts | null; seen: { wins: number; losses: number; events: number } | null }
+interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; belts?: Belts | null; profile?: Profile | null; seen: { wins: number; losses: number; events: number } | null }
 
 // A profile's fastest escape is a career's fastest_escape: one finish, one switch.
 const keyOf = (t: string) => (t === 'escape' ? 'fastest_escape' : t);
@@ -190,6 +190,62 @@ function RecordBand({ fins, f, over, split }: { fins: Finish[]; f: Filters; over
   );
 }
 
+// The belt in each art and where they rank, as their Smoothcomp profile shows them.
+function OnProfile({ p, f, id }: { p: Profile; f: Filters; id: string }) {
+  // Each art's highest belt, with every event at any of its belts.
+  const arts = new Map<string, { belt: string; degree: number | null; order: number; events: number }>();
+  for (const s of p.skills ?? []) {
+    const was = arts.get(s.name);
+    const events = (was?.events ?? 0) + (s.competed ?? 0);
+    arts.set(s.name, !was || (s.order ?? 0) > was.order ? { belt: s.belt, degree: s.degree, order: s.order ?? 0, events } : { ...was, events });
+  }
+  const ranks = p.rankings ?? [];
+  if (!arts.size && !ranks.length) return null;
+  const profile = `${f.home}/en/profile/${id}`;
+  return (
+    <Card className="gap-4 px-5 py-4">
+      {arts.size > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium">{arts.size === 1 ? 'Belt' : 'Belts'}</h2>
+          <ul className="flex flex-col gap-2">
+            {[...arts].map(([art, a]) => (
+              <li key={art} className="flex items-center gap-3">
+                <Belt belt={a.belt.toLowerCase().replace('gray', 'grey')} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="font-medium">{a.belt}{a.degree ? <span className="text-muted-foreground"> · {plural(a.degree, 'degree')}</span> : null}</span>
+                  <span className="text-xs text-muted-foreground">{art}</span>
+                </span>
+                <span className="text-sm text-muted-foreground">{plural(a.events, 'event')}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {ranks.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium">Rankings</h2>
+          <ul className="flex flex-col gap-1">
+            {ranks.map((r) => {
+              const body = <>
+                <span className="inline-grid h-6 w-16 shrink-0 place-items-center rounded-md bg-muted px-1.5 text-xs font-semibold tabular-nums">#{fmt(r.placement)}</span>
+                <span className="flex min-w-0 flex-col"><span className="text-sm font-medium break-words">{r.name}</span>{r.owner && <span className="text-xs text-muted-foreground">{r.owner}</span>}</span>
+              </>;
+              return (
+                <li key={`${r.toplist}-${r.name}`}>
+                  {r.type === 'federation' && r.ownerId && r.toplist
+                    ? <a href={`${f.home}/en/federation/${r.ownerId}/ranking/${r.toplist}`} rel="noopener" className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring">{body}</a>
+                    : <div className="flex items-center gap-3 py-1.5">{body}</div>}
+                </li>
+              );
+            })}
+          </ul>
+          {(p.ranked ?? 0) > ranks.length && <a href={profile} rel="noopener" className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">All {p.ranked} rankings on Smoothcomp<ExternalLink className="size-3" /></a>}
+        </section>
+      )}
+    </Card>
+  );
+}
+
 // Who beat them more than once. Furthest behind leads; each opens every match between them.
 function Rivals({ rivals, losses, pick, picked }: { rivals: Rival[]; losses: number; pick: (r: Rival | null) => void; picked: string | null }) {
   const behind = Math.max(0, ...rivals.map((r) => r.l - r.w));
@@ -299,7 +355,7 @@ function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; agai
                 return (
                   <TableRow key={`${row.id}-${k}`} className={cn((k < span - 1 || shown.length) && 'border-b-0', 'hover:bg-transparent')}>
                     <TableCell className="pl-5 align-top text-muted-foreground">{k ? '' : date(row.start)}</TableCell>
-                    <TableCell className="align-top whitespace-normal">{k ? '' : <div className="flex flex-col gap-0.5"><EventLink row={row} f={f} />{row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}</div>}</TableCell>
+                    <TableCell className="align-top whitespace-normal">{k ? '' : <div className="flex items-start gap-3">{row.listed?.image && <img src={row.listed.image} alt="" loading="lazy" className="mt-0.5 hidden aspect-[16/9] w-16 shrink-0 rounded-md object-cover outline outline-1 -outline-offset-1 outline-white/10 lg:block" />}<div className="flex min-w-0 flex-col gap-0.5"><EventLink row={row} f={f} />{row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}</div></div>}</TableCell>
                     <TableCell className="align-top whitespace-normal text-muted-foreground">{e ? <>{e.division}{e.club && <span className="block text-xs">{e.club}</span>}</> : Array.isArray(d) ? d.map((x) => <span key={x} className="block">{x}</span>) : ''}</TableCell>
                     <TableCell className="text-right align-top">
                       {e?.fought ? <Place p={e.place} /> : !k && row.listed && (row.listed.gold || row.listed.silver || row.listed.bronze) && !read.length
@@ -366,6 +422,7 @@ export function AthletePage({ id }: { id: string }) {
   const won = matches.filter((m) => m.won).length;
   // Won or lost alone lists just those matches, event by event; all keeps every event.
   const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOf(r.outcome).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
+  const side = data.profile ? OnProfile({ p: data.profile, f, id }) : null;
   const over = outcomes.length ? `across ${plural(outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size, 'event')}` : fromResults ? `at ${plural(career?.events ?? 0, 'event')} read` : '';
   return (
     <div className="flex flex-col gap-6">
@@ -378,7 +435,9 @@ export function AthletePage({ id }: { id: string }) {
             {age != null && <span>{age} years old</span>}
             {a.belt && <span className="inline-flex items-center gap-1.5"><Belt belt={a.belt} /><span>{a.belt[0].toUpperCase()}{a.belt.slice(1)} belt</span></span>}
             {a.club && (a.club_id ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-foreground hover:text-primary">{a.club}</Link> : <span>{a.club}</span>)}
+            {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
             <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">Profile on {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
+            {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">{plural(data.profile!.videos!, 'match video')}<ExternalLink className="size-3" /></a>}
           </div>
           {career && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
@@ -395,8 +454,11 @@ export function AthletePage({ id }: { id: string }) {
       {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} split={splitByBelt(data.belts, outcomes, entries, f)} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
-      <div className={cn('grid items-start gap-6', outcomes.length && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
-        {outcomes.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
+      <div className={cn('grid items-start gap-6', (outcomes.length > 0 || side) && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
+        {(outcomes.length > 0 || side) && <div className="flex min-w-0 flex-col gap-6">
+          {outcomes.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
+          {side}
+        </div>}
         <Form list={past} f={f} />
       </div>
 

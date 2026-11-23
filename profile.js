@@ -259,8 +259,32 @@
     // The event list rows read here join the athlete's history on the stats site: every
     // page on a first read, the new ones after.
     if (news.length) ask('/people', { site, athletes: { [user]: { name: document.title.split(' - ')[0].trim(), history: list.slice(0, 500).map(e => ({
-      event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
+      event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, image: e.cover_image, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
     show(tally(events));
+    reading = false;
+    shareProfile();
+  }
+  // What else the profile shows goes to the stats site too: belts in each art, rankings, academy
+  // and affiliation, match videos, and each event's cover. Sent once the responses settle.
+  let sharing;
+  function shareProfile() {
+    clearTimeout(sharing);
+    sharing = setTimeout(() => {
+      const user = pastUrl?.match(/\/athlete\/(\d+)\//)?.[1];
+      if (!user) return;
+      const body = { site: ajp ? 'ajptour.com' : 'smoothcomp.com', user };
+      if (got.skills?.data) body.skills = got.skills.data.map(s => ({ name: s.name, belt: s.belt, degree: s.degree, competed: s.competed_count, order: s.sort_order }));
+      const ranks = ['federation', 'event'].map(o => got[`rankings:${o}`]).filter(Boolean);
+      if (ranks.length) {
+        body.rankings = ranks.flatMap(r => r.data ?? []).map(r => ({ placement: r.placement, name: r.name, owner: r.owner?.name, ownerId: r.owner?.id, type: r.owner?.type, toplist: r.toplist_id }));
+        body.ranked = ranks.reduce((n, r) => n + (r.meta?.total ?? 0), 0);
+      }
+      const clubs = got['academy-affiliation']?.data;
+      if (clubs) for (const k of ['academies', 'affiliations']) body[k] = (clubs[k] ?? []).map(c => ({ id: c.id, name: c.name, city: c.city, country: c.country, logo: c.logo }));
+      if (got['match-videos']?.meta) body.videos = got['match-videos'].meta.total;
+      body.images = Object.fromEntries((got['past-events']?.data ?? []).filter(e => e.cover_image).map(e => [e.id, e.cover_image]));
+      ask('/profile', body).catch(() => {});
+    }, 1500);
   }
   // New figures replace the shown ones in place, without the opening or the bars regrowing.
   let rev = 0;
@@ -447,7 +471,8 @@
   });
   const { open, send } = XMLHttpRequest.prototype;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-    this.scwrKind = String(url).match(/\/athlete\/\d+\/(wins-and-medals|past-events|skills)\b/)?.[1];
+    this.scwrKind = String(url).match(/\/athlete\/\d+\/(wins-and-medals|past-events|skills|rankings|academy-affiliation|match-videos)\b/)?.[1];
+    if (this.scwrKind === 'rankings') this.scwrKind += `:${new URL(url, location.href).searchParams.get('owner')}`;
     if (this.scwrKind === 'past-events') pastUrl ??= String(url);
     return open.call(this, method, url, ...rest);
   };
@@ -455,7 +480,7 @@
     const kind = this.scwrKind;
     // The first answer of each kind is the page's own; later past-events pages are the reader paging.
     if (kind) this.addEventListener('load', () => {
-      try { got[kind] ??= this.responseType === 'json' ? this.response : JSON.parse(this.responseText); draw(); } catch {}
+      try { got[kind] ??= this.responseType === 'json' ? this.response : JSON.parse(this.responseText); draw(); if (reading === false) shareProfile(); } catch {}
     });
     return send.apply(this, args);
   };

@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS history (
   silver INTEGER,
   bronze INTEGER,
   at INTEGER NOT NULL,
+  image TEXT, -- the event's cover, as the profile's event list gives it
   PRIMARY KEY (site, user, event)
 );
 CREATE INDEX IF NOT EXISTS entries_club ON entries (site, club_id);
@@ -97,6 +98,14 @@ CREATE TABLE IF NOT EXISTS belts (
   user TEXT NOT NULL,
   worn TEXT NOT NULL,
   starts TEXT NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, user)
+);
+-- What else a profile shows (belts in each art, rankings, academy and affiliation, match videos), as JSON.
+CREATE TABLE IF NOT EXISTS profiles (
+  site TEXT NOT NULL,
+  user TEXT NOT NULL,
+  entry TEXT NOT NULL,
   at INTEGER NOT NULL,
   PRIMARY KEY (site, user)
 );

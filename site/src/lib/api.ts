@@ -15,7 +15,14 @@ export interface Entry {
   event: string; user: string; division: string; club: string | null; club_id: string | null; place: number | null; wins: Types; losses: Types; fought: number; at?: number;
   title?: string | null; start?: string | null; city?: string | null;
 }
-export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number }
+export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number; image?: string | null }
+// What else their Smoothcomp profile shows, as it last sent it.
+export interface Club { id: number | null; name: string; city: string | null; country: string | null; logo: string | null }
+export interface Profile {
+  skills?: { name: string; belt: string; degree: number | null; competed: number | null; order: number | null }[];
+  rankings?: { placement: number; name: string; owner: string | null; ownerId: number | null; type: 'federation' | 'event' | null; toplist: number | null }[];
+  ranked?: number; academies?: Club[]; affiliations?: Club[]; videos?: number;
+}
 // One settled event as the athlete's profile match lists gave it: [won, lost] per finish, and each loss.
 export interface Loss { type: string; how: string; opponent: string | null; club: string | null; division: string | null; image: string | null; reg: number | null; bracket: number | null; stage: string | null }
 // Everyone met there; a win names its finish, division and round too (from v 2).

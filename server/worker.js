@@ -96,6 +96,7 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
       event: e.event, title: text(e.title, 200), start: typeof e.start === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(e.start) ? e.start : null, city: text(e.city, 100),
       wins: Number.isSafeInteger(e.wins) && e.wins >= 0 && e.wins < 100 ? e.wins : null,
       medals: [0, 1, 2].map((i) => (Number.isSafeInteger(e.medals?.[i]) && e.medals[i] >= 0 && e.medals[i] < 20 ? e.medals[i] : 0)),
+      image: photo(e.image),
     }));
     for (const e of (event && Array.isArray(a.entries) ? a.entries : []).slice(0, 20)) {
       const division = text(e?.division, 200);
@@ -127,8 +128,9 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
   // An athlete's events join the ones kept: a career read sends its newest page, a
   // profile every page it read, and a past event never changes.
   for (const [user, rows] of Object.entries(history)) {
-    statements.push(env.DB.prepare(`INSERT OR REPLACE INTO history (site, user, event, title, start, city, wins, gold, silver, bronze, at)
-      SELECT ?1, ?2, value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'wins', value ->> '$.medals[0]', value ->> '$.medals[1]', value ->> '$.medals[2]', ?3 FROM json_each(?4)`)
+    statements.push(env.DB.prepare(`INSERT OR REPLACE INTO history (site, user, event, title, start, city, wins, gold, silver, bronze, at, image)
+      SELECT ?1, ?2, value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'wins', value ->> '$.medals[0]', value ->> '$.medals[1]', value ->> '$.medals[2]', ?3,
+        coalesce(value ->> 'image', (SELECT image FROM history h WHERE h.site = ?1 AND h.user = ?2 AND h.event = value ->> 'event')) FROM json_each(?4)`)
       .bind(site, user, now, JSON.stringify(rows)));
   }
   await env.DB.batch(statements);
@@ -217,7 +219,35 @@ async function belts(env, { site, user, worn, starts }) {
   return json({});
 }
 
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes, '/belts': belts };
+// What else a profile shows: belts in each art, rankings, academy and affiliation, match videos.
+// Each part sent replaces the last; each event's cover joins the athlete's event list.
+const id = (n) => (Number.isSafeInteger(n) && n > 0 ? n : null);
+const small = (n) => (Number.isSafeInteger(n) && n >= 0 && n < 1e7 ? n : null);
+const club = (c) => ({ id: id(c?.id), name: text(c?.name, 160), city: text(c?.city, 100), country: text(c?.country, 80), logo: photo(c?.logo) });
+async function profile(env, body) {
+  const { site, user } = body;
+  if (!SITES.includes(site) || !validUser(user)) return json({ error: 'Bad profile' }, 400);
+  const entry = {};
+  if (Array.isArray(body.skills)) entry.skills = body.skills.slice(0, 30).map((s) => ({ name: text(s?.name, 80), belt: text(s?.belt, 40), degree: small(s?.degree), competed: small(s?.competed), order: small(s?.order) })).filter((s) => s.name && s.belt);
+  if (Array.isArray(body.rankings)) {
+    entry.rankings = body.rankings.slice(0, 10).map((r) => ({ placement: id(r?.placement), name: text(r?.name, 160), owner: text(r?.owner, 160), ownerId: id(r?.ownerId),
+      type: ['federation', 'event'].includes(r?.type) ? r.type : null, toplist: id(r?.toplist) })).filter((r) => r.placement && r.name);
+    entry.ranked = small(body.ranked) ?? entry.rankings.length;
+  }
+  for (const k of ['academies', 'affiliations']) if (Array.isArray(body[k])) entry[k] = body[k].slice(0, 10).map(club).filter((c) => c.name);
+  if (small(body.videos) != null) entry.videos = body.videos;
+  const images = Object.entries(body.images && typeof body.images === 'object' ? body.images : {}).slice(0, 500)
+    .map(([event, url]) => [event, photo(url)]).filter(([event, url]) => /^\d{1,9}$/.test(event) && url);
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO profiles (site, user, entry, at) VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT (site, user) DO UPDATE SET entry = json_patch(profiles.entry, excluded.entry), at = excluded.at`).bind(site, user, JSON.stringify(entry), Date.now()),
+    env.DB.prepare(`UPDATE history SET image = j.value ->> 1 FROM json_each(?3) j WHERE history.site = ?1 AND history.user = ?2 AND history.event = j.value ->> 0`)
+      .bind(site, user, JSON.stringify(images)),
+  ]);
+  return json({});
+}
+
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile };
 
 // A page of the site, with a CSP nonce made for this response alone. Cloudflare's bot
 // detection injects an inline script and signs it with the nonce it finds in this header.
