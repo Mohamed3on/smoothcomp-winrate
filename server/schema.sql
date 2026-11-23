@@ -167,3 +167,5 @@ CREATE INDEX IF NOT EXISTS people_club ON people (site, club_id);
 CREATE INDEX IF NOT EXISTS events_start ON events (site, start);
 -- events.athletes/divisions/teams/fought: kept counts (stats.js EVENT_COUNTS).
 -- ALTER TABLE events ADD COLUMN athletes INTEGER; ALTER TABLE events ADD COLUMN divisions INTEGER; ALTER TABLE events ADD COLUMN teams INTEGER; ALTER TABLE events ADD COLUMN fought INTEGER;
+-- Small values the worker keeps: 'changed' = when an install last uploaded (ms), so the edge cache knows its copies are old.
+CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER);

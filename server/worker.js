@@ -309,29 +309,37 @@ async function profile(env, body) {
   return json({});
 }
 
+const READS = new Set(['/lookup', '/outcomes']);
 const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile };
 
 // The site's reads, kept at Cloudflare's edge so most visits never reach the database. Seconds an
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy
 // is made behind them, and an athlete's page is made again before it is served, so a profile just
-// opened shows within a minute. Reads go to the nearest read replica (a D1 session).
+// opened shows within a minute. Reads go to the nearest read replica (a D1 session). An install's
+// upload stamps the time (meta 'changed'), and any copy stored before it is made again before it is
+// served; the crawler's minute-by-minute results don't, or no list would ever be served from here.
 const FRESH = { athletes: 600, teams: 600, event: 600, division: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60 };
 const STALE_OK = new Set(['athletes', 'teams', 'event', 'division', 'team', 'events', 'search', 'countries', 'summary']);
-async function cached(request, ctx, name, make) {
+async function cached(request, ctx, name, env, make) {
   const cache = caches.default;
+  // One session for the stamp and the read, so the read sees at least what the stamp saw.
+  const db = env.DB.withSession();
   const key = new Request(request.url, { method: 'GET' });
   const fresh = FRESH[name] ?? 60;
   const headers = (state) => ({ 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${Math.min(fresh, 30)}`, 'X-Cache': state });
   const build = async () => {
-    const response = await make();
+    const started = Date.now(); // a copy is as old as its read, not its storing
+    const response = await make(db);
     if (response.status !== 200) return response;
     const body = await response.text();
-    ctx.waitUntil(cache.put(key, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${STALE_OK.has(name) ? 86400 : fresh}`, 'X-Stored': String(Date.now()) } })));
+    ctx.waitUntil(cache.put(key, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${STALE_OK.has(name) ? 86400 : fresh}`, 'X-Stored': String(started) } })));
     return new Response(body, { headers: headers('MISS') });
   };
   const hit = await cache.match(key);
-  if (hit) {
-    const age = (Date.now() - Number(hit.headers.get('X-Stored'))) / 1000;
+  const stored = Number(hit?.headers.get('X-Stored'));
+  const changed = hit && (await db.prepare("SELECT v FROM meta WHERE k = 'changed'").first('v')) > stored;
+  if (hit && !changed) {
+    const age = (Date.now() - stored) / 1000;
     if (age <= fresh) return new Response(hit.body, { headers: headers('HIT') });
     if (STALE_OK.has(name)) {
       ctx.waitUntil(build().catch(() => {}));
@@ -359,12 +367,14 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const { pathname, searchParams } = new URL(request.url);
     const read = pathname.startsWith('/api/') && API[pathname.slice(5)];
-    if (read) return request.method === 'GET' ? cached(request, ctx, pathname.slice(5), () => read({ ...env, DB: env.DB.withSession() }, searchParams)) : json({ error: 'Not found' }, 404);
+    if (read) return request.method === 'GET' ? cached(request, ctx, pathname.slice(5), env, (db) => read({ ...env, DB: db }, searchParams)) : json({ error: 'Not found' }, 404);
     if ((request.method === 'GET' || request.method === 'HEAD') && !pathname.startsWith('/api/')) return page(request, env);
     if (request.method !== 'POST' || !ROUTES[pathname]) return json({ error: 'Not found' }, 404);
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
-    return ROUTES[pathname](env, body ?? {});
+    const response = await ROUTES[pathname](env, body ?? {});
+    if (response.ok && !READS.has(pathname)) await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('changed', ?1)").bind(Date.now()).run();
+    return response;
   },
 };
 
