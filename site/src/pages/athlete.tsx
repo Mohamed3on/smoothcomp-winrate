@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'wouter';
 import { ExternalLink, X } from 'lucide-react';
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -196,8 +197,30 @@ function BeltSplit({ split }: { split: Split[] }) {
   );
 }
 
+// Their career as Smoothcomp lists it (or their results at the events read, where it serves none).
+function CareerStats({ career, f }: { career: Athlete; f: Filters }) {
+  const fromResults = career.source === 'results';
+  const stats: [string, React.ReactNode][] = [
+    ['Medals', <Medals g={career.gold} s={career.silver} b={career.bronze} className="justify-start" />],
+    ...(career.events != null ? [[fromResults ? 'Events read' : 'Events', career.events] as [string, React.ReactNode]] : []),
+    ['Wins', career.wins],
+    ...(career.events ? [['Wins per event', (career.wins / career.events).toFixed(1)] as [string, React.ReactNode]] : []),
+    ...(career.wins > 0 && f.counted('submission') ? [['By submission', `${Math.round((career.submission / career.wins) * 100)}%`] as [string, React.ReactNode]] : []),
+  ];
+  return (
+    <dl className="flex flex-wrap gap-x-10 gap-y-3 border-t pt-4" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
+      {stats.map(([label, value]) => (
+        <div key={label} className="flex flex-col gap-0.5">
+          <dd className="text-lg font-semibold tabular-nums">{value}</dd>
+          <dt className="order-first text-xs text-muted-foreground">{label}</dt>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 // The headline: the win rate over the finishes switched on, and those switches, each with its W–L.
-function RecordBand({ fins, f, over, split }: { fins: Finish[]; f: Filters; over: string; split: Split[] | null }) {
+function RecordBand({ fins, f, over, split, career }: { fins: Finish[]; f: Filters; over: string; split: Split[] | null; career: Athlete | null }) {
   const on = fins.filter((x) => f.counted(x.key));
   const rated = on.filter((x) => x.l != null);
   const [w, l] = rated.reduce(([a, b], x) => [a + x.w, b + (x.l ?? 0)], [0, 0]);
@@ -208,7 +231,8 @@ function RecordBand({ fins, f, over, split }: { fins: Finish[]; f: Filters; over
     f.set({ off: [...off].join(',') });
   };
   return (
-    <Card className="gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
+    <Card className="gap-5 px-5 py-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           {w + l ? <>
@@ -234,43 +258,30 @@ function RecordBand({ fins, f, over, split }: { fins: Finish[]; f: Filters; over
         </div>
       </div>
       {split && <BeltSplit split={split} />}
+      </div>
+      {career && <CareerStats career={career} f={f} />}
     </Card>
   );
 }
 
-// The belt in each art and where they rank, as their Smoothcomp profile shows them.
-function OnProfile({ p, f, id }: { p: Profile; f: Filters; id: string }) {
-  // Each art's highest belt, with every event at any of its belts.
+// Each art's highest belt on their Smoothcomp profile, with every event at any of its belts.
+function artsOf(p: Profile | null | undefined) {
   const arts = new Map<string, { belt: string; degree: number | null; order: number; events: number }>();
-  for (const s of p.skills ?? []) {
+  for (const s of p?.skills ?? []) {
     const was = arts.get(s.name);
     const events = (was?.events ?? 0) + (s.competed ?? 0);
     arts.set(s.name, !was || (s.order ?? 0) > was.order ? { belt: s.belt, degree: s.degree, order: s.order ?? 0, events } : { ...was, events });
   }
+  return arts;
+}
+
+// Where they rank, as their Smoothcomp profile shows it.
+function OnProfile({ p, f, id }: { p: Profile; f: Filters; id: string }) {
   const ranks = p.rankings ?? [];
-  if (!arts.size && !ranks.length) return null;
+  if (!ranks.length) return null;
   const profile = `${f.home}/en/profile/${id}`;
   return (
-    <Card className="gap-4 px-5 py-4">
-      {arts.size > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">{arts.size === 1 ? 'Belt' : 'Belts'}</h2>
-          <ul className="flex flex-col gap-2">
-            {[...arts].map(([art, a]) => (
-              <li key={art} className="flex items-center gap-3">
-                <Belt belt={a.belt.toLowerCase().replace('gray', 'grey')} />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="font-medium">{a.belt}{a.degree ? <span className="text-muted-foreground"> · {plural(a.degree, 'degree')}</span> : null}</span>
-                  <span className="text-xs text-muted-foreground">{art}</span>
-                </span>
-                <span className="text-sm text-muted-foreground">{plural(a.events, 'event')}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {ranks.length > 0 && (
-        <section className="flex flex-col gap-2">
+    <Card className="gap-2 px-5 py-4">
           <h2 className="text-sm font-medium">Rankings</h2>
           <ul className="flex flex-col gap-1">
             {ranks.map((r) => {
@@ -288,8 +299,6 @@ function OnProfile({ p, f, id }: { p: Profile; f: Filters; id: string }) {
             })}
           </ul>
           {(p.ranked ?? 0) > ranks.length && <a href={profile} rel="noopener" className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">All {p.ranked} rankings on Smoothcomp<ExternalLink className="size-3" /></a>}
-        </section>
-      )}
     </Card>
   );
 }
@@ -347,7 +356,7 @@ function Form({ list, f }: { list: Row[]; f: Filters }) {
           {[['bg-gold', 'Gold'], ['bg-silver', 'Silver'], ['bg-bronze', 'Bronze'], ['bg-win-decision', 'No medal'], ...(lost ? [['bg-lost/70', 'Lost']] : [])].map(([bg, label]) => <li key={label} className="inline-flex items-center gap-1.5"><i className={`size-2 rounded-sm ${bg}`} />{label}</li>)}
         </ul>
       </div>
-      <div className="min-h-48 w-full flex-1">
+      <div className="h-52 w-full">
         <ResponsiveContainer>
           <BarChart data={points} stackOffset="sign" margin={{ top: 4, right: 0, bottom: 0, left: -28 }}>
             <XAxis dataKey="tick" interval="preserveStartEnd" minTickGap={8} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -385,7 +394,8 @@ export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisio
   );
 }
 
-function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; against: Rival | null; show: Show }) {
+// A division's club shows only where it isn't their own.
+function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters; against: Rival | null; show: Show; club: string | null }) {
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <Table className="table-fixed">
@@ -412,7 +422,7 @@ function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; agai
                     <TableCell className="pl-5 align-top text-muted-foreground">{k ? '' : date(row.start)}</TableCell>
                     <TableCell className="align-top whitespace-normal">{k ? '' : <div className="flex items-start gap-3">{row.listed?.image && <img src={row.listed.image} alt="" loading="lazy" className="mt-0.5 hidden aspect-[16/9] w-16 shrink-0 rounded-md object-cover outline outline-1 -outline-offset-1 outline-white/10 lg:block" />}<div className="flex min-w-0 flex-col gap-0.5"><EventLink row={row} f={f} />{row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}</div></div>}</TableCell>
                     <TableCell className="align-top whitespace-normal text-muted-foreground">{e
-                      ? <><span className="flex items-start gap-2"><AtBelt belt={beltIn(e.division) ?? beltAt([...(row.read ?? []).map((x) => x.division), ...named])} /><DivisionLink event={row.id} name={e.division} f={f} /></span>{e.club && <span className="block pl-[30px] text-xs">{e.club}</span>}</>
+                      ? <><span className="flex items-start gap-2"><AtBelt belt={beltIn(e.division) ?? beltAt([...(row.read ?? []).map((x) => x.division), ...named])} /><DivisionLink event={row.id} name={e.division} f={f} /></span>{e.club && person(e.club) !== person(club) && <span className="block pl-[30px] text-xs">{e.club}</span>}</>
                       : Array.isArray(d) ? d.map((x) => <span key={x} className="flex items-start gap-2"><AtBelt belt={beltIn(x) ?? beltAt(d)} />{x}</span>) : ''}</TableCell>
                     <TableCell className="text-right align-top">
                       {e?.fought ? <Place p={e.place} /> : !k && row.listed && (row.listed.gold || row.listed.silver || row.listed.bronze) && !read.length
@@ -430,7 +440,13 @@ function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; agai
                 <TableRow key={`${row.id}-m`} className="hover:bg-transparent">
                   <TableCell />
                   <TableCell colSpan={4} className="pt-0 pr-5 pb-3 whitespace-normal">
-                    <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">{shown.map((m, i) => <MatchLine key={i} m={m} f={f} divisions={(row.read?.length ?? named.length) > 1} />)}</ul>
+                    <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">
+                      {/* With more than one division there, each division's matches sit under its name. */}
+                      {[...Map.groupBy(shown, (m) => ((row.read?.length ?? named.length) > 1 ? m.division ?? null : null))].map(([division, ms]) => [
+                        division && <li key={division} className="pt-1 text-xs text-muted-foreground first:pt-0">{division}</li>,
+                        ...ms.map((m, i) => <MatchLine key={`${division}-${i}`} m={m} f={f} divisions={false} />),
+                      ])}
+                    </ul>
                   </TableCell>
                 </TableRow>
               ),
@@ -471,7 +487,6 @@ export function AthletePage({ id }: { id: string }) {
   const upcoming = all.filter((r) => isUpcoming(r.start) && !r.read?.some((e) => e.fought));
   const past = all.filter((r) => !upcoming.includes(r));
   const age = ageOf(a.born);
-  const fromResults = career?.source === 'results';
   const rivals = rivalsOf(all.filter((r) => !isUpcoming(r.start) || r.read?.some((e) => e.fought)));
   const met = past.flatMap(meetingsOfRow);
   const losses = met.filter((m) => !m.won).length;
@@ -481,47 +496,44 @@ export function AthletePage({ id }: { id: string }) {
   // Won or lost alone lists just those matches, event by event; all keeps every event.
   const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOfRow(r).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
   const side = data.profile ? OnProfile({ p: data.profile, f, id }) : null;
+  const arts = artsOf(data.profile);
   const rated = outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size;
   const over = !rated ? '' : outcomes.length ? `across ${plural(rated, 'event')}` : `at ${plural(rated, 'event')} read`;
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex items-center gap-5">
+      <header className="flex flex-wrap items-center gap-5">
         <Photo name={a.name} photo={a.photo} className="size-20 text-lg" />
-        <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <h1 className="text-3xl font-semibold tracking-tight">{a.name ?? `Athlete ${id}`}</h1>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {(a.country || a.country_name) && <span className="inline-flex items-center gap-1.5"><Flag code={a.country} name={a.country_name} />{a.country_name ?? a.country?.toUpperCase()}</span>}
             {age != null && <span>{age} years old</span>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
-            {a.belt && <span className="inline-flex items-center gap-1.5"><Belt belt={a.belt} /><span>{a.belt[0].toUpperCase()}{a.belt.slice(1)} belt</span></span>}
+            {arts.size ? [...arts].map(([art, s]) => (
+              <span key={art} className="inline-flex items-center gap-1.5" title={`${art}: ${plural(s.events, 'event')} on Smoothcomp`}>
+                <Belt belt={s.belt.toLowerCase().replace('gray', 'grey')} /><span>{s.belt} belt{s.degree ? `, ${plural(s.degree, 'degree')}` : ''}{arts.size > 1 ? ` · ${art}` : ''}</span>
+              </span>
+            )) : a.belt && <span className="inline-flex items-center gap-1.5"><Belt belt={a.belt} /><span>{a.belt[0].toUpperCase()}{a.belt.slice(1)} belt</span></span>}
             {a.club && (a.club_id ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-foreground hover:text-primary">{a.club}</Link> : <span>{a.club}</span>)}
             {!data.profile?.affiliations?.length && who?.affiliation && <span title="Affiliation">{who.affiliation}</span>}
             {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
-            <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">Profile on {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
-            {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">{plural(data.profile!.videos!, 'match video')}<ExternalLink className="size-3" /></a>}
           </div>
-          {career && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
-              <Medals g={career.gold} s={career.silver} b={career.bronze} className="text-foreground" />
-              {career.events != null && <span><b className="font-semibold text-foreground">{career.events}</b> {fromResults ? (career.events === 1 ? 'event read' : 'events read') : career.events === 1 ? 'event' : 'events'}</span>}
-              <span><b className="font-semibold text-foreground">{career.wins}</b> {career.wins === 1 ? 'win' : 'wins'}</span>
-              {career.events ? <span><b className="font-semibold text-foreground">{(career.wins / career.events).toFixed(1)}</b> per event</span> : null}
-              {career.wins > 0 && f.counted('submission') && <span><b className="font-semibold text-foreground">{Math.round((career.submission / career.wins) * 100)}%</b> by submission</span>}
-            </div>
-          )}
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>{plural(data.profile!.videos!, 'match video')}<ExternalLink /></a>}
+          <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ size: 'lg' })}>Profile on {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink /></a>
         </div>
       </header>
 
-      {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} split={splitByBelt(data.belts, outcomes, entries, f)} />
+      {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} split={splitByBelt(data.belts, outcomes, entries, f)} career={career} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
-      <div className={cn('grid gap-6', (met.length > 0 || side) && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
-        {(met.length > 0 || side) && <div className="flex min-w-0 flex-col gap-6 [&>:last-child]:flex-1">
-          {met.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
-          {side}
-        </div>}
-        <Form list={past} f={f} />
-      </div>
+      <Form list={past} f={f} />
+
+      {(met.length > 0 || side) && <div className="grid items-start gap-6 lg:grid-cols-2">
+        {met.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
+        {side}
+      </div>}
 
       {upcoming.length > 0 && (
         <section className="flex flex-col gap-3">
@@ -551,7 +563,7 @@ export function AthletePage({ id }: { id: string }) {
             </div>
           )}
         </div>
-        {shownPast.length ? <EventsTable list={shownPast} f={f} against={against} show={show} /> : <Card><Empty title="No past events seen yet" text="They appear once someone with Mat Stats reads this athlete's career or an event they entered." /></Card>}
+        {shownPast.length ? <EventsTable list={shownPast} f={f} against={against} show={show} club={a.club ?? null} /> : <Card><Empty title="No past events seen yet" text="They appear once someone with Mat Stats reads this athlete's career or an event they entered." /></Card>}
       </section>
     </div>
   );
