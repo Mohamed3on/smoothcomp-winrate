@@ -15,12 +15,12 @@ const DRAWN: Record<string, string> = {
   krd: svg(band(0, 12, '#e03a3e'), band(4, 4, '#fff'), band(8, 4, '#1a8f4c'), '<circle cx="8" cy="6" r="2.1" fill="#f5c518"/>'),
 };
 const GLYPH: Record<string, string> = { 'gb-eng': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', 'gb-sct': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}', 'gb-wls': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}', kos: '\u{1F1FD}\u{1F1F0}' };
-export function Flag({ code, name }: { code: string | null; name?: string | null }) {
+export function Flag({ code, name, className }: { code: string | null; name?: string | null; className?: string }) {
   const c = (code ?? '').toLowerCase();
   const label = name ?? c.toUpperCase();
   if (DRAWN[c]) return <span role="img" aria-label={label} title={label} className="inline-flex" dangerouslySetInnerHTML={{ __html: DRAWN[c] }} />;
   const glyph = GLYPH[c] ?? (/^[a-z]{2}$/.test(c) ? String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 97)) : null);
-  return glyph ? <span role="img" aria-label={label} title={label} className="leading-none">{glyph}</span> : null;
+  return glyph ? <span role="img" aria-label={label} title={label} className={cn('leading-none', className)}>{glyph}</span> : null;
 }
 
 export const BELT_COLOUR: Record<string, string> = { white: '#f4f5f6', grey: '#8d949d', yellow: '#e7bd28', orange: '#dc7627', green: '#2b8a56', blue: '#2871b8', purple: '#744ca3', brown: '#79472f', black: '#17191c' };
@@ -66,7 +66,7 @@ export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: 
           {a.hidden === 1 && <Hidden />}
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Flag code={a.country ?? null} name={a.country_name} />
+          <Flag code={a.country ?? null} name={a.country_name} className="text-sm" />
           <Belt belt={a.belt ?? null} />
           <Age born={a.born ?? null} />
           {club && a.club && (a.club_id

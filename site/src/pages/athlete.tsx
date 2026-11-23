@@ -178,7 +178,7 @@ function splitByBelt(belts: Belts | null | undefined, outcomes: Outcome[], entri
 
 function BeltSplit({ split }: { split: Split[] }) {
   return (
-    <ul className="flex max-w-md flex-col gap-2" aria-label="Win rate at each belt">
+    <ul className="flex w-full max-w-md flex-col gap-2 lg:w-md lg:shrink-0" aria-label="Win rate at each belt">
       {split.map(({ belt, w, l, events }) => {
         const label = !events ? `No events at ${belt} yet` : `${w + l ? `${pct(w, l)} of matches won` : "No matches by these finishes"} at ${belt}: ${plural(w, "win")} and ${l} loss${l === 1 ? "" : "es"} in ${plural(events, "event")}`;
         return (
@@ -208,28 +208,30 @@ function RecordBand({ fins, f, over, split }: { fins: Finish[]; f: Filters; over
     f.set({ off: [...off].join(',') });
   };
   return (
-    <Card className="gap-4 px-5 py-5">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        {w + l ? <>
-          <span className="text-5xl font-semibold tracking-tight" style={tone(w, l)}>{pct(w, l)}</span>
-          <span className="text-muted-foreground">win rate</span>
-          <span className="text-xl"><Record w={w} l={l} /></span>
-          <span className="text-sm text-muted-foreground">{over}</span>
-        </> : rated.length || !on.length ? <span className="text-muted-foreground">No matches by these finishes</span> : <>
-          <span className="text-5xl font-semibold tracking-tight">{on.reduce((n, x) => n + x.w, 0)}</span>
-          <span className="text-muted-foreground">wins</span>
-          <span className="text-sm text-muted-foreground">· losses arrive once someone opens their Smoothcomp profile with Mat Stats</span>
-        </>}
-      </div>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Finishes counted">
-        {fins.map((x) => (
-          <Toggle key={x.key} variant="outline" size="sm" pressed={f.counted(x.key)} onPressedChange={() => toggle(x.key)}
-            className="h-7 gap-1.5 rounded-full px-2.5 text-muted-foreground aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground">
-            <i className={cn('size-2 rounded-full transition-opacity', !f.counted(x.key) && 'opacity-35')} style={{ background: dot(x.key) }} />
-            <span className="font-medium">{typeName(x.key)}</span>
-            <span className={cn('text-xs', !f.counted(x.key) && 'opacity-60')}>{x.l == null ? <><b className="font-semibold">{x.w}</b> {x.w === 1 ? 'win' : 'wins'}</> : <Record w={x.w} l={x.l} />}</span>
-          </Toggle>
-        ))}
+    <Card className="gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
+      <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          {w + l ? <>
+            <span className="text-5xl font-semibold tracking-tight" style={tone(w, l)}>{pct(w, l)}</span>
+            <span className="text-muted-foreground">win rate</span>
+            <span className="text-xl"><Record w={w} l={l} /></span>
+            <span className="text-sm text-muted-foreground">{over}</span>
+          </> : rated.length || !on.length ? <span className="text-muted-foreground">No matches by these finishes</span> : <>
+            <span className="text-5xl font-semibold tracking-tight">{on.reduce((n, x) => n + x.w, 0)}</span>
+            <span className="text-muted-foreground">wins</span>
+            <span className="text-sm text-muted-foreground">· losses arrive once someone opens their Smoothcomp profile with Mat Stats</span>
+          </>}
+        </div>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Finishes counted">
+          {fins.map((x) => (
+            <Toggle key={x.key} variant="outline" size="sm" pressed={f.counted(x.key)} onPressedChange={() => toggle(x.key)}
+              className="h-7 gap-1.5 rounded-full px-2.5 text-muted-foreground aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground">
+              <i className={cn('size-2 rounded-full transition-opacity', !f.counted(x.key) && 'opacity-35')} style={{ background: dot(x.key) }} />
+              <span className="font-medium">{typeName(x.key)}</span>
+              <span className={cn('text-xs', !f.counted(x.key) && 'opacity-60')}>{x.l == null ? <><b className="font-semibold">{x.w}</b> {x.w === 1 ? 'win' : 'wins'}</> : <Record w={x.w} l={x.l} />}</span>
+            </Toggle>
+          ))}
+        </div>
       </div>
       {split && <BeltSplit split={split} />}
     </Card>
@@ -345,7 +347,7 @@ function Form({ list, f }: { list: Row[]; f: Filters }) {
           {[['bg-gold', 'Gold'], ['bg-silver', 'Silver'], ['bg-bronze', 'Bronze'], ['bg-win-decision', 'No medal'], ...(lost ? [['bg-lost/70', 'Lost']] : [])].map(([bg, label]) => <li key={label} className="inline-flex items-center gap-1.5"><i className={`size-2 rounded-sm ${bg}`} />{label}</li>)}
         </ul>
       </div>
-      <div className="h-48 w-full">
+      <div className="min-h-48 w-full flex-1">
         <ResponsiveContainer>
           <BarChart data={points} stackOffset="sign" margin={{ top: 4, right: 0, bottom: 0, left: -28 }}>
             <XAxis dataKey="tick" interval="preserveStartEnd" minTickGap={8} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
@@ -513,8 +515,8 @@ export function AthletePage({ id }: { id: string }) {
       {career || outcomes.length ? <RecordBand fins={finishes(career, outcomes, entries)} f={f} over={over} split={splitByBelt(data.belts, outcomes, entries, f)} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
-      <div className={cn('grid items-start gap-6', (met.length > 0 || side) && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
-        {(met.length > 0 || side) && <div className="flex min-w-0 flex-col gap-6">
+      <div className={cn('grid gap-6', (met.length > 0 || side) && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]')}>
+        {(met.length > 0 || side) && <div className="flex min-w-0 flex-col gap-6 [&>:last-child]:flex-1">
           {met.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
           {side}
         </div>}

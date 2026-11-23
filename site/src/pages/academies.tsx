@@ -16,7 +16,7 @@ export function AcademiesPage() {
   const { data, isFetching, isLoading } = useApi<{ rows: Team[]; total: number }>('teams', { ...f.query, athletes: f.get('athletes') || 3, limit: 2000 });
   const columns: Column<Team>[] = [
     { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
-    { key: 'club', label: 'Academy', width: '24%', align: 'start', cell: (t) => (
+    { key: 'club', label: 'Academy', align: 'start', cell: (t) => (
       <div className="flex flex-col gap-0.5">
         <Link href={f.link(`/academy/${t.club_id}`)} className="font-medium break-words hover:text-primary">{t.club ?? `Academy ${t.club_id}`}</Link>
         <span className="text-xs text-muted-foreground">{t.entered ? `${plural(t.entered, 'event')} with results` : 'No results read yet'}</span>

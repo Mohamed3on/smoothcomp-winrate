@@ -15,7 +15,7 @@ const perEvent = (a: Athlete) => (a.events ? (a.wins / a.events).toFixed(1) : '�
 
 export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => [
   { key: 'rank', label: '#', width: '3rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
-  { key: 'who', label: 'Athlete', width: club ? '25%' : '21%', align: 'start', cell: (a) => <Identity a={a} f={f} club={club} /> },
+  { key: 'who', label: 'Athlete', align: 'start', cell: (a) => <Identity a={a} f={f} club={club} /> },
   { key: 'wins', label: 'Wins', width: '6%', sort: 'wins', title: 'Wins of the finish types switched on', cell: (a) => <Num n={a.wins} /> },
   { key: 'rate', label: 'Win rate', width: '8%', sort: 'winRate', title: 'Wins over matches, counted finishes, no walkovers: from their profile’s match lists where someone opened it, else their results at the events read',
     cell: (a) => (rate(a.won, a.lost) ? <div className="flex flex-col items-end"><span className="font-semibold">{rate(a.won, a.lost)}</span><span className="text-xs"><Record w={a.won!} l={a.lost!} /></span></div> : <span className="text-muted-foreground">–</span>) },
