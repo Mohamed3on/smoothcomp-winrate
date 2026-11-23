@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Toggle } from '@/components/ui/toggle';
 import { Empty } from '@/components/empty';
-import { BELT_COLOUR, Belt, Flag, Medals, Photo, Place, Record } from '@/components/stats';
+import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record } from '@/components/stats';
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
@@ -126,8 +126,42 @@ interface Belts { worn: string[]; starts: (number | null)[] }
 // The win rate at each belt worn, highest first, as their profile splits it: an event takes the
 // belt worn on its date; undated ones count only overall. The current belt shows even with no events.
 interface Split { belt: string; w: number; l: number; events: number }
+// The belt a division names ("Gi Adult / Male / Blue / …", "Beginner (White)"); none when it names
+// several ("Advanced (Purple/Brown/Black)") or none.
+const BELT_ORDER = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+const beltIn = (text: string | null | undefined) => {
+  const named = BELT_ORDER.filter((b) => new RegExp(`\\b${b}`, 'i').test(String(text ?? '').replace(/gray/i, 'grey')));
+  return named.length === 1 ? named[0] : null;
+};
+// Without their profile's belt timeline, each division counts at the belt it names; one naming none
+// takes the belt of their latest earlier division that does (or the first one after).
+function splitByDivision(outcomes: Outcome[], entries: Entry[], f: Filters): Split[] | null {
+  type Item = { start: string | null | undefined; belt: string | null; event: string; pairs: [string, number, number][] };
+  const items: Item[] = [];
+  for (const o of outcomes) {
+    const named = [...(o.out.faced ?? []).map((m) => m.division), ...o.out.losses.map((l) => l.division)].map(beltIn).find(Boolean) ?? null;
+    items.push({ start: o.start, belt: named, event: o.event, pairs: Object.entries(o.out.types).map(([t, [w, l]]) => [t, w, l]) });
+  }
+  for (const e of unlisted(entries, outcomes)) items.push({ start: e.start, belt: beltIn(e.division), event: e.event,
+    pairs: [...Object.entries(e.wins ?? {}).map(([t, n]): [string, number, number] => [t, Number(n) || 0, 0]), ...Object.entries(e.losses ?? {}).map(([t, n]): [string, number, number] => [t, 0, Number(n) || 0])] });
+  items.sort((x, y) => String(x.start ?? '').localeCompare(String(y.start ?? '')));
+  let last: string | null = items.find((i) => i.belt)?.belt ?? null;
+  for (const i of items) { if (i.belt) last = i.belt; else i.belt = last; }
+  const by = new Map<string, Split & { seen: Set<string> }>();
+  for (const i of items) {
+    if (!i.belt) continue;
+    const t = by.get(i.belt) ?? { belt: i.belt, w: 0, l: 0, events: 0, seen: new Set<string>() };
+    by.set(i.belt, t);
+    for (const [type, w, l] of i.pairs) if (f.counted(keyOf(type))) { t.w += w; t.l += l; }
+    if (!t.seen.has(i.event)) { t.seen.add(i.event); t.events++; }
+  }
+  if (by.size < 2) return null;
+  return [...by.values()].map(({ seen: _, ...t }) => t).sort((x, y) => BELT_ORDER.indexOf(y.belt) - BELT_ORDER.indexOf(x.belt));
+}
+
 function splitByBelt(belts: Belts | null | undefined, outcomes: Outcome[], entries: Entry[], f: Filters): Split[] | null {
-  if (!belts || belts.worn.length < 2) return null;
+  if (!belts) return splitByDivision(outcomes, entries, f);
+  if (belts.worn.length < 2) return null;
   const beltOf = (start: string | null | undefined) => {
     const t = Date.parse(start ?? "");
     return Number.isNaN(t) ? null : belts.worn[belts.starts.findLastIndex((s) => (s ?? -Infinity) <= t)] ?? belts.worn[0];
@@ -456,6 +490,7 @@ export function AthletePage({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {(a.country || a.country_name) && <span className="inline-flex items-center gap-1.5"><Flag code={a.country} name={a.country_name} />{a.country_name ?? a.country?.toUpperCase()}</span>}
             {age != null && <span>{age} years old</span>}
+            {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
             {a.belt && <span className="inline-flex items-center gap-1.5"><Belt belt={a.belt} /><span>{a.belt[0].toUpperCase()}{a.belt.slice(1)} belt</span></span>}
             {a.club && (a.club_id ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-foreground hover:text-primary">{a.club}</Link> : <span>{a.club}</span>)}
             {!data.profile?.affiliations?.length && who?.affiliation && <span title="Affiliation">{who.affiliation}</span>}

@@ -228,6 +228,9 @@
     else for (let page = 2; page <= (past.meta?.last_page ?? 1) && !list.some(e => known.has(e.id)); page++) list.push(...(await read('past-events', page)).data);
     const firstKept = list.findIndex(e => known.has(e.id));
     const news = firstKept < 0 ? list : list.slice(0, firstKept);
+    // Kept and new events short of (or over) Smoothcomp's count: the whole history is read
+    // again, the kept figures shown meanwhile, which also retries what it never sent.
+    if (!whole && known.size && news.length + [...known.values()].filter(e => !e.out.extra).length !== total) return readStats(true);
     const listed = new Map(news.map(e => [e.id, e]));
     // An event's result from its match list. A match list can hold an event the event list
     // leaves out (an event under two ids): its matches count all the same, dated by the
@@ -255,10 +258,9 @@
     // With a page unanswered, an event missing from the match lists may be on it: it is
     // left out, unkept, so the next visit reads it again.
     const fresh = news.filter(e => !failed || found.has(e.id)).map(e => entry(e, found.get(e.id)));
-    const missing = news.length - fresh.length;
     if (!known.size) for (const event of found.values()) if (!listed.has(event.id)) fresh.push(entry(null, event));
     const events = [...fresh, ...[...known.values()]];
-    if (events.filter(e => !e.out.extra).length !== total && !whole && known.size && !failed) return readStats(true);
+    const missing = total - events.filter(e => !e.out.extra).length;
     // Settled events the server lacks go to it: all of them the first time this browser
     // shares an athlete, then only the newly settled. Events under a week old go every
     // visit, as read again, so the stats site counts what this profile counts.
@@ -272,7 +274,7 @@
     // page on a first read, the new ones after.
     if (news.length) ask('/people', { site, athletes: { [user]: { name: document.title.split(' - ')[0].trim(), history: list.slice(0, 500).map(e => ({
       event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, image: e.cover_image, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
-    show({ ...tally(events), missing });
+    show({ ...tally(events), missing: failed ? Math.max(0, missing) : 0 });
     reading = false;
     shareProfile();
   }
@@ -433,7 +435,8 @@
     const chart = document.querySelector(ajp ? CARD : `${CARD} > div`);
     if (!chart || !got['wins-and-medals'] || !got.skills || !Array.isArray(got['past-events']?.data) || !got['past-events'].meta?.total || !pastUrl) return;
     plan ??= planBelts();
-    if (!reading) readStats().catch(() => { plan.loading = false; if (stats?.reading) show({ ...stats, reading: null }); else draw(); });
+    // Read once a visit: reading is true while it runs and false once done.
+    if (reading == null) readStats().catch(() => { plan.loading = false; if (stats?.reading) show({ ...stats, reading: null }); else draw(); });
     // See losses sits beside Smoothcomp's own See all wins, made of the same parts
     // (its scoped style attributes and its chevron) so the two read as a pair.
     const theirs = document.querySelector('.match-statistics-action button:not(.scwr-losses-open)');

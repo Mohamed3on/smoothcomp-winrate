@@ -1,4 +1,5 @@
 import { Link } from 'wouter';
+import { Lock } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { WIN_TYPES, type Filters } from '@/lib/filters';
@@ -47,7 +48,12 @@ export function Photo({ name, photo, className }: { name: string | null; photo: 
   );
 }
 
-interface Person { user: string; name: string | null; club?: string | null; club_id?: string | null; country?: string | null; country_name?: string | null; photo: string | null; belt?: string | null; born?: number | null }
+interface Person { user: string; name: string | null; club?: string | null; club_id?: string | null; country?: string | null; country_name?: string | null; photo: string | null; belt?: string | null; born?: number | null; hidden?: number | null }
+// An athlete who hides their Smoothcomp profile: their career can't be read, so they rank on their results.
+export const HIDDEN = 'Hidden profile on Smoothcomp: their career can’t be read, so Mat Stats counts the results it has read for them';
+export function Hidden({ className }: { className?: string }) {
+  return <Lock role="img" aria-label={HIDDEN} className={cn('size-3 shrink-0 text-muted-foreground', className)}><title>{HIDDEN}</title></Lock>;
+}
 export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: boolean }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
@@ -57,6 +63,7 @@ export function Identity({ a, f, club = true }: { a: Person; f: Filters; club?: 
           <Link href={f.link(`/athlete/${a.user}`)} className={cn('font-medium break-words hover:text-primary', !a.name && 'italic text-muted-foreground')}>
             {a.name ?? `Athlete ${a.user}`}
           </Link>
+          {a.hidden === 1 && <Hidden />}
           <Flag code={a.country ?? null} name={a.country_name} />
           <Belt belt={a.belt ?? null} />
           <Age born={a.born ?? null} />
