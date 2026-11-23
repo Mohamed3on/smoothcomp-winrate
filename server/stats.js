@@ -137,8 +137,9 @@ const careersOf = (off) => {
 
 const careerRow = (row) => ({ ...Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('w_'))), types: JSON.parse(row.types ?? '{}') });
 
-// A sort is a fixed expression, or one finish type's count.
-const order = (sorts, key) => sorts[key] ?? (GROUPS.includes(key) ? `w_${key} DESC, wins DESC` : sorts.wins);
+// A sort is a fixed expression, or one finish type's count; ?dir=asc reverses it, blanks still last.
+const flip = (sort, dir) => (dir === 'asc' ? sort.replace(/ DESC( NULLS LAST)?/g, ' ASC NULLS LAST') : sort);
+const order = (sorts, key, dir) => flip(sorts[key] ?? (GROUPS.includes(key) ? `w_${key} DESC, wins DESC` : sorts.wins), dir);
 const ATHLETE_SORTS = {
   wins: 'wins DESC',
   events: 'events DESC, wins DESC',
@@ -152,7 +153,7 @@ const ATHLETE_SORTS = {
 
 async function athletes(env, params) {
   const f = filters(params);
-  const sort = order(ATHLETE_SORTS, params.get('sort'));
+  const sort = order(ATHLETE_SORTS, params.get('sort'), params.get('dir'));
   const club = /^\d{1,12}$/.test(params.get('club') ?? '') ? params.get('club') : '';
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)}
     SELECT *, count(*) OVER () AS total FROM careers
@@ -176,7 +177,7 @@ const TEAM_SORTS = {
 // An academy is its athletes with a readable career, under the academy their latest event gave.
 async function teams(env, params) {
   const f = filters(params);
-  const sort = TEAM_SORTS[params.get('sort')] ?? TEAM_SORTS.wins;
+  const sort = flip(TEAM_SORTS[params.get('sort')] ?? TEAM_SORTS.wins, params.get('dir'));
   // Each academy's three athletes with the most wins come with it.
   const least = whole(params.get('athletes'), 3, 1000);
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
@@ -302,14 +303,47 @@ async function division(env, params) {
   });
 }
 
+// Which rows a search matches (`filter`) and how well (`tier`: 0 the whole text, then starting with
+// the query, then a word starting with it, then containing its words in any order), each with its
+// binds. Words of 3 letters or more go through the table's trigram index (accents folded); a query
+// with none scans. `starts` is the tier for a text that starts with the query (1, or 2 to count it
+// as any word start); `cols` the indexed columns to match, `text` the one ranked. `site` keeps the
+// site index from being picked over the matched rowids.
+function matcher(q, fts, cols, text, starts) {
+  const words = q.split(/\s+/).filter(Boolean);
+  const phrase = words.join(' ');
+  const long = words.filter((w) => [...w].length >= 3);
+  const quote = (s) => `"${s.replaceAll('"', '""')}"`;
+  const escape = (s) => s.replace(/[\\%_]/g, '\\$&');
+  const indexed = `rowid IN (SELECT rowid FROM ${fts} WHERE ${fts} MATCH ?)`;
+  const like = `${text} LIKE ? ESCAPE '\\'`;
+  const short = words.filter((w) => !long.includes(w));
+  const [filter, filterBinds] = long.length
+    ? [[indexed, ...short.map(() => like)].join(' AND '), [`${cols} : (${long.map(quote).join(' AND ')})`, ...short.map((w) => `%${escape(w)}%`)]]
+    : [words.map(() => like).join(' AND '), words.map((w) => `%${escape(w)}%`)];
+  const [head, word] = long.length ? [[indexed, `${text} : ^${quote(phrase)}`], [indexed, `${text} : ${quote(` ${phrase}`)}`]] : [[like, `${escape(phrase)}%`], [like, `% ${escape(phrase)}%`]];
+  return {
+    site: long.length ? '+site' : 'site', filter, filterBinds,
+    tier: `CASE WHEN ${head[0]} THEN iif(length(${text}) = ?, 0, ${starts}) WHEN ${word[0]} THEN 2 ELSE 3 END`,
+    tierBinds: [head[1], [...phrase].length, word[1]],
+  };
+}
+
 async function search(env, params) {
   const f = filters(params);
   if (f.q.length < 2) return json({ athletes: [], teams: [], events: [] });
-  const like = `%${f.q}%`;
+  const a = matcher(f.q, 'people_fts', 'name', 'name', 1);
+  const t = matcher(f.q, 'people_fts', 'club', 'club', 2);
+  const e = matcher(f.q, 'events_fts', '{title city}', 'title', 2);
   const [people, clubs, found] = await env.DB.batch([
-    env.DB.prepare('SELECT user, name, club, country, photo, hidden FROM people WHERE site = ?1 AND name LIKE ?2 ORDER BY seen DESC LIMIT 8').bind(f.site, like),
-    env.DB.prepare('SELECT club_id, club, count(*) AS athletes FROM people WHERE site = ?1 AND club LIKE ?2 AND club_id IS NOT NULL GROUP BY club_id ORDER BY athletes DESC LIMIT 6').bind(f.site, like),
-    env.DB.prepare('SELECT event, title, start, city FROM events WHERE site = ?1 AND (title LIKE ?2 OR city LIKE ?2) ORDER BY start DESC LIMIT 6').bind(f.site, like),
+    env.DB.prepare(`SELECT user, name, club, country, photo, hidden FROM people WHERE ${a.site} = ? AND ${a.filter} ORDER BY ${a.tier}, seen DESC LIMIT 8`)
+      .bind(f.site, ...a.filterBinds, ...a.tierBinds),
+    // min() makes the bare club the name of the best-matching athlete's row.
+    env.DB.prepare(`SELECT club_id, club, athletes FROM (SELECT club_id, club, count(*) AS athletes, min(${t.tier}) AS tier FROM people
+      WHERE ${t.site} = ? AND club_id IS NOT NULL AND ${t.filter} GROUP BY club_id) ORDER BY tier, athletes DESC LIMIT 6`)
+      .bind(...t.tierBinds, f.site, ...t.filterBinds),
+    env.DB.prepare(`SELECT event, title, start, city FROM events WHERE ${e.site} = ? AND ${e.filter} ORDER BY ${e.tier}, start DESC LIMIT 6`)
+      .bind(f.site, ...e.filterBinds, ...e.tierBinds),
   ]);
   return json({ athletes: people.results, teams: clubs.results, events: found.results });
 }

@@ -18,7 +18,7 @@ export function useFilters() {
   }, { replace: true });
   const query = {
     site, off: [...off].join(','), belt: get('belt'), wins: get('wins'), events: get('events'), agemin: get('agemin'), agemax: get('agemax'),
-    country: get('country'), active: get('active'), sort: get('sort') || 'wins', q: get('q'),
+    country: get('country'), active: get('active'), sort: get('sort') || 'wins', dir: get('dir'), q: get('q'),
   };
   // A path with the reader's filters carried along, after any query of its own.
   const link = (path: string) => {

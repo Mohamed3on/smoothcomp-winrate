@@ -54,7 +54,7 @@ export function AcademyPage({ id }: { id: string }) {
           {ranked.data && <Count n={ranked.data.total} unit={ranked.data.total === 1 ? 'athlete' : 'athletes'} />}
         </div>
         <FilterBar f={f} sorts={ATHLETE_SORTS} />
-        <Ledger rows={ranked.data?.rows} loading={ranked.isLoading || ranked.isFetching} columns={athleteColumns(f, false)} rowKey={(a) => a.user} sort={f.query.sort} onSort={(s) => f.set({ sort: s })}
+        <Ledger rows={ranked.data?.rows} loading={ranked.isLoading || ranked.isFetching} columns={athleteColumns(f, false)} rowKey={(a) => a.user} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
           empty={<Empty title="No athletes here pass the filters" text="Lower the minimums or widen the age range." action={resetAction(f)} />} />
         {unranked.length > 0 && (
           <Card className="gap-3 px-5 py-4">

@@ -169,3 +169,28 @@ CREATE INDEX IF NOT EXISTS events_start ON events (site, start);
 -- ALTER TABLE events ADD COLUMN athletes INTEGER; ALTER TABLE events ADD COLUMN divisions INTEGER; ALTER TABLE events ADD COLUMN teams INTEGER; ALTER TABLE events ADD COLUMN fought INTEGER;
 -- Small values the worker keeps: 'changed' = when an install last uploaded (ms), so the edge cache knows its copies are old.
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER);
+-- Search (stats.js search): athletes' names and academies, and events' titles and cities, indexed by
+-- trigram with accents folded (ö = o), kept in step by triggers. Fill once with
+-- INSERT INTO people_fts(people_fts) VALUES ('rebuild'); and the same for events_fts.
+CREATE VIRTUAL TABLE IF NOT EXISTS people_fts USING fts5(name, club, content = 'people', tokenize = 'trigram remove_diacritics 1');
+CREATE TRIGGER IF NOT EXISTS people_fts_insert AFTER INSERT ON people BEGIN
+  INSERT INTO people_fts (rowid, name, club) VALUES (new.rowid, new.name, new.club);
+END;
+CREATE TRIGGER IF NOT EXISTS people_fts_delete AFTER DELETE ON people BEGIN
+  INSERT INTO people_fts (people_fts, rowid, name, club) VALUES ('delete', old.rowid, old.name, old.club);
+END;
+CREATE TRIGGER IF NOT EXISTS people_fts_update AFTER UPDATE OF name, club ON people WHEN old.name IS NOT new.name OR old.club IS NOT new.club BEGIN
+  INSERT INTO people_fts (people_fts, rowid, name, club) VALUES ('delete', old.rowid, old.name, old.club);
+  INSERT INTO people_fts (rowid, name, club) VALUES (new.rowid, new.name, new.club);
+END;
+CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(title, city, content = 'events', tokenize = 'trigram remove_diacritics 1');
+CREATE TRIGGER IF NOT EXISTS events_fts_insert AFTER INSERT ON events BEGIN
+  INSERT INTO events_fts (rowid, title, city) VALUES (new.rowid, new.title, new.city);
+END;
+CREATE TRIGGER IF NOT EXISTS events_fts_delete AFTER DELETE ON events BEGIN
+  INSERT INTO events_fts (events_fts, rowid, title, city) VALUES ('delete', old.rowid, old.title, old.city);
+END;
+CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE OF title, city ON events WHEN old.title IS NOT new.title OR old.city IS NOT new.city BEGIN
+  INSERT INTO events_fts (events_fts, rowid, title, city) VALUES ('delete', old.rowid, old.title, old.city);
+  INSERT INTO events_fts (rowid, title, city) VALUES (new.rowid, new.title, new.city);
+END;

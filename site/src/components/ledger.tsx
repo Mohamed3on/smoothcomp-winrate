@@ -14,19 +14,19 @@ const cellClass = (c: { align?: string; narrow?: boolean }, sorted: boolean) =>
   cn('px-3 py-2.5 align-middle first:pl-5 last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
 
 // A ranked ledger: sortable headers, every row reachable, only the rows on screen drawn.
-export function Ledger<T>({ rows, columns, sort, onSort, rowKey, loading, empty, expand }: {
-  rows: T[] | undefined; columns: Column<T>[]; sort?: string; onSort?: (s: string) => void; rowKey: (r: T) => string; loading: boolean;
+export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, loading, empty, expand }: {
+  rows: T[] | undefined; columns: Column<T>[]; sort?: string; asc?: boolean; onSort?: (s: string, asc: boolean) => void; rowKey: (r: T) => string; loading: boolean;
   empty: React.ReactNode; expand?: (r: T) => React.ReactNode;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const header = (
     <tr className="text-xs text-muted-foreground">
       {columns.map((c) => (
-        <th key={c.key} scope="col" style={{ width: c.width }} aria-sort={c.sort && c.sort === sort ? 'descending' : undefined}
+        <th key={c.key} scope="col" style={{ width: c.width }} aria-sort={c.sort && c.sort === sort ? (asc ? 'ascending' : 'descending') : undefined}
           className={cn(cellClass(c, false), 'h-10 bg-card font-medium whitespace-nowrap', c.sort === sort && c.sort && 'text-primary')}>
           {c.sort && onSort
-            ? <button type="button" title={c.title ?? `Rank by ${c.label.toLowerCase()}`} onClick={() => onSort(c.sort!)} className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-                {c.label}<ChevronDown className={cn('size-3.5 transition-opacity', c.sort === sort ? 'opacity-100' : 'opacity-0')} />
+            ? <button type="button" title={c.title ?? `Rank by ${c.label.toLowerCase()}`} onClick={() => onSort(c.sort!, c.sort === sort && !asc)} className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
+                {c.label}<ChevronDown className={cn('size-3.5 transition-[opacity,rotate]', c.sort === sort ? 'opacity-100' : 'opacity-0', c.sort === sort && asc && 'rotate-180')} />
               </button>
             : <span title={c.title}>{c.label}</span>}
         </th>

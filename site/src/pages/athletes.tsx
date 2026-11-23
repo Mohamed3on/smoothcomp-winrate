@@ -9,7 +9,7 @@ import { plural, rate } from '@/lib/format';
 
 export const ATHLETE_SORTS: [string, string][] = [['wins', 'Wins'], ['submission', 'Submissions'], ['points', 'Wins on points'], ['stoppage', 'Stoppages'], ['decision', 'Decisions'],
   ['rate', 'Submission rate'], ['winRate', 'Win rate'], ['medals', 'Medals'], ['events', 'Events entered'], ['perEvent', 'Wins per event'], ['last', 'Last competed']];
-export const RESET = ['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'q', 'athletes', 'active'];
+export const RESET = ['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'];
 export const resetAction = (f: Filters) => ({ label: 'Reset filters', onClick: () => f.set(Object.fromEntries(RESET.map((k) => [k, null]))) });
 const perEvent = (a: Athlete) => (a.events ? (a.wins / a.events).toFixed(1) : '–');
 
@@ -37,7 +37,7 @@ export function AthletesPage() {
         text="Every athlete Mat Stats has read, in one ranking: their Smoothcomp career, or their results at the events read where Smoothcomp serves no career. Choose which finishes count; walkovers start switched off." />
       <div className="flex flex-col gap-3">
         <FilterBar f={f} sorts={ATHLETE_SORTS} />
-        <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={athleteColumns(f)} rowKey={(a) => a.user} sort={f.query.sort} onSort={(s) => f.set({ sort: s })}
+        <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={athleteColumns(f)} rowKey={(a) => a.user} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
           empty={<Empty title="No athletes match" text="Lower the minimums, widen the age range, switch more finish types on, or clear the belt and country." action={resetAction(f)} />} />
       </div>
     </>

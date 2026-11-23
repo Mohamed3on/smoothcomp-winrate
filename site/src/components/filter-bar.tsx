@@ -69,10 +69,10 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
         </div>
       </Field>
       <Field label="Age">
-        <div className={cn('flex h-8 items-center rounded-lg border border-input', (f.get('agemin') || f.get('agemax')) && 'border-primary/60 bg-primary/8')}>
-          <Debounced f={f} name="agemin" label="Youngest age" placeholder="Any" className="h-full w-16 border-0 bg-transparent text-center shadow-none focus-visible:ring-0" />
+        <div className={cn('flex h-8 items-center rounded-lg border border-input transition-colors has-focus-visible:border-ring has-focus-visible:ring-3 has-focus-visible:ring-ring/50 dark:bg-input/30', (f.get('agemin') || f.get('agemax')) && 'border-primary/60 bg-primary/8 dark:bg-primary/8')}>
+          <Debounced f={f} name="agemin" label="Youngest age" placeholder="Any" className="h-full w-16 border-0 bg-transparent text-center shadow-none focus-visible:ring-0 dark:bg-transparent" />
           <span className="text-muted-foreground" aria-hidden>–</span>
-          <Debounced f={f} name="agemax" label="Oldest age" placeholder="Any" className="h-full w-16 border-0 bg-transparent text-center shadow-none focus-visible:ring-0" />
+          <Debounced f={f} name="agemax" label="Oldest age" placeholder="Any" className="h-full w-16 border-0 bg-transparent text-center shadow-none focus-visible:ring-0 dark:bg-transparent" />
         </div>
       </Field>
       <Field label="Min. wins"><Debounced f={f} name="wins" label="Minimum wins" placeholder="Any" className="w-20" /></Field>
@@ -91,13 +91,13 @@ export function FilterBar({ f, sorts, minimumAthletes = false }: { f: Filters; s
         </Select>
       </Field>
       <Field label="Rank by">
-        <Select items={sortItems} value={f.query.sort} onValueChange={(v) => f.set({ sort: v as string })}>
+        <Select items={sortItems} value={f.query.sort} onValueChange={(v) => f.set({ sort: v as string, dir: null })}>
           <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
           <SelectContent>{sortItems.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
       <Field label="Name" className="min-w-44 flex-1"><Debounced f={f} name="q" type="search" label="Filter by name" placeholder="Filter by name" className="w-full max-w-md" /></Field>
-      <Button variant="ghost" className="text-muted-foreground" onClick={() => f.set(Object.fromEntries(['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'q', 'athletes', 'active'].map((k) => [k, null])))}>Reset</Button>
+      <Button variant="ghost" className="text-muted-foreground" onClick={() => f.set(Object.fromEntries(['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])))}>Reset</Button>
     </div>
   );
 }

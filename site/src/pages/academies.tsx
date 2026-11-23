@@ -40,7 +40,7 @@ export function AcademiesPage() {
         text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists." />
       <div className="flex flex-col gap-3">
         <FilterBar f={f} sorts={SORTS} minimumAthletes />
-        <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(t) => t.club_id} sort={f.query.sort} onSort={(s) => f.set({ sort: s })}
+        <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(t) => t.club_id} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
           expand={(t) => <Roster club={t.club_id} f={f} />}
           empty={<Empty title="No academies match" text="Lower the minimum athletes or the other minimums, or clear the belt and country." action={resetAction(f)} />} />
       </div>
