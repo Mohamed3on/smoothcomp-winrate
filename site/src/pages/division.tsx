@@ -9,6 +9,7 @@ import { useFilters, type Filters } from '@/lib/filters';
 import { beltAt, date, plural, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { MatchLine, type Meeting } from '@/pages/athlete';
+import { Dot, Seed, seeded } from '@/pages/event';
 
 // A division's own page, wherever a division is named. Its name rides in the query: names hold slashes.
 export const divisionHref = (event: string, name: string) => `/event/${event}/division?name=${encodeURIComponent(name.trim())}`;
@@ -18,7 +19,8 @@ export function DivisionLink({ event, name, f, className }: { event: string; nam
 
 type Row = EventEntry & { bouts?: Bout[] | null };
 
-// One division: everyone in it by place (then record), each with the matches they fought there.
+// One division: everyone in it by place (then record), each with the matches they fought there; before
+// it is fought, in seed order with the medals the seeding points to, as the event page has it.
 export function DivisionPage({ id }: { id: string }) {
   const f = useFilters();
   const name = (f.params.get('name') ?? '').trim();
@@ -28,14 +30,17 @@ export function DivisionPage({ id }: { id: string }) {
   const { event } = data;
   const title = event.title ?? `Event ${id}`;
   document.title = `${name} · ${title} · Mat Stats`;
-  const rows = data.entries.map((e) => ({ ...e, belt: beltAt([e.division]), w: winsOf(e.wins, f.counted), l: winsOf(e.losses, f.counted) }))
-    .sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || b.w - a.w || a.l - b.l || (a.name ?? '').localeCompare(b.name ?? ''));
-  const fought = rows.some((r) => r.fought);
+  const fought = data.entries.some((e) => e.fought);
+  const rows = seeded(name, data.entries, f, !fought).map((e) => ({ ...e, belt: beltAt([e.division]) ?? e.belt, w: winsOf(e.wins, f.counted), l: winsOf(e.losses, f.counted) }));
+  if (fought) rows.sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || b.w - a.w || a.l - b.l || (a.name ?? '').localeCompare(b.name ?? ''));
   const matchesOf = (r: Row): Meeting[] => (r.bouts ?? []).map((b) => ({ won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock }));
   const columns: Column<(typeof rows)[number]>[] = [
-    { key: 'place', label: 'Place', width: '5rem', align: 'start', cell: (r) => <Place p={r.place} /> },
+    fought
+      ? { key: 'place', label: 'Place', width: '5rem', align: 'start', cell: (r) => <Place p={r.place} /> }
+      : { key: 'seed', label: 'Seed', width: '5rem', align: 'start', title: 'Seeded by belt where belts mix, then career win rate; the dot is the medal it points to', cell: (r, i) => <span className="flex items-center gap-3"><span className="w-5 text-muted-foreground">{i + 1}</span><Dot call={r.call} /></span> },
     { key: 'who', label: 'Athlete', align: 'start', cell: (r) => <Identity a={r} f={f} /> },
-    ...(fought ? [{ key: 'record', label: 'Record', width: '7rem', cell: (r: (typeof rows)[number]) => <Record w={r.w} l={r.l} /> }] : []),
+    ...(fought ? [{ key: 'record', label: 'Record', width: '7rem', cell: (r: (typeof rows)[number]) => <Record w={r.w} l={r.l} /> }]
+      : [{ key: 'rate', label: 'Win rate', width: '7rem', title: 'Career win rate and record, as the bracket is seeded', cell: (r: (typeof rows)[number]) => <Seed r={r} /> }]),
     { key: 'career', label: 'Career wins', width: '8rem', title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (r) => <Num n={r.career_wins} /> },
   ];
   const matches = (r: Row) => {

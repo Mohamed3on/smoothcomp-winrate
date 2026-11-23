@@ -19,7 +19,8 @@ import { beltOf, bySeed, rated, sureSeed } from '@/lib/rules';
 // bronze, fourth nothing. Seeded by win rate where a record is known, then wins per event and career wins.
 // A call is sure when the athlete's figures stand apart from everyone else's in the bracket; else a ring.
 interface Call { medal: number; sure: boolean; bracket: string; seed: number; of: number }
-type Ranked = EventEntry & { career: number | null; tally: number[] | null; call: Call | null };
+type Seeded = { career: number | null; tally: number[] | null; call: Call | null };
+type Ranked = EventEntry & Seeded;
 type Person = EventEntry & { rows: Ranked[]; w: number; l: number; won: Types; lost: Types; best: number; career: number | null; calls: Call[] };
 interface Division { name: string; rows: Ranked[]; wins: number }
 interface Academy { id: string | null; name: string | null; athletes: number; g: number; s: number; b: number; w: number; l: number; career: number; expected: number[]; people: Person[] }
@@ -30,7 +31,7 @@ const sum = (buckets: Types[]) => buckets.reduce<Types>((t, b) => { for (const [
 const MEDAL_BG = ['bg-gold', 'bg-silver', 'bg-bronze'];
 const MEDAL_RING = ['ring-gold', 'ring-silver', 'ring-bronze'];
 const ordinal = (n: number) => `${n}${['th', 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
-function Dot({ call }: { call: Call | null }) {
+export function Dot({ call }: { call: Call | null }) {
   if (!call) return <i className="size-2 shrink-0 rounded-full bg-muted-foreground/25" aria-hidden />;
   const label = `${call.sure ? '' : 'Maybe '}${MEDAL[call.medal]}: seeded ${ordinal(call.seed)} of ${call.of} by win rate in ${call.bracket}`;
   return <i title={label} aria-label={label} className={cn('size-2 shrink-0 rounded-full', call.sure ? MEDAL_BG[call.medal] : ['ring-[1.5px] ring-inset', MEDAL_RING[call.medal]])} />;
@@ -45,7 +46,7 @@ const NameLink = ({ e, f }: { e: EventEntry; f: Filters }) => (
 );
 // What a bracket seeds by, after belt where belts mix: career win rate and record; their wins where no
 // full record is read, else that nothing is.
-function Seed({ r, row = false }: { r: EventEntry & { career: number | null }; row?: boolean }) {
+export function Seed({ r, row = false }: { r: EventEntry & { career: number | null }; row?: boolean }) {
   const pct = rated({ won: r.career_won, lost: r.career_lost, wins: r.career }) && rate(r.career_won, r.career_lost);
   if (pct) return (
     <span className={cn('flex shrink-0 items-end', row ? 'items-center gap-2' : 'flex-col leading-tight')} title={`Seeded by career win rate: ${r.career_won} won, ${r.career_lost} lost`}>
@@ -55,6 +56,26 @@ function Seed({ r, row = false }: { r: EventEntry & { career: number | null }; r
   return r.career != null
     ? <span className="shrink-0 text-xs text-muted-foreground" title="No full match record read, so they seed by wins per event, after everyone with one">{plural(r.career, 'win')}</span>
     : <span className="shrink-0 text-xs text-muted-foreground" title="Mat Stats hasn’t read their career, so they seed last">Not read</span>;
+}
+
+// Counted career wins, by submission and on points; null with no career read.
+const tallyOf = (e: EventEntry, f: Filters) => {
+  if (e.career_wins == null) return null;
+  const t: Record<string, number> = JSON.parse(e.career_types ?? '{}');
+  return [winsOf(t, f.counted), f.counted('submission') ? Number(t.submission) || 0 : 0, f.counted('points') ? Number(t.points) || 0 : 0];
+};
+const seedOf = (r: Ranked) => ({ belt: beltOf(r.division) ?? r.belt, won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, submission: r.tally?.[1], points: r.tally?.[2], born: r.born });
+const byCareer = (a: Ranked, b: Ranked) => bySeed(seedOf(a), seedOf(b)) || a.user.localeCompare(b.user);
+// One bracket's athletes in seed order, or by place once decided; while undecided and still to fight
+// (open), the top three carry the medal their seed points to.
+export function seeded<T extends EventEntry>(name: string, list: T[], f: Filters, open: boolean): (T & Seeded)[] {
+  const rows = list.map((r) => ({ ...r, tally: tallyOf(r, f), career: tallyOf(r, f)?.[0] ?? null, call: null as Call | null })).sort(byCareer);
+  const decided = rows.some((r) => r.place != null);
+  if (decided) rows.sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || byCareer(a, b));
+  rows.forEach((r, i) => {
+    if (i < 3 && !decided && open) r.call = { medal: i, bracket: name, seed: i + 1, of: rows.length, sure: rows.length === 1 || sureSeed(rows.map(seedOf), i) };
+  });
+  return rows;
 }
 
 export function EventPage({ id }: { id: string }) {
@@ -74,21 +95,8 @@ export function EventPage({ id }: { id: string }) {
   document.title = `${title} · Mat Stats`;
   const fought = results.length > 0;
   const stamp = (t: number) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  // Counted career wins, by submission and on points; null with no career read.
-  const tallyOf = (e: EventEntry) => {
-    if (e.career_wins == null) return null;
-    const t: Record<string, number> = JSON.parse(e.career_types ?? '{}');
-    return [winsOf(t, f.counted), f.counted('submission') ? Number(t.submission) || 0 : 0, f.counted('points') ? Number(t.points) || 0 : 0];
-  };
-  const seedOf = (r: Ranked) => ({ belt: beltOf(r.division) ?? r.belt, won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, submission: r.tally?.[1], points: r.tally?.[2], born: r.born });
-  const byCareer = (a: Ranked, b: Ranked) => bySeed(seedOf(a), seedOf(b)) || a.user.localeCompare(b.user);
   const divisions: Division[] = [...Map.groupBy(entries, (e) => e.division.trim())].map(([name, list]) => {
-    const rows: Ranked[] = list.map((r) => ({ ...r, tally: tallyOf(r), career: tallyOf(r)?.[0] ?? null, call: null })).sort(byCareer);
-    const decided = rows.some((r) => r.place != null);
-    if (decided) rows.sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || byCareer(a, b));
-    rows.forEach((r, i) => {
-      if (i < 3 && !decided && (!fought || live)) r.call = { medal: i, bracket: name, seed: i + 1, of: rows.length, sure: rows.length === 1 || sureSeed(rows.map(seedOf), i) };
-    });
+    const rows = seeded(name, list, f, !fought || live);
     return { name, rows, wins: rows.reduce((n, r) => n + (r.career ?? 0), 0) };
   });
   const calls = Map.groupBy(divisions.flatMap((d) => d.rows.filter((r) => r.call)), (r) => r.user);
