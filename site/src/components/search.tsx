@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent } from '@/components/ui/popover';
 import { Photo } from '@/components/stats';
 import { useApi } from '@/lib/api';
 import type { Filters } from '@/lib/filters';
@@ -22,19 +23,20 @@ export function Search({ f }: { f: Filters }) {
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 200); return () => clearTimeout(t); }, [q]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => { if (e.key === 'k' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); box.current?.querySelector('input')?.focus(); } };
-    const away = (e: MouseEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    addEventListener('keydown', key); addEventListener('mousedown', away);
-    return () => { removeEventListener('keydown', key); removeEventListener('mousedown', away); };
+    addEventListener('keydown', key);
+    return () => removeEventListener('keydown', key);
   }, []);
   const { data, isFetching } = useApi<Found>('search', { site: f.site, q: debounced }, debounced.length >= 2);
   const go = (path: string) => { setOpen(false); setQ(''); navigate(f.link(path)); };
   return (
-    <div ref={box} className="relative w-80">
+    // The popover closes on Escape or a press outside it, except on the box itself.
+    <Popover open={open && debounced.length >= 2} onOpenChange={(next, d) => { if (next || d.reason !== 'outside-press' || !box.current?.contains(d.event.target as Node)) setOpen(next); }}>
       <Command shouldFilter={false} className="overflow-visible bg-transparent p-0">
-        <CommandInput value={q} onValueChange={(v) => { setQ(v); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={(e) => e.key === 'Escape' && setOpen(false)}
-          placeholder="Search athletes, academies, events" />
-        {open && debounced.length >= 2 && (
-          <CommandList className="absolute inset-x-0 top-full z-50 mt-1.5 max-h-[70vh] overscroll-contain rounded-xl border bg-popover p-1 shadow-xl">
+        <div ref={box} className="w-80">
+          <CommandInput value={q} onValueChange={(v) => { setQ(v); setOpen(true); }} onFocus={() => setOpen(true)} placeholder="Search athletes, academies, events" />
+        </div>
+        <PopoverContent anchor={box} align="start" sideOffset={6} initialFocus={false} finalFocus={false} className="w-(--anchor-width) gap-0 rounded-xl p-0 shadow-xl">
+          <CommandList className="max-h-[70vh] overscroll-contain p-1">
             {!isFetching && <CommandEmpty>Nothing matches “{debounced}”.</CommandEmpty>}
             {!!data?.athletes.length && <CommandGroup heading="Athletes">{data.athletes.map((a) => (
               <CommandItem key={a.user} value={`a${a.user}`} onSelect={() => go(`/athlete/${a.user}`)}>
@@ -49,8 +51,8 @@ export function Search({ f }: { f: Filters }) {
                 <span className="truncate">{e.title}</span><span className="ml-auto shrink-0 text-xs text-muted-foreground">{date(e.start)}</span>
               </CommandItem>))}</CommandGroup>}
           </CommandList>
-        )}
+        </PopoverContent>
       </Command>
-    </div>
+    </Popover>
   );
 }
