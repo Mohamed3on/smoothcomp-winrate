@@ -64,16 +64,20 @@ test('a division is placed by the round each side went out in, a round robin by 
 test('a bracket seeds by win rate where a record is known, then wins per event', () => {
   const { bySeed, sureSeed } = context.SCWRRules;
   const seeds = {
-    rate: { won: 9, lost: 1, wins: 10, events: 10 },            // 90%
-    deep: { won: 8, lost: 2, wins: 40, events: 10 },            // 80%, though 4 wins per event
-    same: { won: 18, lost: 2, wins: 18, events: 9 },            // 90% over more matches
+    rate: { won: 18, lost: 2, wins: 18, events: 10 },           // 90%
+    deep: { won: 30, lost: 10, wins: 40, events: 10 },          // 75%, though 4 wins per event
+    same: { won: 36, lost: 4, wins: 36, events: 9 },            // 90% over more matches
     career: { wins: 30, events: 10 },                           // no record: 3 per event
+    partial: { won: 0, lost: 1, wins: 17, events: 16 },         // a partial record: by wins per event
     unknown: {},
   };
   const order = Object.keys(seeds).sort((a, b) => bySeed(seeds[a], seeds[b]));
-  assert.deepEqual(JSON.parse(JSON.stringify(order)), ['same', 'rate', 'deep', 'career', 'unknown']);
+  assert.deepEqual(JSON.parse(JSON.stringify(order)), ['same', 'rate', 'deep', 'career', 'partial', 'unknown']);
   const list = order.map((k) => seeds[k]);
-  assert.deepEqual(list.map((_, i) => sureSeed(list, i)), [true, true, true, true, false]);
+  assert.deepEqual(list.map((_, i) => sureSeed(list, i)), [true, true, true, true, true, false]);
+  // Experience counts: a long strong record outranks a short better one.
+  assert.ok(bySeed({ won: 229, lost: 79, wins: 229 }, { won: 23, lost: 4, wins: 23 }) < 0);
+  assert.ok(bySeed({ won: 62, lost: 29 }, { won: 5, lost: 1 }) < 0);
   assert.equal(sureSeed([{ won: 1, lost: 1 }, { won: 2, lost: 2 }, { won: 1, lost: 1 }], 0), false);
   // A short perfect record doesn't outrank a long strong one.
   assert.ok(bySeed({ won: 9, lost: 2 }, { won: 2, lost: 0 }) < 0);

@@ -84,11 +84,11 @@ const recordOf = (user) => {
   const record = SCWRCareers.records?.[user];
   return record ? Object.entries(record).reduce(([w, l], [type, [a, b]]) => (counted(type) ? [w + a, l + b] : [w, l]), [0, 0]) : null;
 };
-// What a bracket seeds them by (rules.js seedKey): win rate where a record is known, then wins per event, and so on.
+// What a bracket seeds them by (rules.js seedKey): belt, then win rate where a record is known, then wins per event, and so on.
 const seedOf = (r) => {
   const t = tally(r.user_id);
   const [won, lost] = recordOf(r.user_id) ?? [];
-  return { won, lost, wins: t?.[0], events: eventsOf(r.user_id), submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age };
+  return { belt: belt(r.user_id ?? r.id), won, lost, wins: t?.[0], events: eventsOf(r.user_id), submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age };
 };
 
 // How much of a whole-event read is still to come: the athletes among these
@@ -107,8 +107,8 @@ let place; // each registration's index in Smoothcomp's own order
 let first; // each bracket's index in Smoothcomp's own order
 const ranked = new Set();
 
-// Brackets (lead 2) are seeded as the stats site seeds them (rules.js seedKey): the best win
-// rate where a record is known, then wins per event, so a long career of early exits doesn't
+// Brackets (lead 2) are seeded as the stats site seeds them (rules.js seedKey): the higher
+// belt where belts mix, then the best win rate where a record is known, then wins per event, so a long career of early exits doesn't
 // outrank a short one of finals; then most wins, by submission, by points, and the younger
 // athlete. The athletes view picks its own lead. Anything unknown sorts after every known
 // figure; anything still level keeps Smoothcomp's own order.

@@ -33,6 +33,7 @@ test('division medals update during loading and only depend on their own bracket
   // Exercise the actual ranking and paint functions, without mounting Vue or
   // making requests. Only the division node's DOM contract is supplied here.
   vm.runInContext(source.slice(0, source.indexOf('const watcher =')), context);
+  vm.runInContext('function belt() {}', context); // these brackets' athletes wear no known belt
   vm.runInContext(source.slice(source.indexOf('let foreseen ='), source.indexOf('// Each academy with')), context);
   vm.runInContext(`
     const LEADS = ['wins', 'submission']; let order = 'wins'; let draining = Promise.resolve();
@@ -69,6 +70,7 @@ test('shared career changes reorder an already ranked bracket', () => {
     matchMedia: () => ({ matches: false }),
   });
   vm.runInContext(source.slice(0, source.indexOf('const watcher =')), context);
+  vm.runInContext('function belt() {}', context); // these brackets' athletes wear no known belt
   vm.runInContext(`
     let order = null; function queue() {}
     const group = { name: 'A', registrations: [{ id: 1, user_id: '1' }, { id: 2, user_id: '2' }] };
@@ -92,6 +94,7 @@ test('shared career changes reorder stacked bracket strengths', () => {
     SCWRSite: { store: { get() {} } }, document: { querySelectorAll: () => [] }, matchMedia: () => ({ matches: false }),
   });
   vm.runInContext(source.slice(0, source.indexOf('const watcher =')), context);
+  vm.runInContext('function belt() {}', context); // these brackets' athletes wear no known belt
   vm.runInContext(`
     let order = null; let draining = null; stack = true; function queue() {}
     const a = { name: 'A', registrations: [{ id: 1, user_id: '1' }] };

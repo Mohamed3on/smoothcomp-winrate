@@ -2,9 +2,10 @@
 type Types = Record<string, [number, number]>;
 interface EventRecord { event: string; start: string | null; types: Types; divisions: string[] }
 interface Rival { key: string; name: string; w: number; l: number }
-interface Seed { won?: number | null; lost?: number | null; wins?: number | null; events?: number | null; submission?: number | null; points?: number | null; born?: number | null }
+interface Seed { belt?: string | null; won?: number | null; lost?: number | null; wins?: number | null; events?: number | null; submission?: number | null; points?: number | null; born?: number | null }
 declare global {
   var SCWRRules: {
+    rated(seed: Seed): boolean;
     seedKey(seed: Seed): number[];
     bySeed(a: Seed, b: Seed): number;
     sureSeed(seeds: Seed[], i: number): boolean;
