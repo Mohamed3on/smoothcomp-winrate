@@ -7,12 +7,14 @@ import { API, TALLY } from './stats.js';
 // upload can store; one left with nothing to count loses its row.
 async function retally(env, site, users) {
   const all = [...new Set(users)].filter(validUser).slice(0, 5000);
+  const statements = [];
   for (let i = 0; i < all.length; i += 400) {
     const some = JSON.stringify(all.slice(i, i + 400));
-    await env.DB.batch([env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
+    statements.push(env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
-      AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some)]);
+      AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some));
   }
+  if (statements.length) await env.DB.batch(statements);
 }
 
 const KEPT = 30 * 24 * 60 * 60 * 1000; // the longest career-cache.js keeps anything
@@ -84,7 +86,11 @@ const detailOf = (code) => {
 const bouts = (list) => (Array.isArray(list) && list.length ? JSON.stringify(list.slice(0, 40).filter((b) => b && typeof b === 'object').map((b) => ({
   won: b.won === true, type: finishOf(b.type ?? ''), how: text(b.how, 60) ?? text(detailOf(b.type), 60), opponent: text(b.opponent, 120), user: validUser(String(b.user ?? '')) ? String(b.user) : null,
   club: text(b.club, 160), stage: text(b.stage, 60),
+  // The score, theirs and their opponent's ([points, advantages, penalties]), and the clock ([length, left], seconds).
+  ...(trio(b.us) && trio(b.them) ? { us: b.us, them: b.them } : {}),
+  ...(Array.isArray(b.clock) && b.clock.length === 2 && b.clock.every((n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000)) ? { clock: b.clock } : {}),
 }))) : null);
+const trio = (s) => Array.isArray(s) && s.length === 3 && s.every((n) => Number.isSafeInteger(n) && n >= -99 && n < 1000);
 const tally = (bucket) => {
   const out = {};
   for (const [type, n] of Object.entries(bucket && typeof bucket === 'object' ? bucket : {})) {
@@ -127,7 +133,7 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
     const hidden = typeof a.hidden === 'boolean' ? Number(a.hidden) : null;
     const club = text(a.club, 160);
     const clubId = /^\d{1,12}$/.test(a.clubId) ? a.clubId : null;
-    people.push({ user, name: text(a.name, 120), club, clubId, country: typeof a.country === 'string' && /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
+    people.push({ user, name: text(a.name, 120), club, clubId, affiliation: text(a.affiliation, 120), country: typeof a.country === 'string' && /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
       countryName: text(a.countryName, 80), photo: photo(a.photo), belt: oneBelt(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
     // An install sends one athlete's list per career read, so a request carries a few lists at most.
     if (Array.isArray(a.history) && Object.keys(history).length < 20 && Object.values(history).flat().length + a.history.length <= 2000) history[user] = a.history.slice(0, 500).filter((e) => /^\d{1,9}$/.test(e?.event)).map((e) => ({
@@ -145,9 +151,9 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
   }
   // A newer event's academy, photo and name replace an older one's; an older event only fills gaps.
   const keep = (column) => `${column} = CASE WHEN excluded.seen >= people.seen THEN coalesce(excluded.${column}, people.${column}) ELSE coalesce(people.${column}, excluded.${column}) END`;
-  statements.push(env.DB.prepare(`INSERT INTO people (site, user, name, club, club_id, country, country_name, photo, belt, born, hidden, seen, at)
-    SELECT ?1, value ->> 'user', value ->> 'name', value ->> 'club', value ->> 'clubId', value ->> 'country', value ->> 'countryName', value ->> 'photo', value ->> 'belt', value ->> 'born', value ->> 'hidden', ?2, ?3 FROM json_each(?4) WHERE true
-    ON CONFLICT (site, user) DO UPDATE SET ${['name', 'club', 'club_id', 'country', 'country_name', 'photo', 'belt', 'born'].map(keep).join(', ')},
+  statements.push(env.DB.prepare(`INSERT INTO people (site, user, name, club, club_id, affiliation, country, country_name, photo, belt, born, hidden, seen, at)
+    SELECT ?1, value ->> 'user', value ->> 'name', value ->> 'club', value ->> 'clubId', value ->> 'affiliation', value ->> 'country', value ->> 'countryName', value ->> 'photo', value ->> 'belt', value ->> 'born', value ->> 'hidden', ?2, ?3 FROM json_each(?4) WHERE true
+    ON CONFLICT (site, user) DO UPDATE SET ${['name', 'club', 'club_id', 'affiliation', 'country', 'country_name', 'photo', 'belt', 'born'].map(keep).join(', ')},
     hidden = coalesce(excluded.hidden, people.hidden), seen = max(people.seen, excluded.seen), at = excluded.at`)
     // A profile has no date: it fills gaps and never outranks an event.
     .bind(site, start ?? (event ? new Date(now).toISOString() : ''), now, JSON.stringify(people)));
@@ -331,6 +337,6 @@ export async function addBouts(env, site, event, athletes) {
     .flatMap(([user, a]) => (a.entries ?? []).map((e) => [user, e.division, bouts(e.bouts)])).filter(([, division, list]) => division && list);
   if (!rows.length) return;
   await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 2 FROM json_each(?3) j
-    WHERE entries.site = ?1 AND entries.event = ?2 AND entries.fought = 1 AND entries.bouts IS NULL AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`)
+    WHERE entries.site = ?1 AND entries.event = ?2 AND entries.fought = 1 AND (entries.bouts IS NULL OR instr(entries.bouts, '"us":') = 0) AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`)
     .bind(site, event, JSON.stringify(rows)).run();
 }

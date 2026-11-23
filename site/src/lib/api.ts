@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 export type Types = Record<string, number>;
 export interface Athlete {
   user: string; name: string | null; club: string | null; club_id: string | null; country: string | null; country_name: string | null;
-  photo: string | null; born: number | null; hidden: number | null; belt: string | null; source?: 'career' | 'results';
+  photo: string | null; born: number | null; hidden: number | null; belt: string | null; affiliation?: string | null; source?: 'career' | 'results';
   wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
 }
 export interface Team {
@@ -16,7 +16,11 @@ export interface Entry {
   title?: string | null; start?: string | null; city?: string | null; bouts?: Bout[] | null;
 }
 // One match of a division, as the results read give it: won or lost, its finish, who they met and in which round.
-export interface Bout { won: boolean; type: string; how: string | null; opponent: string | null; user: string | null; club: string | null; stage: string | null }
+export interface Bout {
+  won: boolean; type: string; how: string | null; opponent: string | null; user: string | null; club: string | null; stage: string | null;
+  // Their score and their opponent's, as [points, advantages, penalties]; the clock as [length, left] in seconds.
+  us?: [number, number, number]; them?: [number, number, number]; clock?: [number | null, number | null];
+}
 export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number; image?: string | null }
 // What else their Smoothcomp profile shows, as it last sent it.
 export interface Club { id: number | null; name: string; city: string | null; country: string | null; logo: string | null }

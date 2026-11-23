@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS people (
   country_name TEXT,
   photo TEXT,
   belt TEXT,
+  affiliation TEXT, -- their academy's affiliation (Checkmat, Alliance…), as their latest event gave it
   born INTEGER,
   hidden INTEGER,
   seen TEXT NOT NULL,

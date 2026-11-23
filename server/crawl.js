@@ -10,14 +10,13 @@ const HOSTS = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'http
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36';
 const RUN = 50e3; // each run reads this long, then leaves the rest to the next minute's
 const BUDGET = 5000; // requests per run, well under a paid Worker's 10,000
-const ROUND = 300; // bracket cards read between saves
+const ROUND = 300; // bracket cards asked for at a time
 const AT_ONCE = 6;
 // Smoothcomp answers a placed crawler in about 100 ms. When the median of a lane's last 30 requests
 // passes this, it is straining (crawling at 80 requests a second took it to a second for everyone),
 // so the lane stops until the next minute.
 const SLOW = 300;
 const DAY = 864e5;
-const PODIUM = { Final: [1, 2], 'Bronze match': [3] };
 const normalize = (s) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
 
 class Gone extends Error {}
@@ -68,7 +67,7 @@ async function each(items, work) {
 }
 
 // The whole schedule, kept small: [id, division, stage, finish (one winner, finished), sides],
-// a side being [registration, won, name, club, country]. Whether every match is finished, and when
+// a side being [registration, won, name, club, country, affiliation]. Whether every match is finished, and when
 // the last mat ends.
 async function schedule(get, base) {
   const days = await get(`${base}/schedule/new/matcategories.json`);
@@ -81,30 +80,36 @@ async function schedule(get, base) {
     if (!sides.length || seen.has(m.id)) continue;
     const winners = sides.filter((s) => s.isWinner);
     const finish = m.state === 'finished' && sides.length === 2 && winners.length === 1 && m.wonBy ? String(m.wonBy) : null;
-    seen.set(m.id, [m.id, m.group ?? '', m.name ?? '', finish, sides.map((s) => [s.event_registration_id, !!s.isWinner, s.name ?? null, s.club || null, s.country || null]), m.state === 'finished']);
+    seen.set(m.id, [m.id, m.group ?? '', m.name ?? '', finish, sides.map((s) => [s.event_registration_id, !!s.isWinner, s.name ?? null, s.club || null, s.country || null, s.affiliation || null]), m.state === 'finished']);
   }
   const matches = [...seen.values()];
   const ends = Math.max(0, ...mats.map((m) => Date.parse(m.estimated_end) || 0));
   return { matches: matches.map((m) => m.slice(0, 5)), over: matches.every((m) => m[5]), ends: ends || null };
 }
 
-// Who each registration is, from a bracket card of one of its matches: matches that name two
-// unknown sides first. A card that fails leaves its sides to another match, or unnamed.
-async function name(get, host, data, keep) {
+// Each match's bracket card: who each side is (their user, academy, affiliation, age, photo), and
+// the score, kept for the matches whose card is read. Cards are read only to name everyone (a card
+// for every match would be about 2.5 times the requests): matches naming two unknown sides first.
+// A card that fails leaves its sides to another match.
+const scored = (m) => m[3] && m[3] !== 'walkover' && m[4].length === 2;
+const seconds = (t) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t.split(':')[0]) * 60 + Number(t.split(':')[1]) : null);
+async function name(get, host, data) {
   const users = data.users;
+  data.cards ??= {};
   const tried = new Set(data.tried);
   const open = (reg) => !(reg in users) && !(data.missed ?? []).includes(reg);
   const pick = () => {
     const want = new Set(data.matches.flatMap((m) => m[4].map((s) => s[0])).filter(open));
     const out = [];
     const taken = new Set();
-    const rank = data.matches.filter((m) => !tried.has(m[0])).map((m) => [m, m[4].filter((s) => want.has(s[0]) && !taken.has(s[0])).length]).sort((a, b) => b[1] - a[1]);
+    // Of two matches naming as many, a scored one first, so more matches keep their score.
+    const rank = data.matches.filter((m) => !tried.has(m[0])).map((m) => [m, m[4].filter((s) => want.has(s[0]) && !taken.has(s[0])).length]).sort((a, b) => b[1] - a[1] || scored(b[0]) - scored(a[0]));
     for (const [m] of rank) {
+      if (out.length >= data.room) break;
       const fresh = m[4].filter((s) => want.has(s[0]) && !taken.has(s[0]));
       if (!fresh.length) continue;
       fresh.forEach((s) => taken.add(s[0]));
       out.push(m);
-      if (out.length >= data.room) break;
     }
     return { out, want };
   };
@@ -124,22 +129,32 @@ async function name(get, host, data, keep) {
       if (!card || card instanceof Error) return;
       const people = [card.left, card.right].filter((p) => p?.id);
       // Each card side to its seat by name, else in order.
+      const score = [];
       for (const [k, s] of m[4].entries()) {
         const p = people.find((x) => normalize(`${x.first_name} ${x.last_name}`) === normalize(s[2])) ?? (people.length === m[4].length ? people[k] : null);
         if (!p) continue;
         users[s[0]] = { id: String(p.id), name: `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || s[2], club: p.club || s[3], clubId: p.club_id ? String(p.club_id) : null,
+          affiliation: p.affiliation || s[5] || null,
           country: p.country_flag || (s[4] ? String(s[4]).toLowerCase() : null), countryName: p.country || null, age: Number.isSafeInteger(p.age) ? p.age : null,
           photo: /^https:/.test(p.profile_image ?? '') ? p.profile_image : null, hidden: p.public === false };
+        score[k] = [p.score, p.advantage, p.penalty].map((n) => (Number.isSafeInteger(n) ? n : 0));
       }
+      // The score per seat ([points, advantages, penalties]) and the clock: match length and time left.
+      if (scored(m) && score[0] && score[1]) data.cards[m[0]] = { s: score, t: [seconds(card.matchInfo?.time), Number.isSafeInteger(card.matchInfo?.timeRemaining) ? card.matchInfo.timeRemaining : null] };
     });
     data.tried = [...tried];
-    await keep();
   }
 }
 
 // Where a match falls in its division, for listing them in the order fought: pool matches by number,
 // then the knockout rounds up to the final.
 const ROUNDS = ['Eighth-finals', 'Quarterfinals', 'Semifinals', 'Bronze match', 'Final'];
+// A bracket's places, by the round each side won or went out in, as Smoothcomp's published results
+// give them (checked on 25902): bronze-match loser 4th, quarterfinal losers 5th, eighth-final 9th,
+// the round before 17th. Semifinal losers are 3rd where no bronze match is fought.
+const OUT = { Final: 2, 'Bronze match': 4, Quarterfinals: 5, 'Eighth-finals': 9 };
+const placeOf = (stage, won, bronze) => (won ? ({ Final: 1, 'Bronze match': 3 })[stage] ?? null
+  : OUT[stage] ?? (Number(/^(\d+)(?:st|nd|rd|th)-finals$/i.exec(stage ?? '')?.[1]) + 1 || (stage === 'Semifinals' && !bronze ? 3 : null)));
 const round = (stage) => Number(/^Match (\d+)\//.exec(stage ?? '')?.[1] ?? NaN) || (ROUNDS.includes(stage) ? 1001 + ROUNDS.indexOf(stage) : 1000);
 
 // The event as a results page would send it: each athlete's divisions, wins and losses by finish,
@@ -169,7 +184,9 @@ function results(data, start) {
       if (!entries.has(u.id)) entries.set(u.id, { user: u, e: { division, place: null, wins: {}, losses: {}, bouts: [] }, w: 0, sub: 0, shown: false });
       return entries.get(u.id);
     };
-    for (const [, , stage, finish, sides] of [...matches].sort((a, b) => round(a[2]) - round(b[2]) || a[0] - b[0])) {
+    const bronze = matches.some((m) => m[2] === 'Bronze match');
+    for (const [id, , stage, finish, sides] of [...matches].sort((a, b) => round(a[2]) - round(b[2]) || a[0] - b[0])) {
+      const card = data.cards?.[id];
       const seats = sides.map(of);
       if (!finish) continue;
       sides.forEach((s, i) => {
@@ -178,12 +195,13 @@ function results(data, start) {
         // Who they met: the other side, named as their bracket card names them where it was read.
         const k = 1 - i;
         const them = sides[k] && (data.users[sides[k][0]] ?? null);
-        if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage });
+        if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage,
+          ...(card ? { us: card.s[i], them: card.s[k], clock: card.t } : {}) });
         const bucket = s[1] ? x.e.wins : x.e.losses;
         bucket[finish] = (bucket[finish] ?? 0) + 1;
         if (s[1]) { x.w++; if (/^sub/.test(finish)) x.sub++; }
         if (s[1] || finish !== 'walkover') x.shown = true;
-        const place = PODIUM[stage]?.[s[1] ? 0 : 1] ?? (stage === 'Semifinals' && !s[1] && !matches.some((m) => m[2] === 'Bronze match') ? 3 : null);
+        const place = placeOf(stage, s[1], bronze);
         if (place) x.e.place = place;
       });
       const [a, b] = seats;
@@ -195,7 +213,7 @@ function results(data, start) {
       shown.sort((a, b) => b.w - a.w || b.sub - a.sub || h2h(a, b)).forEach((x, i) => { x.e.place = i + 1; });
     }
     for (const { user: u, e } of shown) {
-      const a = athletes[u.id] ??= { name: u.name, club: u.club, clubId: u.clubId, country: u.country, countryName: u.countryName, belt: division,
+      const a = athletes[u.id] ??= { name: u.name, club: u.club, clubId: u.clubId, affiliation: u.affiliation, country: u.country, countryName: u.countryName, belt: division,
         age: u.age == null ? null : u.age - back, photo: u.photo, hidden: u.hidden, entries: [] };
       a.entries.push(e);
     }
@@ -216,10 +234,14 @@ export async function queue(env) {
       SELECT site, event, start, title, city FROM events UNION ALL SELECT site, event, start, title, city FROM history) k
     WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
     GROUP BY k.site, k.event`).bind(Date.now()).run();
-  // Events a results page sent before matches were kept: read for their matches alone.
+  // Events a results page sent without matches: read for those alone.
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at)
     SELECT e.site, e.event, 'queued', v.start, v.title, v.city, 0, ?1 FROM entries e JOIN events v ON v.site = e.site AND v.event = e.event
     WHERE e.fought = 1 AND v.start < datetime('now', '-1 day') GROUP BY e.site, e.event HAVING max(e.bouts IS NOT NULL) = 0`).bind(Date.now()).run();
+  // Results can still be corrected after an event: one read under ten days after it started is
+  // read again once ten days have passed.
+  await env.DB.prepare(`UPDATE crawls SET state = 'queued', data = NULL, next = 0, tries = 0 WHERE state = 'done' AND wrote IS NOT NULL
+    AND wrote < unixepoch(start) * 1000 + 864000000 AND unixepoch('now') > unixepoch(start) + 864000`).run();
 }
 
 export async function crawl(env, record, addBouts) {
@@ -244,10 +266,10 @@ async function lane(env, record, addBouts, get, left, finished) {
         const read = await schedule(get, `${host}/en/event/${job.event}`);
         // Matches still to finish at an event under four days old: it may still be on.
         if (!read.over && Date.parse(job.start) > now - 4 * DAY) { await save('queued', null, now + 6 * 3600e3); continue; }
+        // Kept only if this run ends before the event is done (the catch below).
         data = { matches: read.matches, ends: read.ends, users: {}, tried: [] };
-        await save('reading', data, 0);
       }
-      try { await name(get, host, Object.assign(data, { left }), () => save('reading', data)); } finally { delete data.left; delete data.room; }
+      try { await name(get, host, Object.assign(data, { left })); } finally { delete data.left; delete data.room; }
       // Results a page sent meanwhile stand.
       // (A crawl reading an event again replaces its own copy: results written by the time it last wrote.)
       const has = await env.DB.prepare('SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 AND at > ?3 LIMIT 1').bind(job.site, job.event, job.wrote ?? 0).first();

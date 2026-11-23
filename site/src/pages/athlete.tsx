@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Toggle } from '@/components/ui/toggle';
 import { Empty } from '@/components/empty';
 import { BELT_COLOUR, Belt, Flag, Medals, Photo, Place, Record } from '@/components/stats';
-import { useApi, type Athlete, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
+import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -48,7 +48,7 @@ const unlisted = (entries: Entry[], outcomes: Outcome[]) => entries.filter((e) =
 
 // Every match the profile's lists give, in the order fought: each win (its finish too from v 2),
 // each loss with its finish. A loss the match list names twice is matched once.
-interface Meeting { won: boolean; opponent: string | null; club: string | null; image: string | null; type?: string; how?: string; division?: string | null; stage?: string | null; user?: string | null }
+interface Meeting { won: boolean; opponent: string | null; club: string | null; image: string | null; type?: string; how?: string; division?: string | null; stage?: string | null; user?: string | null; us?: Bout['us']; them?: Bout['them']; clock?: Bout['clock'] }
 function meetingsOf(o: Outcome | undefined): Meeting[] {
   if (!o) return [];
   const losses = [...o.out.losses];
@@ -63,8 +63,19 @@ function meetingsOf(o: Outcome | undefined): Meeting[] {
 // read there give, each division's in the order fought.
 const meetingsOfRow = (r: Row): Meeting[] => r.outcome ? meetingsOf(r.outcome)
   : (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
-    won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user,
+    won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock,
   })));
+// A match's score as the scoreboard ended it: points, then advantages and penalties where any were
+// given; a finish before the bell says when (the match length less the time left).
+function scoreOf(m: Meeting): string | null {
+  if (!m.us || !m.them) return null;
+  const parts = [`${m.us[0]}–${m.them[0]}`];
+  if (m.us[1] || m.them[1]) parts.push(`adv ${m.us[1]}–${m.them[1]}`);
+  if (m.us[2] || m.them[2]) parts.push(`pen ${m.us[2]}–${m.them[2]}`);
+  const [length, left] = m.clock ?? [];
+  if (length && left) { const t = length - left; parts.push(`at ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`); }
+  return parts.join(' · ');
+}
 // A match counts under the finishes switched on; a win from before v 2 names none, so it always shows.
 const countedMatch = (m: Meeting, f: Filters) => !m.type || f.counted(keyOf(m.type));
 type Show = 'all' | 'won' | 'lost';
@@ -331,6 +342,7 @@ function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisions: boo
       <span className="min-w-0 break-words">{m.user ? <Link href={f.link(`/athlete/${m.user}`)} className="font-medium hover:text-primary">{m.opponent ?? 'Unknown opponent'}</Link> : <span className="font-medium">{m.opponent ?? 'Unknown opponent'}</span>}{m.club && <span className="text-muted-foreground"> · {m.club}</span>}</span>
       <span className="ml-auto flex max-w-[55%] flex-wrap items-center justify-end gap-x-1.5 pl-3 text-right text-xs text-muted-foreground">
         {m.type && <><i className="size-2 rounded-full" style={{ background: dot(m.type) }} /><span className="text-foreground/85">{m.how || typeName(m.type)}</span></>}
+        {scoreOf(m) && <span className="tabular-nums">· {scoreOf(m)}</span>}
         {m.stage && <span>{m.type ? '· ' : ''}{m.stage}</span>}
         {divisions && m.division && <span>· {m.division}</span>}
       </span>
@@ -445,6 +457,7 @@ export function AthletePage({ id }: { id: string }) {
             {age != null && <span>{age} years old</span>}
             {a.belt && <span className="inline-flex items-center gap-1.5"><Belt belt={a.belt} /><span>{a.belt[0].toUpperCase()}{a.belt.slice(1)} belt</span></span>}
             {a.club && (a.club_id ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-foreground hover:text-primary">{a.club}</Link> : <span>{a.club}</span>)}
+            {!data.profile?.affiliations?.length && who?.affiliation && <span title="Affiliation">{who.affiliation}</span>}
             {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
             <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">Profile on {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
             {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">{plural(data.profile!.videos!, 'match video')}<ExternalLink className="size-3" /></a>}
