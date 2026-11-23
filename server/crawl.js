@@ -79,7 +79,7 @@ async function schedule(get, base) {
     const sides = (m.seats ?? []).filter((s) => s.type === 'registration' && s.event_registration_id);
     if (!sides.length || seen.has(m.id)) continue;
     const winners = sides.filter((s) => s.isWinner);
-    const finish = m.state === 'finished' && sides.length === 2 && winners.length === 1 && m.wonBy ? String(m.wonBy) : null;
+    const finish = m.state === 'finished' && sides.length === 2 && winners.length === 1 && m.wonBy ? (m.wonBy === 'forfeit' ? 'walkover' : String(m.wonBy)) : null;
     seen.set(m.id, [m.id, m.group ?? '', m.name ?? '', finish, sides.map((s) => [s.event_registration_id, !!s.isWinner, s.name ?? null, s.club || null, s.country || null, s.affiliation || null]), m.state === 'finished']);
   }
   const matches = [...seen.values()];

@@ -23,7 +23,7 @@ const toMatch = (m) => ({
   waiting: m.seats.filter((s) => s.type !== 'registration').map((s) => s.name),
   sides: m.seats.filter((s) => s.type === 'registration').map((s) => ({
     name: s.name, registrationId: String(s.event_registration_id), club: s.club || null, country: s.country || null,
-    won: s.isWinner ? m.wonBy : null,
+    won: s.isWinner ? (m.wonBy === 'forfeit' ? 'walkover' : m.wonBy) : null, // a forfeit is a walkover by another name
   })),
 });
 

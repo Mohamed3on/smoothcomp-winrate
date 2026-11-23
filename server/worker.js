@@ -74,7 +74,7 @@ const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, 
 // source counts under the same switches.
 export const finishOf = (code) => {
   const w = String(code).toLowerCase();
-  return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'fastest_escape' : /walk/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
+  return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'fastest_escape' : /walk|forfeit/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
     : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
 };
 // A finish's detail as the profile writes it: "submission_armbar" is "Submission (armbar)".

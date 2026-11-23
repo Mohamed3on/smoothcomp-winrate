@@ -9,6 +9,9 @@ import { BELTS, WIN_TYPES, type Filters } from '@/lib/filters';
 import { typeName } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
+// The chips run from the commonest finish to the rarest, as every career read adds up; walkovers, not contests, last.
+const CHIPS = ['submission', 'points', 'decision', 'disqualification', 'stoppage', 'walkover'];
+
 const Field = ({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) => (
   <div className={cn('flex flex-col gap-1.5', className)}>
     <span className="text-xs text-muted-foreground">{label}</span>
@@ -28,8 +31,9 @@ function Debounced({ f, name, placeholder, className, type = 'number', label }: 
   return <Input aria-label={label} type={type} min={0} inputMode={type === 'number' ? 'numeric' : undefined} value={value} placeholder={placeholder} onChange={(e) => setValue(e.target.value)} className={className} />;
 }
 
-// On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose.
-export function FilterBar({ f, sorts, minimumAthletes = false, event = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean }) {
+// On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose,
+// and no chip (hide) for a finish nobody there has.
+export function FilterBar({ f, sorts, minimumAthletes = false, event = false, hide = [] }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; hide?: string[] }) {
   const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
   const belts = new Set(f.get('belt').split(',').filter(Boolean));
   const toggleType = (t: string) => {
@@ -50,7 +54,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false }: 
     <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4">
       <Field label="Wins that count">
         <div className="flex flex-wrap gap-1" role="group" aria-label="Wins that count">
-          {WIN_TYPES.map((t) => (
+          {CHIPS.filter((t) => !hide.includes(t)).map((t) => (
             <Toggle key={t} variant="outline" size="sm" pressed={f.counted(t)} onPressedChange={() => toggleType(t)}
               className="h-8 rounded-full duration-160 ease-out-strong active:scale-[0.97] motion-reduce:active:scale-100 aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground text-muted-foreground">
               <i className={cn('size-2 rounded-full transition-opacity', !f.counted(t) && 'opacity-35')} style={{ background: `var(--color-win-${t})` }} />

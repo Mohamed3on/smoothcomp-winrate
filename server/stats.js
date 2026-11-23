@@ -60,7 +60,7 @@ export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gol
   WHERE rec.rec IS NOT NULL OR seen.seen IS NOT NULL OR med.events IS NOT NULL OR listed.listed IS NOT NULL`;
 
 // A finish code grouped as the profile groups it (worker.js finishOf), in SQL.
-const GROUPED = (k) => `CASE WHEN ${k} LIKE 'sub%' THEN 'submission' WHEN ${k} LIKE '%escape%' THEN 'fastest_escape' WHEN ${k} LIKE '%walk%' THEN 'walkover'
+const GROUPED = (k) => `CASE WHEN ${k} LIKE 'sub%' THEN 'submission' WHEN ${k} LIKE '%escape%' THEN 'fastest_escape' WHEN ${k} LIKE '%walk%' OR ${k} LIKE '%forfeit%' THEN 'walkover'
   WHEN ${k} LIKE '%dq%' OR ${k} LIKE '%disq%' THEN 'disqualification' WHEN ${k} LIKE 'point%' OR ${k} LIKE '%advantage%' OR ${k} LIKE '%penalt%' THEN 'points'
   WHEN ${k} LIKE '%decision%' OR ${k} LIKE '%referee%' OR ${k} LIKE '%judge%' THEN 'decision'
   WHEN ${k} LIKE '%stoppage%' OR ${k} LIKE '%ko' OR ${k} LIKE '%ko %' OR ${k} LIKE '%ko-%' THEN 'stoppage' ELSE 'other' END`;

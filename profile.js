@@ -32,7 +32,7 @@
   };
   const finish = (wonBy) => {
     const w = String(wonBy ?? '').toLowerCase();
-    return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'escape' : /walk/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
+    return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'escape' : /walk|forfeit/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
       : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
   };
   // Anything else counts as Other, so no unknown name reaches the page or a tally's keys.
