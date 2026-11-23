@@ -34,7 +34,8 @@ function Dot({ call }: { call: Call | null }) {
   const label = `${call.sure ? '' : 'Maybe '}${MEDAL[call.medal]}: ${ordinal(call.seed)} of ${call.of} by career wins in ${call.bracket}`;
   return <i title={label} aria-label={label} className={cn('size-2 shrink-0 rounded-full', call.sure ? MEDAL_BG[call.medal] : ['ring-[1.5px] ring-inset', MEDAL_RING[call.medal]])} />;
 }
-const Expected = ({ e }: { e: number[] }) => <Medals g={e[0]} s={e[1]} b={e[2]} />;
+// No medal pointed to reads as a dash, not three zeros.
+const Expected = ({ e }: { e: number[] }) => (e.some(Boolean) ? <Medals g={e[0]} s={e[1]} b={e[2]} /> : <span className="text-muted-foreground">–</span>);
 
 const NameLink = ({ e, f }: { e: EventEntry; f: Filters }) =>
   <Link href={f.link(`/athlete/${e.user}`)} className="hover:text-primary">{e.name ?? `Athlete ${e.user}`}</Link>;
@@ -47,9 +48,9 @@ export function EventPage({ id }: { id: string }) {
   const { event } = data;
   const read = (rows: EventEntry[]) => Math.max(0, ...rows.map((e) => e.at ?? 0));
   const results = data.entries.filter((e) => e.fought), registered = data.entries.filter((e) => !e.fought);
-  // Results arrive while the registration list still stands: until the event is a few days
-  // past, registrants without a result are still to fight; after that they didn't show.
-  const live = results.length > 0 && registered.length > 0 && !!event.start && Date.parse(event.start) > Date.now() - 3 * 864e5;
+  // Results arrive while the registration list still stands: until the event is two days
+  // old (a weekend), registrants without a result are still to fight; after that they didn't show.
+  const live = results.length > 0 && registered.length > 0 && !!event.start && Date.parse(event.start) > Date.now() - 2 * 864e5;
   const entries = results.length && !live ? results : data.entries;
   const title = event.title ?? `Event ${id}`;
   document.title = `${title} · Mat Stats`;
