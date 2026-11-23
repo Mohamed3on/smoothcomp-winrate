@@ -215,6 +215,26 @@ function results(data, start) {
   return { athletes, records };
 }
 
+// Smoothcomp's list of past events (40 a page, newest first, open to a server) names every event of
+// the last year, so the queue holds those nobody opened too. Read daily; what an event page sent stays.
+export async function listEvents(env) {
+  const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
+  const page = async (n) => {
+    const html = await (await fetch(`https://smoothcomp.com/en/events/past?page=${n}`, { headers: { 'User-Agent': UA } })).text();
+    const list = html.match(/var events = (\[.*\])\s*$/m)?.[1];
+    return list ? JSON.parse(list) : [];
+  };
+  for (let n = 1, older = false; !older && n <= 400; n += 4) {
+    const found = (await Promise.all([n, n + 1, n + 2, n + 3].map(page))).flat();
+    older = !found.length || found.some((e) => e.startdate < since);
+    const rows = found.filter((e) => Number.isSafeInteger(e.id) && e.startdate >= since).map((e) => ({ event: String(e.id), title: e.title, start: e.startdate, city: e.location_city, country: e.location_country }));
+    if (rows.length) await env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, at)
+      SELECT 'smoothcomp.com', value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'country', ?1 FROM json_each(?2) WHERE true
+      ON CONFLICT (site, event) DO UPDATE SET title = coalesce(events.title, excluded.title), start = coalesce(events.start, excluded.start),
+        city = coalesce(events.city, excluded.city), country = coalesce(events.country, excluded.country)`).bind(Date.now(), JSON.stringify(rows)).run();
+  }
+}
+
 // Every known event that has ended with no results, newest first; ids from profiles' event lists too.
 export async function queue(env) {
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at)
