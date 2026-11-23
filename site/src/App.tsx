@@ -53,7 +53,7 @@ export function App() {
           <Route path="/athletes"><AthletesPage /></Route>
           <Route path="/academies"><AcademiesPage /></Route>
           <Route path="/events"><EventsPage /></Route>
-          <Route path="/athlete/:id">{(p) => <Suspense><AthletePage id={p.id} /></Suspense>}</Route>
+          <Route path="/athlete/:id">{(p) => <Suspense><AthletePage key={p.id} id={p.id} /></Suspense>}</Route>
           <Route path="/academy/:id">{(p) => <AcademyPage id={p.id} />}</Route>
           <Route path="/event/:id/division">{(p) => <DivisionPage id={p.id} />}</Route>
           <Route path="/event/:id">{(p) => <EventPage id={p.id} />}</Route>
