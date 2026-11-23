@@ -274,7 +274,7 @@
     // page on a first read, the new ones after.
     if (news.length) ask('/people', { site, athletes: { [user]: { name: document.title.split(' - ')[0].trim(), history: list.slice(0, 500).map(e => ({
       event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, image: e.cover_image, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
-    show({ ...tally(events), missing: failed ? Math.max(0, missing) : 0 });
+    show({ ...tally(events), missing: failed ? Math.max(0, missing) : 0, total });
     reading = false;
     shareProfile();
   }
@@ -324,9 +324,9 @@
     let html = `<div class="scwr-rate" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
       + (wins + losses ? `<span class="scwr-rate-figure" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
         : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
-    // While the match lists come in, how far it has got; after, what Smoothcomp never sent.
+    // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
     const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
-      : stats.missing ? `${plural(stats.missing, 'event')} Smoothcomp didn't send, left out until it does` : '';
+      : stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';
     if (note) html += `<div class="scwr-progress gi-text-xs gi-text-secondary" role="status">${note}</div>`;
     // Each finish the athlete has won or lost by, its record on the chip, the most
     // matches first; pressed ones count.

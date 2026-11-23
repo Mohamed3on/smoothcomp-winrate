@@ -8,7 +8,7 @@ import { Empty } from '@/components/empty';
 import { Age, Belt, Flag, Identity, Medals, Num, Photo, Place, Record } from '@/components/stats';
 import { useApi, type EventEntry, type EventMeta } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
-import { date, fmt, plural, winsOf } from '@/lib/format';
+import { beltAt, date, fmt, plural, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { DivisionLink } from '@/pages/division';
 
@@ -72,7 +72,7 @@ export function EventPage({ id }: { id: string }) {
   });
   const calls = Map.groupBy(divisions.flatMap((d) => d.rows.filter((r) => r.call)), (r) => r.user);
   const people: Person[] = [...Map.groupBy(divisions.flatMap((d) => d.rows), (e) => e.user).values()].map((rows) => ({
-    ...rows[0], rows, w: rows.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), l: rows.reduce((n, r) => n + winsOf(r.losses, f.counted), 0),
+    ...rows[0], belt: beltAt(rows.map((r) => r.division)), rows, w: rows.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), l: rows.reduce((n, r) => n + winsOf(r.losses, f.counted), 0),
     best: Math.min(...rows.map((r) => r.place ?? 999)), career: rows[0].career,
     calls: (calls.get(rows[0].user) ?? []).map((r) => r.call!).sort((a, b) => a.medal - b.medal),
   })).sort(fought ? (a, b) => a.best - b.best || b.w - a.w || a.l - b.l : (a, b) => byCareer(a.rows[0], b.rows[0]));

@@ -13,3 +13,13 @@ export const recordOf = (types: Record<string, [number, number]> | undefined, co
   Object.entries(types ?? {}).reduce(([w, l], [t, [a, b]]) => (counted(t === 'escape' ? 'fastest_escape' : t) ? [w + a, l + b] : [w, l]), [0, 0]);
 export const rate = (w: number | null | undefined, l: number | null | undefined) => (w != null && l != null && w + l ? `${Math.round((w / (w + l)) * 100)}%` : null);
 export const initials = (name: string | null | undefined) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+
+// The belt a division names ("Gi Adult / Male / Blue / …", "Beginner (White)"); none when it names
+// several ("Advanced (Purple/Brown/Black)") or none.
+export const BELT_ORDER = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+export const beltIn = (text: string | null | undefined) => {
+  const named = BELT_ORDER.filter((b) => new RegExp(`\\b${b}`, 'i').test(String(text ?? '').replace(/gray/i, 'grey')));
+  return named.length === 1 ? named[0] : null;
+};
+// The belt an athlete competed at: the one their division names, else one of their other divisions there.
+export const beltAt = (divisions: (string | null | undefined)[]) => divisions.map(beltIn).find(Boolean) ?? null;

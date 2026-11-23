@@ -10,7 +10,7 @@ import { Empty } from '@/components/empty';
 import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record } from '@/components/stats';
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
-import { ageOf, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
+import { ageOf, BELT_ORDER, beltIn, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { DivisionLink } from '@/pages/division';
 
@@ -126,13 +126,6 @@ interface Belts { worn: string[]; starts: (number | null)[] }
 // The win rate at each belt worn, highest first, as their profile splits it: an event takes the
 // belt worn on its date; undated ones count only overall. The current belt shows even with no events.
 interface Split { belt: string; w: number; l: number; events: number }
-// The belt a division names ("Gi Adult / Male / Blue / …", "Beginner (White)"); none when it names
-// several ("Advanced (Purple/Brown/Black)") or none.
-const BELT_ORDER = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
-const beltIn = (text: string | null | undefined) => {
-  const named = BELT_ORDER.filter((b) => new RegExp(`\\b${b}`, 'i').test(String(text ?? '').replace(/gray/i, 'grey')));
-  return named.length === 1 ? named[0] : null;
-};
 // Without their profile's belt timeline, each division counts at the belt it names; one naming none
 // takes the belt of their latest earlier division that does (or the first one after).
 function splitByDivision(outcomes: Outcome[], entries: Entry[], f: Filters): Split[] | null {

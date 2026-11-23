@@ -6,7 +6,7 @@ import { Empty } from '@/components/empty';
 import { Identity, Num, Place, Record } from '@/components/stats';
 import { useApi, type Bout, type EventEntry, type EventMeta } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
-import { date, plural, winsOf } from '@/lib/format';
+import { beltAt, date, plural, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { MatchLine, type Meeting } from '@/pages/athlete';
 
@@ -28,7 +28,7 @@ export function DivisionPage({ id }: { id: string }) {
   const { event } = data;
   const title = event.title ?? `Event ${id}`;
   document.title = `${name} · ${title} · Mat Stats`;
-  const rows = data.entries.map((e) => ({ ...e, w: winsOf(e.wins, f.counted), l: winsOf(e.losses, f.counted) }))
+  const rows = data.entries.map((e) => ({ ...e, belt: beltAt([e.division]), w: winsOf(e.wins, f.counted), l: winsOf(e.losses, f.counted) }))
     .sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || b.w - a.w || a.l - b.l || (a.name ?? '').localeCompare(b.name ?? ''));
   const fought = rows.some((r) => r.fought);
   const matchesOf = (r: Row): Meeting[] => (r.bouts ?? []).map((b) => ({ won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock }));
