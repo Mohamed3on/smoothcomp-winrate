@@ -252,6 +252,37 @@ async function outcomes(env, { site, user }) {
   const { results } = await env.DB.prepare('SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2').bind(site, user).all();
   return json({ events: results.map(r => ({ id: Number(r.event), start_date: r.start, title: r.title, out: JSON.parse(r.out) })) });
 }
+// Events a profile couldn't read (Smoothcomp never answers some match-list pages), from the
+// matches the crawler or a results page saved: every division they fought there with its
+// matches read, or none at an event they won nothing at once the crawler has read it.
+// The rest go to the front of the crawl queue.
+async function crawled(env, { site, user, events }) {
+  if (!SITES.includes(site) || !validUser(user) || !Array.isArray(events) || events.length > 400) return json({ error: 'Bad events' }, 400);
+  const ids = JSON.stringify(events.filter(e => Number.isSafeInteger(e) && e > 0).map(String));
+  const { results } = await env.DB.prepare(`SELECT j.value event, h.start, h.title, h.wins, c.state, e.division, e.bouts FROM json_each(?3) j
+    LEFT JOIN history h ON h.site = ?1 AND h.user = ?2 AND h.event = j.value LEFT JOIN crawls c ON c.site = ?1 AND c.event = j.value
+    LEFT JOIN entries e ON e.site = ?1 AND e.event = j.value AND e.user = ?2 AND e.fought = 1`).bind(site, user, ids).all();
+  const by = Map.groupBy(results, r => r.event);
+  const found = [];
+  for (const [event, rows] of by) {
+    const fought = rows.filter(r => r.division);
+    if ((!fought.length || fought.some(r => !r.bouts)) && (rows[0].state !== 'done' || rows[0].wins)) continue;
+    const out = { v: 2, types: {}, losses: [], faced: [] };
+    for (const r of fought) for (const b of JSON.parse(r.bouts ?? '[]')) {
+      if (b.type === 'walkover') continue;
+      const type = b.type === 'fastest_escape' ? 'escape' : b.type;
+      (out.types[type] ??= [0, 0])[b.won ? 0 : 1]++;
+      const at = { how: b.how ?? (type === 'escape' ? 'Fastest escape' : type[0].toUpperCase() + type.slice(1)), division: r.division, stage: b.stage };
+      if (b.opponent) out.faced.push({ name: b.opponent, club: b.club, won: b.won, ...(b.won ? { type, ...at } : {}) });
+      if (!b.won) out.losses.push({ type, opponent: b.opponent, club: b.club, ...at });
+    }
+    found.push({ id: Number(event), start_date: rows[0].start, title: rows[0].title, out: cleanOut(out) });
+  }
+  const waiting = [...by.keys()].filter(event => !found.some(e => e.id === Number(event)));
+  if (waiting.length) await env.DB.prepare(`UPDATE crawls SET priority = 3 WHERE site = ?1 AND state = 'queued' AND priority < 3 AND event IN (SELECT value FROM json_each(?2))`)
+    .bind(site, JSON.stringify(waiting)).run();
+  return json({ events: found });
+}
 async function keepOutcomes(env, { site, user, events }) {
   if (!SITES.includes(site) || !validUser(user) || !Array.isArray(events) || events.length > 400) return json({ error: 'Bad outcomes' }, 400);
   // An event only a match list names may come undated; every other one must have started.
@@ -309,8 +340,8 @@ async function profile(env, body) {
   return json({});
 }
 
-const READS = new Set(['/lookup', '/outcomes']);
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile };
+const READS = new Set(['/lookup', '/outcomes', '/crawled']);
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile };
 
 // The site's reads, kept at Cloudflare's edge so most visits never reach the database. Seconds an
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy

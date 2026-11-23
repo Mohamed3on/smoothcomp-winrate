@@ -233,7 +233,7 @@
     // Kept and new events short of (or over) Smoothcomp's count: the whole history is read
     // again, the kept figures shown meanwhile, which also retries what it never sent.
     const count = news.length + [...known.values()].filter(e => !e.out.extra).length;
-    if (!all && count !== total && !(Date.now() - kept?.gaps < DAY)) return readStats(true);
+    if (!all && count !== total && !(Date.now() - kept?.gaps?.at < DAY)) return readStats(true);
     const listed = new Map(news.map(e => [e.id, e]));
     // An event's result from its match list. A match list can hold an event the event list
     // leaves out (an event under two ids): its matches count all the same, dated by the
@@ -265,6 +265,16 @@
     // What is kept fills in what didn't load this time; on a whole read, events Smoothcomp no longer lists go.
     const ids = new Set(fresh.map(e => e.id));
     const events = [...fresh, ...[...known.values()].filter(e => !ids.has(e.id) && (!all || listed.has(e.id) || e.out.extra))];
+    // Events still not counted (some match-list pages Smoothcomp never answers) come from the
+    // matches Mat Stats' crawler read, where it has; it reads the rest first.
+    const counted = new Set(events.map(e => e.id));
+    const holes = (all ? list.map(e => e.id) : kept?.gaps?.ids ?? []).filter(id => !counted.has(id));
+    if (holes.length) for (const e of (await ask('/crawled', { site, user, events: holes.slice(0, 400) }).catch(() => ({}))).events ?? []) {
+      if (!Number.isSafeInteger(e?.id) || counted.has(e.id)) continue;
+      counted.add(e.id);
+      shared.add(e.id);
+      events.push({ id: e.id, start_date: listed.get(e.id)?.start_date ?? e.start_date ?? null, title: e.title ?? null, out: clean(e.out), settled: true });
+    }
     const missing = total - events.filter(e => !e.out.extra).length;
     // Settled events the server lacks go to it: all of them the first time this browser
     // shares an athlete, then only the newly settled. Events under a week old go every
@@ -272,8 +282,9 @@
     const unshared = events.filter(e => (e.settled ? !shared.has(e.id) && (!kept?.shared || fresh.includes(e)) : fresh.includes(e)));
     let sent = !!kept?.shared || shared.size > 0;
     if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
-    // When a whole read last left events out, so it is tried again a day later, not every visit.
-    keep(key, { seen: Date.now(), shared: sent, events, gaps: missing > 0 ? (all ? Date.now() : kept?.gaps) : undefined });
+    // When a whole read last left events out, so it is tried again a day later, not every visit,
+    // and which, so the crawler is asked for them each visit.
+    keep(key, { seen: Date.now(), shared: sent, events, gaps: missing > 0 ? { at: all ? Date.now() : kept?.gaps?.at, ids: holes.filter(id => !counted.has(id)) } : undefined });
     // When each belt began, so the stats site splits the win rate by belt as this profile does.
     if (plan.belt) ask('/belts', { site, user, worn: plan.worn ?? [plan.belt], starts: (plan.starts ?? [null]).map(t => (Number.isFinite(t) ? t : null)) }).catch(() => {});
     // The event list rows read here join the athlete's history on the stats site: every
