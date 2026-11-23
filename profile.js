@@ -12,8 +12,9 @@
   const ajp = location.hostname === 'ajptour.com';
   if (ajp) document.documentElement.classList.add('scwr-ajp');
   const CARD = ajp ? '.user-statistics' : '.match-statistics-content';
-  const { BELTS, beltOf: color, FINISHES, LABELS, finishOf, howOf, normalize: person } = SCWRRules;
-  const time = (e) => Date.parse(e.event_start ?? e.start_date);
+  // The rules apart from the page: profile-model.js.
+  const { FINISHES, LABELS, finishOf, normalize: person } = SCWRRules;
+  const { clean } = SCWRProfile;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
   // Smoothcomp's finishes come finer than its own chips name them ("submission_armbar",
@@ -27,12 +28,10 @@
   const hue = (type) => HUE[type] ?? 'rgb(128, 128, 128)';
   const nameOf = (type) => LABELS[type] ?? LABELS.other;
   const order = (type) => FINISHES.indexOf(type);
-  // A match list's finish, or a kept one's (an older copy says "escape"); walkovers never count here.
-  const finished = (type) => (typeof type === 'string' && type && finishOf(type) !== 'walkover' ? finishOf(type) : null);
   // The finishes counted, kept on this browser; one always stays picked.
   const PICKED = 'scwr:profile:finishes:3';
   let picked;
-  try { picked = new Set(JSON.parse(localStorage.getItem(PICKED)).map(finished).filter(Boolean)); } catch {}
+  try { picked = new Set(JSON.parse(localStorage.getItem(PICKED)).map(finishOf)); } catch {} // an older "escape" is a fastest escape
   if (!picked?.size) picked = new Set(['submission', 'fastest_escape', 'points', 'decision']);
   // Text from Smoothcomp (names, clubs, event titles) goes into markup escaped.
   const esc = (text) => String(text ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
@@ -57,64 +56,13 @@
       .then(body => (each?.(body), body), () => (failed++, {}))));
     return { data: bodies.flatMap(body => body.data ?? []), failed };
   };
-  // The athlete's matches at one event, as [won, lost] by finish, and each loss with
-  // who beat them, in what division and how; each win names the same, for a
-  // head-to-head. Walkovers left out. v 2 marks the wins' details.
-  // Each division registers them afresh: their seat is the registration in the most
-  // of its matches (a round robin lists others' too), the profile's name settling a tie.
-  const outcomes = (event) => {
-    const name = document.title.split(' - ')[0].trim().toLowerCase();
-    const out = { v: 2, types: {}, losses: [], faced: [] };
-    for (const group of Object.values(event.matches ?? {})) {
-      const matches = group.matches ?? [];
-      const seen = new Map();
-      for (const m of matches) for (const s of m.seats ?? []) {
-        const id = s.event_registration_id;
-        seen.set(id, { n: (seen.get(id)?.n ?? 0) + 1, named: s.name?.trim().toLowerCase() === name });
-      }
-      const most = Math.max(0, ...[...seen.values()].map(s => s.n));
-      const top = [...seen].filter(([, s]) => s.n === most);
-      const mine = (top.length === 1 && most > 1 ? top[0] : top.find(([, s]) => s.named))?.[0];
-      if (mine == null) continue;
-      for (const m of matches) {
-        const seat = m.seats?.find(s => s.event_registration_id === mine);
-        const type = finishOf(m.wonBy);
-        if (!seat || type === 'walkover' || !(seat.isWinner || seat.isLoser)) continue;
-        out.types[type] ??= [0, 0];
-        out.types[type][seat.isWinner ? 0 : 1]++;
-        const other = m.seats.find(s => s !== seat);
-        if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner,
-          ...(seat.isWinner ? { type, how: howOf(m.wonBy), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null } : {}) });
-        if (seat.isLoser) out.losses.push({ type, how: howOf(m.wonBy), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
-          reg: other?.event_registration_id ?? null, image: other?.image ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null });
-      }
-    }
-    return out;
-  };
-  // Each belt's events run from its first when the belt list names all of them, else
-  // from just after the last one listed at the belt below. Events without a belt
-  // (no-gi levels, absolutes) take the belt worn at the time.
-  function planBelts() {
-    const rows = (got.skills?.data ?? []).filter(s => /jiu|bjj/i.test(s.name) && color(s.belt)).sort((a, b) => b.sort_order - a.sort_order);
-    const belt = color(rows[0]?.belt);
-    const listed = (b) => rows.filter(s => color(s.belt) === b);
-    // The current belt is worn even when Smoothcomp counts no events at it (levels like
-    // "Intermediate (Blue)" don't count toward a belt).
-    const worn = BELTS.filter(b => b === belt || listed(b).some(s => s.competed_count > 0));
-    // Every event at one belt: the overall rate is that belt's, so it only takes the belt.
-    if (!belt || worn.every(b => b === belt)) return { belt, whole: true };
-    const times = (b) => listed(b).flatMap(s => s.events ?? []).map(time);
-    const starts = worn.map((b, i) => (!i ? -Infinity : times(b).length && listed(b).every(s => (s.events?.length ?? 0) >= s.competed_count)
-      ? Math.min(...times(b)) : Math.max(...times(worn[i - 1])) + 1));
-    return { belt, worn, starts, shown:new Set([belt, ...worn]).size, beltOf: (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0] };
-  }
   // Each event's result is kept for good once it is settled (started a week ago or
   // more), so a visit draws at once from what is kept and reads only what is new: both
   // lists run newest first, so reading stops at the first event already kept. If the
   // kept events and Smoothcomp's count stop agreeing, the whole history is read again,
   // on top of what is kept; when some match lists never load, at most once a day.
   const STORE = 'scwr:profile:12:';
-  const DAY = 864e5, WEEK = 7 * DAY;
+  const DAY = 864e5, { WEEK } = SCWRProfile;
   for (const k of Object.keys(localStorage)) if (/^scwr:profile:\d+:/.test(k) && !k.startsWith(STORE)) localStorage.removeItem(k);
   // Storage full: the athletes looked at longest ago give way.
   const keep = (key, value) => {
@@ -131,32 +79,8 @@
   const SERVER = 'https://mat-stats.mohamed3on.workers.dev';
   const ask = (path, body) => fetch(SERVER + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(r => (r.ok ? r.json() : Promise.reject(new Error(path))));
-  // What is read back, kept here or shared, keeps only the shape this script makes.
-  const clean = (out) => {
-    const types = {};
-    for (const [type, pair] of Object.entries(out?.types && typeof out.types === 'object' ? out.types : {})) {
-      const t = finished(type);
-      if (t && Array.isArray(pair)) types[t] = [(types[t]?.[0] ?? 0) + (Number(pair[0]) || 0), (types[t]?.[1] ?? 0) + (Number(pair[1]) || 0)];
-    }
-    return { types, losses: (Array.isArray(out?.losses) ? out.losses : []).filter(l => finished(l?.type)).map(l => ({ ...l, type: finished(l.type) })),
-      faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string').map(m => (m.type ? { ...m, type: finished(m.type) ?? undefined } : m)),
-      ...(out?.v === 2 ? { v: 2 } : {}), ...(out?.extra === true ? { extra: true } : {}) };
-  };
-  // Everything shown, worked out from the kept events with no request, by the rules the stats
-  // site counts by too; newest first, so each rival takes the club and photo of the latest meeting.
-  function tally(events) {
-    events = [...events].sort((a, b) => (Date.parse(b.start_date) || 0) - (Date.parse(a.start_date) || 0));
-    const records = SCWRRules.eventRecords(events.map(e => ({ event: e.id, start: e.start_date, out: e.out })), []);
-    const types = SCWRRules.totals(records);
-    const losses = events.flatMap(e => e.out.losses.map(loss => ({ ...loss, event: e.id, title: e.title, date: e.start_date })));
-    // Their wins, for a head-to-head: who, where and when only.
-    const wins = events.flatMap(e => e.out.faced.filter(f => f.won).map(f => ({ ...f, won: true, opponent: f.name, event: e.id, title: e.title, date: e.start_date })));
-    // A lower belt no event fell to has nothing to show; the current one says it has no events yet.
-    const belts = plan.whole ? null : SCWRRules.beltSplit(records, plan.worn, plan.starts).map(b => [b.belt, b]);
-    // Everyone who beat them more than once, the newest meeting giving the club, photo and registration to link.
-    const rivals = SCWRRules.rivalsOf(events.flatMap(e => e.out.faced.map(f => ({ name: f.name, won: f.won, club: f.club, image: f.image, reg: f.reg, event: e.id })))).slice(0, 5);
-    return { types, belts, losses, wins, rivals };
-  }
+  // Everything shown, worked out from the kept events with no request.
+  const tally = (events) => SCWRProfile.tally(events, plan);
   async function readStats(whole = false) {
     reading = true;
     const past = got['past-events'];
@@ -195,16 +119,9 @@
     const count = news.length + [...known.values()].filter(e => !e.out.extra).length;
     if (!all && count !== total && !(Date.now() - kept?.gaps?.at < DAY)) return readStats(true);
     const listed = new Map(news.map(e => [e.id, e]));
-    // An event's result from its match list. A match list can hold an event the event list
-    // leaves out (an event under two ids): its matches count all the same, dated by the
-    // belt list when it names it.
-    const dated = new Map((got.skills?.data ?? []).flatMap(s => s.events ?? []).map(e => [e.id, e.event_start]));
-    const empty = { v: 2, types: {}, losses: [], faced: [] };
-    const entry = (e, event) => {
-      const start = e ? e.start_date : dated.get(event.id) ?? null;
-      return { id: e?.id ?? event.id, start_date: start, title: event?.title ?? e?.title ?? null, out: !event ? empty : e ? outcomes(event) : { ...outcomes(event), extra: true },
-        settled: (!e && !start) || Date.now() - Date.parse(start) > WEEK };
-    };
+    // Each event's result from its match list, an event only the match list holds dated by the belt list.
+    const context = { name: document.title.split(' - ')[0], dated: new Map((got.skills?.data ?? []).flatMap(s => s.events ?? []).map(e => [e.id, e.event_start])), now: Date.now() };
+    const entry = (e, event) => SCWRProfile.entry(e, event, context);
     // Their match lists, three events a page, newest first: all pages at once with nothing
     // kept, the figures so far shown as each lands; else page by page until every new event is found.
     const found = new Map();
@@ -218,13 +135,7 @@
       for (const event of body?.data ?? []) found.set(event.id, event);
       if (body && !(body.data ?? []).some(event => listed.has(event.id))) break;
     }
-    // With a page unanswered, an event missing from the match lists may be on it: it is
-    // left out, unkept, so the next visit reads it again.
-    const fresh = news.filter(e => !failed || found.has(e.id)).map(e => entry(e, found.get(e.id)));
-    if (all) for (const event of found.values()) if (!listed.has(event.id)) fresh.push(entry(null, event));
-    // What is kept fills in what didn't load this time; on a whole read, events Smoothcomp no longer lists go.
-    const ids = new Set(fresh.map(e => e.id));
-    const events = [...fresh, ...[...known.values()].filter(e => !ids.has(e.id) && (!all || listed.has(e.id) || e.out.extra))];
+    const { fresh, events } = SCWRProfile.merge({ news, found, failed, known, all }, context);
     // Events still not counted (some match-list pages Smoothcomp never answers) come from the
     // matches Mat Stats' crawler read, where it has; it reads the rest first.
     const counted = new Set(events.map(e => e.id));
@@ -235,16 +146,10 @@
       shared.add(e.id);
       events.push({ id: e.id, start_date: listed.get(e.id)?.start_date ?? e.start_date ?? null, title: e.title ?? null, out: clean(e.out), settled: true });
     }
-    const missing = total - events.filter(e => !e.out.extra).length;
-    // Settled events the server lacks go to it: all of them the first time this browser
-    // shares an athlete, then only the newly settled. Events under a week old go every
-    // visit, as read again, so the stats site counts what this profile counts.
-    const unshared = events.filter(e => (e.settled ? !shared.has(e.id) && (!kept?.shared || fresh.includes(e)) : fresh.includes(e)));
+    const { missing, unshared, gaps } = SCWRProfile.share({ events, fresh, shared, kept, total, holes, all, now: Date.now() });
     let sent = !!kept?.shared || shared.size > 0;
     if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
-    // When a whole read last left events out, so it is tried again a day later, not every visit,
-    // and which, so the crawler is asked for them each visit.
-    keep(key, { seen: Date.now(), shared: sent, events, gaps: missing > 0 ? { at: all ? Date.now() : kept?.gaps?.at, ids: holes.filter(id => !counted.has(id)) } : undefined });
+    keep(key, { seen: Date.now(), shared: sent, events, gaps });
     // When each belt began, so the stats site splits the win rate by belt as this profile does.
     if (plan.belt) ask('/belts', { site, user, worn: plan.worn ?? [plan.belt], starts: (plan.starts ?? [null]).map(t => (Number.isFinite(t) ? t : null)) }).catch(() => {});
     // The event list rows read here join the athlete's history on the stats site: every
@@ -411,7 +316,7 @@
   const draw = () => {
     const chart = document.querySelector(ajp ? CARD : `${CARD} > div`);
     if (!chart || !got['wins-and-medals'] || !got.skills || !Array.isArray(got['past-events']?.data) || !got['past-events'].meta?.total || !pastUrl) return;
-    plan ??= planBelts();
+    plan ??= SCWRProfile.planBelts(got.skills?.data);
     // Read once a visit: reading is true while it runs and false once done.
     if (reading == null) readStats().catch(() => { plan.loading = false; if (stats?.reading) show({ ...stats, reading: null }); else draw(); });
     // See losses sits beside Smoothcomp's own See all wins, made of the same parts

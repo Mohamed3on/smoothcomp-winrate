@@ -86,12 +86,13 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |
 | `picks.js` | Pure matching — which brackets the signed-in athlete could enter, read off the organiser's labels, and which they would top-seed |
 | `participants.js` | The participants page |
+| `profile-model.js` | Pure profile rules — which seat in a match list is theirs, when each belt began, and how a visit's reads join what is kept |
 | `profile.js` | Win rate overall and per belt on an athlete's profile, by the finishes picked |
 | `en.js` | Sends any Smoothcomp or AJP Tour page under another language's path to its `/en/` page |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
 `rules.js` and `site.js` load first on every page; the rest share globals through page scope in manifest
-order. `model.js` and `picks.js` are pure — no DOM, no network, no storage — which is what makes them testable.
+order. `model.js`, `profile-model.js` and `picks.js` are pure — no DOM, no network, no storage — which is what makes them testable.
 
 Chrome will not load an SVG icon, so `icons/icon.svg` is the source and the PNGs are rendered
 from it. After editing the SVG:

@@ -84,6 +84,7 @@
       ],
       "js": [
         "rules.js",
+        "profile-model.js",
         "profile.js"
       ],
       "world": "MAIN",
