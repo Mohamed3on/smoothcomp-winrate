@@ -1,4 +1,4 @@
-importScripts('career-cache.js');
+importScripts('rules.js', 'career-cache.js');
 const PREFIX = 'scwr2:';
 const SESSION = 'scwr:requests';
 const KINDS = ['careers', 'ranks', 'signatures'];

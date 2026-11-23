@@ -56,8 +56,9 @@
   const WIN_LABEL = {
     submission: ['submission', 'submissions'], stoppage: ['stoppage', 'stoppages'], points: ['points', 'points'],
     decision: ['decision', 'decisions'], disqualification: ['DQ', 'DQs'], walkover: ['walkover', 'walkovers'],
+    fastest_escape: ['fastest escape', 'fastest escapes'], other: ['other finish', 'other finishes'],
   };
-  const WIN_ABBR = { submission: 'sub', stoppage: 'stop', points: 'pts', decision: 'dec', disqualification: 'DQ', walkover: 'WO' };
+  const WIN_ABBR = { submission: 'sub', stoppage: 'stop', fastest_escape: 'esc', points: 'pts', decision: 'dec', disqualification: 'DQ', walkover: 'WO', other: 'other' };
   const breakdown = (types) => WIN_TYPES.filter((t) => types[t])
     .map((t) => `${types[t]} ${unit(types[t], ...(WIN_LABEL[t] ?? [t, `${t}s`]))}`).join(', ');
   const shortBreakdown = (types) => WIN_TYPES.filter((t) => types[t])
@@ -1399,7 +1400,7 @@
       if (a.userId) athletes[a.userId] = { name: a.name, club: a.club, clubId: a.clubId, country: a.country, countryName: a.countryName, belt: a.belt, age: a.age, photo: a.logo, hidden: a.hidden ?? undefined,
         entries: a.entries.map((e) => ({ division: model.brackets.get(e.bracketId)?.name, place: e.placement, wins: e.wins, losses: e.losses,
           // Each match, for the stats site's athlete pages: who they met and how it ended.
-          bouts: e.bouts.map((b) => ({ won: b.won, type: b.type, opponent: b.opponent?.name ?? null, user: b.opponent?.userId ?? null, club: b.opponent?.club ?? null, stage: b.stage ?? null })) })) };
+          bouts: e.bouts.map((b) => ({ won: b.won, type: b.type, how: b.how, opponent: b.opponent?.name ?? null, user: b.opponent?.userId ?? null, club: b.opponent?.club ?? null, stage: b.stage ?? null })) })) };
     }
     document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'record', event: SCWRSite.eventId(), records, meta: await SCWRSite.event(), athletes, read }) }));
   }

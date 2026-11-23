@@ -7,5 +7,6 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
-  server: { proxy: { '/api': 'https://matstats.mohamed3on.com' } },
+  // rules.js sits at the repository's root, shared with the extension and the server.
+  server: { proxy: { '/api': 'https://matstats.mohamed3on.com' }, fs: { allow: ['..'] } },
 });

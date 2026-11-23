@@ -73,7 +73,8 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 
 | File | What it is |
 | --- | --- |
-| `site.js` | Everything that knows what Smoothcomp is: win-type vocabulary, URL shapes, the versioned store, the Vue view-model adapter |
+| `rules.js` | The rules everything counts by — finishes, belts, grade fields — loaded by the extension's pages, imported by the server and the stats site |
+| `site.js` | Everything that knows what Smoothcomp is: URL shapes, the versioned store, the Vue view-model adapter |
 | `matches.js` | Reads every match off the event's schedule, one request per mat |
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
@@ -89,7 +90,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `en.js` | Sends any Smoothcomp or AJP Tour page under another language's path to its `/en/` page |
 | `icons/` | The toolbar icon. `icon.svg` is the source; the PNGs beside it are what Chrome loads |
 
-`site.js` loads first on every page; the rest share globals through page scope in manifest
+`rules.js` and `site.js` load first on every page; the rest share globals through page scope in manifest
 order. `model.js` and `picks.js` are pure — no DOM, no network, no storage — which is what makes them testable.
 
 Chrome will not load an SVG icon, so `icons/icon.svg` is the source and the PNGs are rendered

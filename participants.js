@@ -404,12 +404,12 @@ const club = (card) => card.dataset.academy;
 // the gi division beside it decides. An athlete with only those wears the latest
 // BJJ belt their profile lists, read once and kept three weeks; with none there either,
 // no belt.
-const { BELTS, oneBelt } = SCWRCache;
+const { BELTS, beltOf: oneBelt, isGrade } = SCWRRules;
 const needsRank = (user) => !belt(user) && !SCWRCache.fresh(ranks[user], 'ranks');
 let beltOf;
 function belt(key) {
   if (!beltOf) {
-    const values = new Map((vm.categories ?? []).filter((c) => /belt|level|rank|grade/i.test(c.category_name)).map((c) => {
+    const values = new Map((vm.categories ?? []).filter((c) => isGrade(c.category_name)).map((c) => {
       return [c.id, oneBelt(c.name)];
     }));
     beltOf = new Map();

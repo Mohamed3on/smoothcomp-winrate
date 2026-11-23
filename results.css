@@ -43,6 +43,8 @@
   --win-decision: #4f9ae0;
   --win-disqualification: #7fb2e0;
   --win-walkover: #b9bec6;
+  --win-fastest_escape: #18659a;
+  --win-other: #9aa1aa;
 
   /* Type. Six steps, and the Type block below is the only place they are
      applied — component rules carry colour, layout and truncation, never a
@@ -96,6 +98,8 @@
   --win-decision: #3f7fc4;
   --win-disqualification: #27547f;
   --win-walkover: #4a4f57;
+  --win-fastest_escape: #7bb4e6;
+  --win-other: #5d6570;
 }
 
 .scwr-results, .scwr-results * { box-sizing: border-box; }
@@ -544,6 +548,8 @@ a.scwr-name:hover { color: var(--accent); text-decoration: underline; text-under
 .scwr-seg-decision { background: var(--win-decision); }
 .scwr-seg-disqualification { background: var(--win-disqualification); }
 .scwr-seg-walkover { background: var(--win-walkover); }
+.scwr-seg-fastest_escape { background: var(--win-fastest_escape); }
+.scwr-seg-other { background: var(--win-other); }
 .scwr-bar-legend {
   color: var(--fg-3);
   white-space: nowrap;

@@ -12,45 +12,30 @@
   const ajp = location.hostname === 'ajptour.com';
   if (ajp) document.documentElement.classList.add('scwr-ajp');
   const CARD = ajp ? '.user-statistics' : '.match-statistics-content';
-  const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
-  const color = (text) => {
-    const named = BELTS.filter(b => new RegExp(`\\b${b}`, 'i').test(String(text).replace(/gray/i, 'grey')));
-    return named.length === 1 ? named[0] : null;
-  };
+  const { BELTS, beltOf: color, FINISHES, LABELS, finishOf, howOf, normalize: person } = SCWRRules;
   const time = (e) => Date.parse(e.event_start ?? e.start_date);
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-  // Opponents are known by name, as registrations change per event.
-  const person = (name) => String(name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
   // Smoothcomp's finishes come finer than its own chips name them ("submission_armbar",
-  // "decision_unanimous", "double-dq"); each counts under the chip it belongs to. Each
-  // finish has its own hue: submission and points keep the green and blue of
+  // "decision_unanimous", "double-dq"); each counts under the chip its finish names (rules.js).
+  // Each finish has its own hue: submission and points keep the green and blue of
   // Smoothcomp's wins ring, which gives several finishes one colour.
-  const FINISH = {
-    submission: ['Submission', 'rgb(121, 186, 33)'], stoppage: ['Stoppage', 'oklch(0.8 0.15 75)'], escape: ['Fastest escape', 'oklch(0.75 0.12 195)'],
-    points: ['Points', 'rgb(6, 114, 167)'], decision: ['Decision', 'oklch(0.68 0.15 300)'], disqualification: ['Disqualification', 'rgb(198, 52, 52)'],
+  const HUE = {
+    submission: 'rgb(121, 186, 33)', stoppage: 'oklch(0.8 0.15 75)', fastest_escape: 'oklch(0.75 0.12 195)',
+    points: 'rgb(6, 114, 167)', decision: 'oklch(0.68 0.15 300)', disqualification: 'rgb(198, 52, 52)',
   };
-  const finish = (wonBy) => {
-    const w = String(wonBy ?? '').toLowerCase();
-    return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'escape' : /walk|forfeit/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
-      : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
-  };
-  // Anything else counts as Other, so no unknown name reaches the page or a tally's keys.
-  const nameOf = (type) => FINISH[type]?.[0] ?? 'Other';
-  const order = (type) => (type in FINISH ? Object.keys(FINISH).indexOf(type) : 99);
+  const hue = (type) => HUE[type] ?? 'rgb(128, 128, 128)';
+  const nameOf = (type) => LABELS[type] ?? LABELS.other;
+  const order = (type) => FINISHES.indexOf(type);
+  // A match list's finish, or a kept one's (an older copy says "escape"); walkovers never count here.
+  const finished = (type) => (typeof type === 'string' && type && finishOf(type) !== 'walkover' ? finishOf(type) : null);
   // The finishes counted, kept on this browser; one always stays picked.
   const PICKED = 'scwr:profile:finishes:3';
   let picked;
-  try { picked = new Set(JSON.parse(localStorage.getItem(PICKED))); } catch {}
-  if (!picked?.size) picked = new Set(['submission', 'escape', 'points', 'decision']);
+  try { picked = new Set(JSON.parse(localStorage.getItem(PICKED)).map(finished).filter(Boolean)); } catch {}
+  if (!picked?.size) picked = new Set(['submission', 'fastest_escape', 'points', 'decision']);
   // Text from Smoothcomp (names, clubs, event titles) goes into markup escaped.
   const esc = (text) => String(text ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
-  // How a match ended, with the detail Smoothcomp gives ("submission_armbar" reads
-  // "Submission (armbar)"); the detail keeps letters only.
-  const how = (wonBy, type) => {
-    const detail = String(wonBy ?? '').toLowerCase().replace(/^(submission|decision|points)/, '').replace(/[^a-z]+/g, ' ').trim();
-    return detail && ['submission', 'decision', 'points'].includes(type) ? `${nameOf(type)} (${detail})` : nameOf(type);
-  };
   // A refusal (a 429, or the failed fetch Cloudflare's challenge makes of one) is
   // tried again after 1, 2, 4 and 8 s. Some pages Smoothcomp never answers (Cloudflare
   // gives up on them after two minutes), so a page given 15 s fails for good.
@@ -101,14 +86,14 @@
       if (mine == null) continue;
       for (const m of matches) {
         const seat = m.seats?.find(s => s.event_registration_id === mine);
-        const type = finish(m.wonBy);
+        const type = finishOf(m.wonBy);
         if (!seat || type === 'walkover' || !(seat.isWinner || seat.isLoser)) continue;
         out.types[type] ??= [0, 0];
         out.types[type][seat.isWinner ? 0 : 1]++;
         const other = m.seats.find(s => s !== seat);
         if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner,
-          ...(seat.isWinner ? { type, how: how(m.wonBy, type), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null } : {}) });
-        if (seat.isLoser) out.losses.push({ type, how: how(m.wonBy, type), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
+          ...(seat.isWinner ? { type, how: howOf(m.wonBy), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null } : {}) });
+        if (seat.isLoser) out.losses.push({ type, how: howOf(m.wonBy), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
           reg: other?.event_registration_id ?? null, image: other?.image ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null });
       }
     }
@@ -155,15 +140,15 @@
   const ask = (path, body) => fetch(SERVER + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(r => (r.ok ? r.json() : Promise.reject(new Error(path))));
   // What is read back, kept here or shared, keeps only the shape this script makes.
-  const finishes = [...Object.keys(FINISH), 'other'];
   const clean = (out) => {
     const types = {};
-    for (const type of finishes) {
-      const pair = out?.types?.[type];
-      if (Array.isArray(pair)) types[type] = [Number(pair[0]) || 0, Number(pair[1]) || 0];
+    for (const [type, pair] of Object.entries(out?.types && typeof out.types === 'object' ? out.types : {})) {
+      const t = finished(type);
+      if (t && Array.isArray(pair)) types[t] = [(types[t]?.[0] ?? 0) + (Number(pair[0]) || 0), (types[t]?.[1] ?? 0) + (Number(pair[1]) || 0)];
     }
-    return { types, losses: (Array.isArray(out?.losses) ? out.losses : []).filter(l => finishes.includes(l?.type)),
-      faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string'), ...(out?.v === 2 ? { v: 2 } : {}), ...(out?.extra === true ? { extra: true } : {}) };
+    return { types, losses: (Array.isArray(out?.losses) ? out.losses : []).filter(l => finished(l?.type)).map(l => ({ ...l, type: finished(l.type) })),
+      faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string').map(m => (m.type ? { ...m, type: finished(m.type) ?? undefined } : m)),
+      ...(out?.v === 2 ? { v: 2 } : {}), ...(out?.extra === true ? { extra: true } : {}) };
   };
   // Everything shown, worked out from the kept events with no request; newest first, so
   // each rival takes the club and photo of the latest meeting.
@@ -352,7 +337,7 @@
     html += `<div class="scwr-chips" role="group" aria-label="Finishes counted">${offered.map(type => {
       const [w, l] = stats.types[type];
       return `<button type="button" class="scwr-type gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-type="${type}" aria-pressed="${picked.has(type)}">`
-        + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
+        + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${hue(type)};"></span>`
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
     // Nobody beating them twice is itself worth saying, when they have lost at all.
@@ -417,7 +402,7 @@
       return `<li class="scwr-loss">${avatar(loss)}<div>`
         + `<div class="scwr-loss-who">${named(loss, 'who')}${loss.club ? named(loss, 'club') : ''}</div>`
         + `<div class="scwr-loss-how gi-text-xs gi-text-secondary">${against ? `<span class="scwr-${loss.won ? 'won">Won' : 'lost">Lost'}</span>${loss.type ? '<span>·</span>' : ''}` : ''}`
-        + (loss.type ? `<span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${FINISH[loss.type]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`
+        + (loss.type ? `<span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${hue(loss.type)};"></span>`
           + `<span class="scwr-${loss.won ? 'won' : 'lost'}">${esc(loss.how)}</span>${loss.stage ? `<span>·</span><span>${esc(loss.stage)}</span>` : ''}` : '')
         // The bracket it was lost in, linked; then the event and its date.
         + (loss.division ? `<span>·</span>${loss.bracket ? `<a href="/${esc(locale())}/event/${Number(loss.event)}/bracket/${Number(loss.bracket)}">${esc(loss.division)}</a>` : `<span>${esc(loss.division)}</span>`}` : '') + '</div>'
@@ -428,7 +413,7 @@
     const counts = {};
     for (const loss of stats.losses) counts[loss.type] = (counts[loss.type] ?? 0) + 1;
     const pill = (key, label, n) => `<button type="button" class="scwr-loss-filter gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-show="${key}" aria-pressed="${showing === key}">`
-      + (key === 'all' ? '' : `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${FINISH[key]?.[1] ?? 'rgb(128, 128, 128)'};"></span>`)
+      + (key === 'all' ? '' : `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${hue(key)};"></span>`)
       + `<span class="gi-font-medium">${label}</span><span class="scwr-count">${n}</span></button>`;
     return pill('all', 'All', stats.losses.length) + Object.keys(counts).sort((a, b) => counts[b] - counts[a] || order(a) - order(b)).map(type => pill(type, nameOf(type), counts[type])).join('');
   }

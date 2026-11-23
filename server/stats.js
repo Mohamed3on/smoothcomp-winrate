@@ -1,7 +1,9 @@
 // The public site's reads. Every list takes the same quality filters: a site,
 // the finish types counted, a belt, a country, and the fewest wins and events that count.
+import '../rules.js';
+
+const { BELTS, FINISHES, finishSql } = globalThis.SCWRRules;
 const SITES = ['smoothcomp.com', 'ajptour.com'];
-const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
 const KEPT = 30 * 24 * 60 * 60 * 1000;
 const json = (body, status = 200, cache = 'public, max-age=60') => Response.json(body, { status, headers: { 'Cache-Control': cache } });
 const whole = (value, fallback, max = 1e6) => {
@@ -34,7 +36,7 @@ function filters(params) {
 // Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
 // ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:
 // `rec` from the match lists of their profile where it was opened (with the results' walkovers there;
-// its fastest escape is a career's fastest_escape) with the results read at every event those lists
+// older lists name a fastest escape "escape", which the rules group) with the results read at every event those lists
 // don't hold (for an athlete whose profile nobody opened, every event read); `seen` from every
 // event read. Medals and events from the events read, `listed` the events their profile lists,
 // `last` their latest event. ?1 site, ?2 the athletes (JSON).
@@ -43,7 +45,7 @@ export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gol
   -- CROSS JOIN keeps these athletes the outer loop, so each table is read by athlete, never whole.
   fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1),
   per AS (
-    SELECT o.user, iif(j.key = 'escape', 'fastest_escape', j.key) AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM us CROSS JOIN outcomes o, json_each(o.out, '$.types') j WHERE o.site = ?1 AND o.user = us.user
+    SELECT o.user, ${finishSql('j.key')} AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM us CROSS JOIN outcomes o, json_each(o.out, '$.types') j WHERE o.site = ?1 AND o.user = us.user
     UNION ALL SELECT f.user, j.key, j.value, 0 FROM fe f, json_each(f.wins) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
     UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
     -- The match lists leave walkovers out: the results give them there.
@@ -59,14 +61,8 @@ export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gol
   FROM us LEFT JOIN rec USING (user) LEFT JOIN seen USING (user) LEFT JOIN med USING (user) LEFT JOIN listed USING (user) LEFT JOIN latest USING (user)
   WHERE rec.rec IS NOT NULL OR seen.seen IS NOT NULL OR med.events IS NOT NULL OR listed.listed IS NOT NULL`;
 
-// A finish code grouped as the profile groups it (worker.js finishOf), in SQL.
-const GROUPED = (k) => `CASE WHEN ${k} LIKE 'sub%' THEN 'submission' WHEN ${k} LIKE '%escape%' THEN 'fastest_escape' WHEN ${k} LIKE '%walk%' OR ${k} LIKE '%forfeit%' THEN 'walkover'
-  WHEN ${k} LIKE '%dq%' OR ${k} LIKE '%disq%' THEN 'disqualification' WHEN ${k} LIKE 'point%' OR ${k} LIKE '%advantage%' OR ${k} LIKE '%penalt%' THEN 'points'
-  WHEN ${k} LIKE '%decision%' OR ${k} LIKE '%referee%' OR ${k} LIKE '%judge%' THEN 'decision'
-  WHEN ${k} LIKE '%stoppage%' OR ${k} LIKE '%ko' OR ${k} LIKE '%ko %' OR ${k} LIKE '%ko-%' THEN 'stoppage' ELSE 'other' END`;
-
-// The finish groups every finish is counted under (worker.js finishOf).
-export const GROUPS = ['submission', 'points', 'walkover', 'decision', 'disqualification', 'stoppage', 'fastest_escape', 'other'];
+// The finishes every count is kept under (rules.js), a column each on the board.
+const GROUPS = FINISHES;
 const cols = (prefix) => GROUPS.map((g) => `${prefix}_${g}`).join(', ');
 
 // The highest belt an athlete's divisions name, for one with no belt read: a division naming
@@ -98,7 +94,7 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
     LEFT JOIN athletes r ON r.site = ?1 AND r.user = us.user AND r.kind = 'ranks'),
   b AS (
     SELECT *, iif(entry IS NOT NULL, 'career', 'results') AS source,
-      iif(entry IS NOT NULL, (SELECT json_group_object(g, n) FROM (SELECT ${GROUPED('key')} AS g, sum(value) AS n FROM json_each(entry, '$.wins') GROUP BY g)),
+      iif(entry IS NOT NULL, (SELECT json_group_object(g, n) FROM (SELECT ${finishSql('key')} AS g, sum(value) AS n FROM json_each(entry, '$.wins') GROUP BY g)),
         coalesce((SELECT json_group_object(key, value ->> 0) FROM json_each(rec) WHERE value ->> 0 > 0), '{}')) AS types
     FROM src WHERE entry IS NOT NULL OR te > 0)
   SELECT ?1, user, source, iif(source = 'career', at, NULL), types, name, club, club_id, country, country_name, photo, born, hidden, belt, last,

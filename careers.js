@@ -235,7 +235,7 @@ const SCWRCareers = (() => {
         }
         if (!Array.isArray(data)) throw new Error('Unreadable belts');
         const latest = data.filter(skill => /jiu|bjj/i.test(skill.name)).sort((a, b) => b.sort_order - a.sort_order)[0];
-        return { at: Date.now(), belt: SCWRCache.oneBelt(latest?.belt ?? '') };
+        return { at: Date.now(), belt: SCWRRules.beltOf(latest?.belt) };
       }, events)).then(entry => {
         if (entry) merge({ [kind]: { [user]: entry } });
         return entry;

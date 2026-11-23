@@ -1,7 +1,10 @@
 // The career cache every install shares. Installs keep what they read here and
 // look up a whole event at once; each one cleans what it gets (career-cache.js),
 // so the worker only bounds what it stores.
+import '../rules.js';
 import { API, BOARD, CLUBS, EVENT_COUNTS, TALLY } from './stats.js';
+
+const { BELTS, LABELS, finishOf, detailOf, beltOf } = globalThis.SCWRRules;
 
 // Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), a few
 // hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
@@ -66,24 +69,8 @@ async function keep(env, body) {
 }
 
 // What an event page shows of the event and of each athlete, for the public site.
-// Strings are capped and finish types follow the career cache's rule.
-const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+// Strings are capped and finishes grouped by the rules (rules.js), so every source counts under the same switches.
 const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
-// A finish grouped as the profile groups it (profile.js finish(): "submission_armbar" is a submission,
-// "tko" a stoppage, a judo "fullippon" other), named as careers name it (fastest_escape), so every
-// source counts under the same switches.
-export const finishOf = (code) => {
-  const w = String(code).toLowerCase();
-  return /^sub/.test(w) ? 'submission' : /escape/.test(w) ? 'fastest_escape' : /walk|forfeit/.test(w) ? 'walkover' : /dq|disq/.test(w) ? 'disqualification'
-    : /^point|advantage|penalt/.test(w) ? 'points' : /decision|referee|judge/.test(w) ? 'decision' : /stoppage|ko\b/.test(w) ? 'stoppage' : 'other';
-};
-// A finish's detail as the profile writes it: "submission_armbar" is "Submission (armbar)".
-const detailOf = (code) => {
-  const w = String(code ?? '').toLowerCase();
-  const kind = ['submission', 'decision', 'points'].find((k) => w.startsWith(k));
-  const rest = kind && w.slice(kind.length).replace(/[^a-z]+/g, ' ').trim();
-  return rest ? `${kind[0].toUpperCase()}${kind.slice(1)} (${rest})` : null;
-};
 // An athlete's matches in a division, in order: won or lost, the finish (grouped, with its detail),
 // and who they met (name, user, academy) in which round.
 const bouts = (list) => (Array.isArray(list) && list.length ? JSON.stringify(list.slice(0, 40).filter((b) => b && typeof b === 'object').map((b) => ({
@@ -103,11 +90,6 @@ const tally = (bucket) => {
 };
 // Photos only from the sites' own hosts.
 const photo = (url) => (typeof url === 'string' && /^https:\/\/([\w-]+\.)*(smoothcomp\.com|ajptour\.com)\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
-// A grade label names one belt, or none: "Purple/Brown" and "All belts" name none.
-const oneBelt = (label) => {
-  const named = typeof label === 'string' ? BELTS.filter((b) => new RegExp(`\\b${b}`, 'i').test(label.replace(/gray/i, 'grey'))) : [];
-  return named.length === 1 ? named[0] : null;
-};
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 // When the page read what it sends: an upload read before the one kept is dropped, so a
 // late arrival never undoes a newer read. Older installs send none and count as read now.
@@ -137,7 +119,7 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
     const club = text(a.club, 160);
     const clubId = /^\d{1,12}$/.test(a.clubId) ? a.clubId : null;
     people.push({ user, name: text(a.name, 120), club, clubId, affiliation: text(a.affiliation, 120), country: typeof a.country === 'string' && /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
-      countryName: text(a.countryName, 80), photo: photo(a.photo), belt: oneBelt(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
+      countryName: text(a.countryName, 80), photo: photo(a.photo), belt: beltOf(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
     // An install sends one athlete's list per career read, so a request carries a few lists at most.
     if (Array.isArray(a.history) && Object.keys(history).length < 20 && Object.values(history).flat().length + a.history.length <= 2000) history[user] = a.history.slice(0, 500).filter((e) => /^\d{1,9}$/.test(e?.event)).map((e) => ({
       event: e.event, title: text(e.title, 200), start: typeof e.start === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(e.start) ? e.start : null, city: text(e.city, 100),
@@ -225,25 +207,26 @@ async function record(env, { site, event, records, meta, athletes, read }) {
 }
 
 // An athlete's settled events, as profile pages read them from the match lists. The
-// worker keeps only the shape profile.js reads: known finishes, counts and bounded text.
-const FINISHES = ['submission', 'stoppage', 'escape', 'points', 'decision', 'disqualification', 'other'];
+// worker keeps only the shape profile.js reads: finishes (walkovers aside, which match lists
+// never count), counts and bounded text. Older installs name a fastest escape "escape".
 const SETTLED = 7 * 24 * 60 * 60 * 1000;
 const count = n => (Number.isSafeInteger(n) && n >= 0 && n < 1000 ? n : 0);
 const regOf = r => (Number.isSafeInteger(r) && r > 0 ? r : null);
+const finished = (type) => (typeof type === 'string' && type && finishOf(type) !== 'walkover' ? finishOf(type) : null);
 function cleanOut(out) {
   const types = {};
-  for (const type of FINISHES) {
-    const pair = out?.types?.[type];
-    if (Array.isArray(pair) && (count(pair[0]) || count(pair[1]))) types[type] = [count(pair[0]), count(pair[1])];
+  for (const [type, pair] of Object.entries(out?.types && typeof out.types === 'object' ? out.types : {})) {
+    const t = finished(type);
+    if (t && Array.isArray(pair) && (count(pair[0]) || count(pair[1]))) types[t] = [(types[t]?.[0] ?? 0) + count(pair[0]), (types[t]?.[1] ?? 0) + count(pair[1])];
   }
-  const losses = (Array.isArray(out?.losses) ? out.losses : []).slice(0, 60).filter(l => FINISHES.includes(l?.type)).map(l => ({
-    type: l.type, how: text(l.how, 60) ?? '', opponent: text(l.opponent, 120), club: text(l.club, 160), division: text(l.division, 200),
+  const losses = (Array.isArray(out?.losses) ? out.losses : []).slice(0, 60).filter(l => finished(l?.type)).map(l => ({
+    type: finished(l.type), how: text(l.how, 60) ?? '', opponent: text(l.opponent, 120), club: text(l.club, 160), division: text(l.division, 200),
     reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: text(l.stage, 60),
   }));
   // A win names its finish, round and division too (from v 2), for a head-to-head.
   const faced = (Array.isArray(out?.faced) ? out.faced : []).slice(0, 120).filter(m => text(m?.name, 120)).map(m => ({
     name: text(m.name, 120), club: text(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
-    ...(m.won === true && FINISHES.includes(m.type) ? { type: m.type, how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60) } : {}),
+    ...(m.won === true && finished(m.type) ? { type: finished(m.type), how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60) } : {}),
   }));
   return { ...(out?.v === 2 ? { v: 2 } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}) };
 }
@@ -269,10 +252,10 @@ async function crawled(env, { site, user, events }) {
     if ((!fought.length || fought.some(r => !r.bouts)) && (rows[0].state !== 'done' || rows[0].wins)) continue;
     const out = { v: 2, types: {}, losses: [], faced: [] };
     for (const r of fought) for (const b of JSON.parse(r.bouts ?? '[]')) {
-      if (b.type === 'walkover') continue;
-      const type = b.type === 'fastest_escape' ? 'escape' : b.type;
+      const type = finishOf(b.type);
+      if (type === 'walkover') continue;
       (out.types[type] ??= [0, 0])[b.won ? 0 : 1]++;
-      const at = { how: b.how ?? (type === 'escape' ? 'Fastest escape' : type[0].toUpperCase() + type.slice(1)), division: r.division, stage: b.stage };
+      const at = { how: b.how ?? LABELS[type], division: r.division, stage: b.stage };
       if (b.opponent) out.faced.push({ name: b.opponent, club: b.club, won: b.won, ...(b.won ? { type, ...at } : {}) });
       if (!b.won) out.losses.push({ type, opponent: b.opponent, club: b.club, ...at });
     }

@@ -33,7 +33,7 @@ function replay(name, { pathname, localStorage = memoryStorage() } = {}) {
       return body ? { ok: true, json: async () => body } : { ok: false, status: 404 };
     },
   });
-  for (const file of ['site.js', 'matches.js', 'model.js']) {
+  for (const file of ['rules.js', 'site.js', 'matches.js', 'model.js']) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context, { filename: file });
   }
   const read = (expression) => vm.runInContext(expression, context);

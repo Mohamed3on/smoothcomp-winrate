@@ -1,7 +1,7 @@
 // Pure result/match joins for one event: who fought whom, who won, and how the
 // leaderboards rank them. Shared by the results page and the regression tests.
 const SCWRModel = (() => {
-  const normalize = (s) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+  const { normalize } = SCWRRules;
   const placements = (r) => [...(r.top3 ?? []), ...(r.after3 ?? [])];
   const athleteKey = (p, bracketId) => p.target?.user_id
     ? `user:${p.target.user_id}` : `placement:${bracketId}:${p.id}`;
@@ -140,7 +140,7 @@ const SCWRModel = (() => {
         bucket[winners[0].won] = (bucket[winners[0].won] ?? 0) + 1;
         const place = bracket.provisional && PODIUM[match.stage]?.[side === winners[0] ? 0 : 1];
         if (place) entry.placement = place;
-        entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, opponent: match.sides.find((s) => s !== side), stage: match.stage });
+        entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, how: match.how ?? null, opponent: match.sides.find((s) => s !== side), stage: match.stage });
       }
       if (attached < 2) {
         if (isWalkover) noShows++;
@@ -252,12 +252,10 @@ const SCWRModel = (() => {
   // one for a user wins.
   function roster(payload) {
     const labels = new Map((payload?.categories ?? []).map((c) => [c.id, c]));
-    // Organisers name the same field "Belt", "Level" or "Rank", depending on the
-    // event and whether the division is gi or no-gi.
     const grade = (registration) => {
       for (const { category_value_id: id } of registration.categories ?? []) {
         const value = labels.get(id);
-        if (value && /^(belt|level|rank)$/i.test(value.category_name)) return value.name;
+        if (value && SCWRRules.isGrade(value.category_name)) return value.name;
       }
       return null;
     };
@@ -402,7 +400,7 @@ const SCWRModel = (() => {
   // level ("Beginner", "Advanced"). Colours group by the colour so every
   // spelling of one belt lands together; anything else groups by its own name,
   // and everyone the registration list never graded shares the last bucket.
-  const BELT_TONES = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black', 'red'];
+  const BELT_TONES = [...SCWRRules.BELTS, 'red'];
   const UNGRADED = '\0ungraded';
   const beltTone = (belt) => {
     const words = new Set(String(belt ?? '').toLowerCase().replace('gray', 'grey').match(/[a-z]+/g) ?? []);

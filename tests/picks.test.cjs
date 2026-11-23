@@ -10,6 +10,7 @@ const vm = require('node:vm');
 const zlib = require('node:zlib');
 
 // picks.js is pure, so it runs in this realm and its values compare directly.
+vm.runInThisContext(fs.readFileSync(path.join(__dirname, '..', 'rules.js'), 'utf8'), { filename: 'rules.js' });
 const SCWRPicks = vm.runInThisContext(`${fs.readFileSync(path.join(__dirname, '..', 'picks.js'), 'utf8')}\nSCWRPicks`, { filename: 'picks.js' });
 const event = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', '25902-picks.json.gz'))));
 const values = new Map(event.categories.map((c) => [c.id, c]));

@@ -6,6 +6,8 @@
 // keeping what it has read, until every side is named. The event then goes in as a results page would send it, its medals from the
 // final and bronze match, as the extension counts a division not yet published. A results page
 // read later replaces it.
+import '../rules.js';
+
 const HOSTS = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36';
 const RUN = 50e3; // each run reads this long, then leaves the rest to the next minute's
@@ -17,7 +19,7 @@ const AT_ONCE = 6;
 // so the lane stops until the next minute.
 const SLOW = 300;
 const DAY = 864e5;
-const normalize = (s) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
+const { finishOf, normalize } = globalThis.SCWRRules;
 
 class Gone extends Error {}
 class Busy extends Error {}
@@ -79,7 +81,7 @@ async function schedule(get, base) {
     const sides = (m.seats ?? []).filter((s) => s.type === 'registration' && s.event_registration_id);
     if (!sides.length || seen.has(m.id)) continue;
     const winners = sides.filter((s) => s.isWinner);
-    const finish = m.state === 'finished' && sides.length === 2 && winners.length === 1 && m.wonBy ? (m.wonBy === 'forfeit' ? 'walkover' : String(m.wonBy)) : null;
+    const finish = m.state === 'finished' && sides.length === 2 && winners.length === 1 && m.wonBy ? String(m.wonBy) : null;
     seen.set(m.id, [m.id, m.group ?? '', m.name ?? '', finish, sides.map((s) => [s.event_registration_id, !!s.isWinner, s.name ?? null, s.club || null, s.country || null, s.affiliation || null]), m.state === 'finished']);
   }
   const matches = [...seen.values()];
@@ -91,7 +93,7 @@ async function schedule(get, base) {
 // the score, kept for the matches whose card is read. Cards are read only to name everyone (a card
 // for every match would be about 2.5 times the requests): matches naming two unknown sides first.
 // A card that fails leaves its sides to another match.
-const scored = (m) => m[3] && m[3] !== 'walkover' && m[4].length === 2;
+const scored = (m) => m[3] && finishOf(m[3]) !== 'walkover' && m[4].length === 2;
 const seconds = (t) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t.split(':')[0]) * 60 + Number(t.split(':')[1]) : null);
 async function name(get, host, data) {
   const users = data.users;
@@ -200,7 +202,7 @@ function results(data, start) {
         const bucket = s[1] ? x.e.wins : x.e.losses;
         bucket[finish] = (bucket[finish] ?? 0) + 1;
         if (s[1]) { x.w++; if (/^sub/.test(finish)) x.sub++; }
-        if (s[1] || finish !== 'walkover') x.shown = true;
+        if (s[1] || finishOf(finish) !== 'walkover') x.shown = true;
         const place = placeOf(stage, s[1], bronze);
         if (place) x.e.place = place;
       });
@@ -219,7 +221,7 @@ function results(data, start) {
     }
   }
   for (const [id, a] of Object.entries(athletes)) {
-    const count = (b) => Object.entries(b).reduce((n, [t, c]) => n + (t === 'walkover' ? 0 : c), 0);
+    const count = (b) => Object.entries(b).reduce((n, [t, c]) => n + (finishOf(t) === 'walkover' ? 0 : c), 0);
     const w = a.entries.reduce((n, e) => n + count(e.wins), 0);
     const l = a.entries.reduce((n, e) => n + count(e.losses), 0);
     if (w + l) records[id] = [w, l];

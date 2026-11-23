@@ -6,7 +6,7 @@ const SCWRMatches = (() => {
 const { eventId, url, store } = SCWRSite;
 
 // One scheduled match in the shape every consumer reads. The win type is
-// Smoothcomp's own code, so nothing is read out of prose, and a seat still
+// Smoothcomp's own code grouped by finish (rules.js), so nothing is read out of prose, and a seat still
 // waiting on another result ("Loser from 1-91") is not a side. A side names its
 // registration, not its user: only the registration list knows that. The stage
 // is where the match sits in its bracket: "Final", "Bronze match", "Match 3/10".
@@ -23,8 +23,9 @@ const toMatch = (m) => ({
   waiting: m.seats.filter((s) => s.type !== 'registration').map((s) => s.name),
   sides: m.seats.filter((s) => s.type === 'registration').map((s) => ({
     name: s.name, registrationId: String(s.event_registration_id), club: s.club || null, country: s.country || null,
-    won: s.isWinner ? (m.wonBy === 'forfeit' ? 'walkover' : m.wonBy) : null, // a forfeit is a walkover by another name
+    won: s.isWinner && m.wonBy ? SCWRRules.finishOf(m.wonBy) : null, // the finish it was won by
   })),
+  how: SCWRRules.detailOf(m.wonBy), // "Submission (armbar)", where the code is that fine
 });
 
 // 429 and 5xx are the server asking us to slow down, and a dropped connection

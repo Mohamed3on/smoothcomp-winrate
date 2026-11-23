@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Toggle } from '@/components/ui/toggle';
 import { Belt } from '@/components/stats';
 import { useApi } from '@/lib/api';
-import { BELTS, WIN_TYPES, type Filters } from '@/lib/filters';
+import { WIN_TYPES, type Filters } from '@/lib/filters';
+import { BELTS } from '@/lib/rules';
 import { typeName } from '@/lib/format';
 import { cn } from '@/lib/utils';
 

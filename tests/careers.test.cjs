@@ -28,8 +28,7 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000, share
     Date: class extends Date { static now() { return now; } },
     chrome: { storage: { local: area('local'), session: area('session') }, runtime: { onMessage: { addListener(fn) { listener = fn; } }, onMessageExternal: { addListener() {} } } },
   });
-  vm.runInContext(fs.readFileSync('career-cache.js', 'utf8'), context);
-  vm.runInContext(fs.readFileSync('background.js', 'utf8'), context);
+  for (const file of ['rules.js', 'career-cache.js', 'background.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
   return {
     storage,
     posts,
@@ -69,7 +68,7 @@ function page(w, fetcher, tab = 1, event) {
     location: { hostname: 'grapplingindustries.smoothcomp.com' }, fetch: async url => { fetched.push(url); return fetcher(url); },
     chrome: { runtime: { sendMessage: message => w.send(message, tab) }, storage: { onChanged: { addListener: w.onStorageChange } } } });
   vm.runInContext(fs.readFileSync('shared.js', 'utf8'), bridge);
-  for (const file of ['career-cache.js', 'careers.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+  for (const file of ['rules.js', 'career-cache.js', 'careers.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
   return { api: vm.runInContext('SCWRCareers', context), fetched, context, document, CustomEvent };
 }
 const json = data => new Response(JSON.stringify({ data }), { headers: { 'Content-Type': 'application/json' } });

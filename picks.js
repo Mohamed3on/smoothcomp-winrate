@@ -2,7 +2,7 @@
 // those they would top-seed. Pure — no DOM, no network, no storage — so the tests
 // can hold it to the labels organisers really write.
 const SCWRPicks = (() => {
-  const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
+  const { BELTS, beltsIn, isGrade } = SCWRRules;
   const kg = (unit) => (/lb/i.test(unit) ? 0.45359237 : 1);
 
   // What one category value asks of an athlete, read off the organiser's label:
@@ -21,8 +21,8 @@ const SCWRPicks = (() => {
       const limit = parseFloat(weight[1].replace(',', '.')) * kg(weight[2]);
       return { weight: /^\+|over/i.test(label) ? [limit, Infinity] : [0, limit] };
     }
-    const belts = BELTS.filter((belt) => new RegExp(`\\b${belt}`, 'i').test(label.replace(/gray/i, 'grey')));
-    if (belts.length || /belt|level|rank|skill|grade/i.test(category)) {
+    const belts = beltsIn(label);
+    if (belts.length || isGrade(category)) {
       return /all levels/i.test(label) ? { belts: BELTS } : belts.length ? { belts } : null;
     }
     if (/age|division/i.test(category)) {

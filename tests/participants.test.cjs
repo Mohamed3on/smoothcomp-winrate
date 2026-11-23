@@ -3,6 +3,9 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const { test } = require('node:test');
 
+// The shared rules, as the manifest loads them before the page script.
+const rules = () => { const context = vm.createContext({}); vm.runInContext(fs.readFileSync('rules.js', 'utf8'), context); return context.SCWRRules; };
+
 test('division medals update during loading and only depend on their own bracket', () => {
   const source = fs.readFileSync('participants.js', 'utf8');
   const careers = {
@@ -19,6 +22,7 @@ test('division medals update during loading and only depend on their own bracket
   };
   const context = vm.createContext({
     SCWRCache: { KEPT: 21 * 86400000 },
+    SCWRRules: rules(),
     SCWRCareers: { careers, ranks: {}, fresh: u => !!careers[u], configure() {} },
     SCWRSite: { store: { get() {} }, profileId: href => href.match(/profile\/(\d+)/)?.[1] },
     document: {
@@ -58,6 +62,7 @@ test('shared career changes reorder an already ranked bracket', () => {
   let configured;
   const context = vm.createContext({
     SCWRCache: { KEPT: 21 * 86400000 },
+    SCWRRules: rules(),
     SCWRCareers: { careers, ranks: {}, fresh: user => !!careers[user], configure(options) { configured = options; } },
     SCWRSite: { store: { get() {} } },
     document: { querySelectorAll: () => [] },
@@ -82,6 +87,7 @@ test('shared career changes reorder stacked bracket strengths', () => {
   let configured;
   const context = vm.createContext({
     SCWRCache: { KEPT: 21 * 86400000 },
+    SCWRRules: rules(),
     SCWRCareers: { careers, ranks: {}, fresh: user => !!careers[user], configure(options) { configured = options; } },
     SCWRSite: { store: { get() {} } }, document: { querySelectorAll: () => [] }, matchMedia: () => ({ matches: false }),
   });

@@ -1,7 +1,6 @@
 import { useLocation, useSearchParams } from 'wouter';
 
 export const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'] as const;
-export const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'] as const;
 // The keys that travel with every link, so following one keeps the ranking's terms.
 export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'athletes', 'active'] as const;
 // The kept keys each page reads: a link, and the page's own address, carry only those.

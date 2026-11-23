@@ -45,6 +45,7 @@
         "https://ajptour.com/*/event/*/participants*"
       ],
       "js": [
+        "rules.js",
         "site.js",
         "career-cache.js",
         "careers.js",
@@ -64,6 +65,7 @@
         "https://ajptour.com/*/event/*/results*"
       ],
       "js": [
+        "rules.js",
         "site.js",
         "matches.js",
         "model.js",
@@ -81,6 +83,7 @@
         "https://ajptour.com/*/profile/*"
       ],
       "js": [
+        "rules.js",
         "profile.js"
       ],
       "world": "MAIN",

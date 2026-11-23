@@ -2,9 +2,8 @@
 // shape of its URLs, the Vue app it renders with, and how long its numbers stay
 // worth keeping. Loaded first on every page, so the rest can stay about grappling.
 const SCWRSite = (() => {
-  // Canonical order, most decisive finish first. Other sports bring their own
-  // (ippon, tko, ...) and sort after these.
-  const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'];
+  // Every finish, most decisive first (rules.js): other sports' codes (ippon, tko, ...) count under one.
+  const WIN_TYPES = SCWRRules.FINISHES;
 
   // Smoothcomp uses ISO alpha-2 for countries and its own codes for a handful of
   // regions. Unicode has flag glyphs for only four of those — the three British
@@ -60,7 +59,7 @@ const SCWRSite = (() => {
 
   // One version stamp, one expiry rule, one place that survives a full disk.
   // Preferences use get/set and never expire; match data uses read/write and does.
-  const VERSION = 8;
+  const VERSION = 9;
   const FINAL_TTL = 12 * 60 * 60 * 1000;
   const LIVE_TTL = 5 * 60 * 1000;
   const store = {

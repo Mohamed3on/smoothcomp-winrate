@@ -2,11 +2,7 @@ const SCWRCache = (() => {
   const DAY = 24 * 60 * 60 * 1000;
   const KEPT = 21 * DAY;
   const PRIVATE = 30 * DAY;
-  const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
-  const oneBelt = (text) => {
-    const named = BELTS.filter(b => new RegExp(`\\b${b}`, 'i').test(text.replace(/gray/i, 'grey')));
-    return named.length === 1 ? named[0] : null;
-  };
+  const { BELTS } = SCWRRules;
   const whole = (n) => Number.isSafeInteger(n) && n >= 0;
   const fresh = (entry, kind = 'careers') => {
     if (!Number.isFinite(entry?.at) || entry.at > Date.now() + 60000) return false;
@@ -32,5 +28,5 @@ const SCWRCache = (() => {
     }
     return null;
   }
-  return { DAY, KEPT, PRIVATE, BELTS, oneBelt, fresh, clean };
+  return { DAY, KEPT, PRIVATE, fresh, clean };
 })();
