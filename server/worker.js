@@ -1,10 +1,10 @@
 // The career cache every install shares. Installs keep what they read here and
 // look up a whole event at once; each one cleans what it gets (career-cache.js),
 // so the worker only bounds what it stores.
-import { API, TALLY } from './stats.js';
+import { API, BOARD, CLUBS, EVENT_COUNTS, TALLY } from './stats.js';
 
-// Recounts these athletes' totals (stats.js TALLY), a few hundred at a time, at most as many as an
-// upload can store; one left with nothing to count loses its row.
+// Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), a few
+// hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
 async function retally(env, site, users) {
   const all = [...new Set(users)].filter(validUser).slice(0, 5000);
   const statements = [];
@@ -12,7 +12,8 @@ async function retally(env, site, users) {
     const some = JSON.stringify(all.slice(i, i + 400));
     statements.push(env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
-      AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some));
+      AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some),
+      ...BOARD.map((sql) => env.DB.prepare(sql).bind(site, some, 0)));
   }
   if (statements.length) await env.DB.batch(statements);
 }
@@ -59,6 +60,8 @@ async function keep(env, body) {
     SELECT ?1, value ->> 'user', value ->> 'kind', value ->> '$.entry.at', value ->> 'entry' FROM json_each(?2) WHERE true
     ON CONFLICT (site, user, kind) DO UPDATE SET at = excluded.at, entry = excluded.entry WHERE excluded.at > athletes.at`)
     .bind(body.site, JSON.stringify(rows)).run();
+  // A career or belt read changes their ranking row.
+  await retally(env, body.site, rows.map((row) => row.user));
   return json({});
 }
 
@@ -184,15 +187,24 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
 async function people(env, { site, athletes }) {
   if (!SITES.includes(site)) return json({ error: 'Bad people' }, 400);
   await identify(env, site, null, null, athletes, false);
-  // An event list read changes how many events they have and when they last fought.
-  await retally(env, site, Object.entries(athletes ?? {}).filter(([, a]) => Array.isArray(a?.history)).slice(0, 20).map(([user]) => user));
+  // An event list read changes how many events they have and when they last fought; a profile, who they are.
+  await retally(env, site, Object.keys(athletes ?? {}).slice(0, 20));
   return json({});
+}
+
+// After an event's entries change: its athletes' totals and ranking rows, its academies' names and
+// podiums, and its own counts.
+async function settle(env, site, event, users) {
+  await retally(env, site, users);
+  const ids = (await env.DB.prepare('SELECT DISTINCT club_id FROM entries WHERE site = ?1 AND event = ?2 AND club_id IS NOT NULL').bind(site, event).all()).results.map((row) => row.club_id);
+  await env.DB.batch([env.DB.prepare(CLUBS).bind(site, JSON.stringify(ids)), env.DB.prepare(EVENT_COUNTS).bind(site, event)]);
 }
 
 // A registration list's athletes and the event they entered.
 async function roster(env, { site, event, meta, athletes, read }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event)) return json({ error: 'Bad roster' }, 400);
   await identify(env, site, event, meta, athletes, false, readAt(read));
+  await settle(env, site, event, Object.keys(athletes ?? {}).slice(0, 5000));
   return json({});
 }
 
@@ -208,7 +220,7 @@ async function record(env, { site, event, records, meta, athletes, read }) {
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4) WHERE NOT EXISTS (SELECT 1 FROM records WHERE site = ?1 AND event = ?2 AND at > ?3)`)
     .bind(site, event, at, JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
   await identify(env, site, event, meta, athletes, true, at);
-  await retally(env, site, [...before, ...rows.map(([user]) => user), ...Object.keys(athletes ?? {}).slice(0, 5000)]);
+  await settle(env, site, event, [...before, ...rows.map(([user]) => user), ...Object.keys(athletes ?? {}).slice(0, 5000)]);
   return json({});
 }
 
@@ -299,6 +311,36 @@ async function profile(env, body) {
 
 const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile };
 
+// The site's reads, kept at Cloudflare's edge so most visits never reach the database. Seconds an
+// answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy
+// is made behind them, and an athlete's page is made again before it is served, so a profile just
+// opened shows within a minute. Reads go to the nearest read replica (a D1 session).
+const FRESH = { athletes: 600, teams: 600, event: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60 };
+const STALE_OK = new Set(['athletes', 'teams', 'event', 'team', 'events', 'search', 'countries', 'summary']);
+async function cached(request, ctx, name, make) {
+  const cache = caches.default;
+  const key = new Request(request.url, { method: 'GET' });
+  const fresh = FRESH[name] ?? 60;
+  const headers = (state) => ({ 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${Math.min(fresh, 30)}`, 'X-Cache': state });
+  const build = async () => {
+    const response = await make();
+    if (response.status !== 200) return response;
+    const body = await response.text();
+    ctx.waitUntil(cache.put(key, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${STALE_OK.has(name) ? 86400 : fresh}`, 'X-Stored': String(Date.now()) } })));
+    return new Response(body, { headers: headers('MISS') });
+  };
+  const hit = await cache.match(key);
+  if (hit) {
+    const age = (Date.now() - Number(hit.headers.get('X-Stored'))) / 1000;
+    if (age <= fresh) return new Response(hit.body, { headers: headers('HIT') });
+    if (STALE_OK.has(name)) {
+      ctx.waitUntil(build().catch(() => {}));
+      return new Response(hit.body, { headers: headers('STALE') });
+    }
+  }
+  return build();
+}
+
 // A page of the site, with a CSP nonce made for this response alone. Cloudflare's bot
 // detection injects an inline script and signs it with the nonce it finds in this header.
 async function page(request, env) {
@@ -313,19 +355,16 @@ async function page(request, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const { pathname, searchParams } = new URL(request.url);
     const read = pathname.startsWith('/api/') && API[pathname.slice(5)];
-    if (read) return request.method === 'GET' ? read(env, searchParams) : json({ error: 'Not found' }, 404);
+    if (read) return request.method === 'GET' ? cached(request, ctx, pathname.slice(5), () => read({ ...env, DB: env.DB.withSession() }, searchParams)) : json({ error: 'Not found' }, 404);
     if ((request.method === 'GET' || request.method === 'HEAD') && !pathname.startsWith('/api/')) return page(request, env);
     if (request.method !== 'POST' || !ROUTES[pathname]) return json({ error: 'Not found' }, 404);
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
     return ROUTES[pathname](env, body ?? {});
-  },
-  async scheduled(controller, env) {
-    await env.DB.prepare('DELETE FROM athletes WHERE at <= ?1').bind(Date.now() - KEPT).run();
   },
 };
 

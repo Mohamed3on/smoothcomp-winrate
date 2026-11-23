@@ -60,7 +60,7 @@ export function App() {
       </main>
       <footer className="border-t">
         <p className="mx-auto max-w-7xl px-6 py-6 text-xs text-muted-foreground">
-          Recounted by <a className="underline decoration-white/20 underline-offset-4 hover:text-foreground" href="https://chromewebstore.google.com/detail/foadjommplmenhenheolmdmkfmhjflpf">Mat Stats for Smoothcomp</a>: every install shares the careers and results it reads on Smoothcomp. Careers older than 30 days drop out until someone reads them again; an athlete without one ranks on their results at the events read.
+          Recounted by <a className="underline decoration-white/20 underline-offset-4 hover:text-foreground" href="https://chromewebstore.google.com/detail/foadjommplmenhenheolmdmkfmhjflpf">Mat Stats for Smoothcomp</a>: every install shares the careers and results it reads on Smoothcomp. Each athlete's latest career read counts; an athlete without one ranks on their results at the events read.
         </p>
       </footer>
     </div>

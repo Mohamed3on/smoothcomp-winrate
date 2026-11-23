@@ -144,3 +144,26 @@ CREATE TABLE IF NOT EXISTS tallies (
   last TEXT,
   PRIMARY KEY (site, user)
 );
+-- One row per athlete with everything a ranking shows (stats.js BOARD), rebuilt with their tally:
+-- who they are, and wins per finish group (w_: career or results; rw_/rl_: the record's won and lost;
+-- sl_: results losses), so a ranking sums the columns of the finishes counted.
+CREATE TABLE IF NOT EXISTS board (
+  site TEXT NOT NULL, user TEXT NOT NULL, source TEXT NOT NULL, at INTEGER, types TEXT,
+  name TEXT, club TEXT, club_id TEXT, country TEXT, country_name TEXT, photo TEXT, born INTEGER, hidden INTEGER, belt TEXT,
+  last TEXT, events INTEGER, gold INTEGER, silver INTEGER, bronze INTEGER,
+  w_submission INTEGER, w_points INTEGER, w_walkover INTEGER, w_decision INTEGER, w_disqualification INTEGER, w_stoppage INTEGER, w_fastest_escape INTEGER, w_other INTEGER,
+  rw_submission INTEGER, rw_points INTEGER, rw_walkover INTEGER, rw_decision INTEGER, rw_disqualification INTEGER, rw_stoppage INTEGER, rw_fastest_escape INTEGER, rw_other INTEGER,
+  rl_submission INTEGER, rl_points INTEGER, rl_walkover INTEGER, rl_decision INTEGER, rl_disqualification INTEGER, rl_stoppage INTEGER, rl_fastest_escape INTEGER, rl_other INTEGER,
+  sl_submission INTEGER, sl_points INTEGER, sl_walkover INTEGER, sl_decision INTEGER, sl_disqualification INTEGER, sl_stoppage INTEGER, sl_fastest_escape INTEGER, sl_other INTEGER,
+  PRIMARY KEY (site, user)
+);
+CREATE INDEX IF NOT EXISTS board_club ON board (site, club_id);
+-- Each academy's latest name and its podiums at the events read (stats.js CLUBS), kept as results arrive.
+CREATE TABLE IF NOT EXISTS clubs (
+  site TEXT NOT NULL, club_id TEXT NOT NULL, club TEXT, podium_gold INTEGER, podium_silver INTEGER, podium_bronze INTEGER, entered INTEGER,
+  PRIMARY KEY (site, club_id)
+);
+CREATE INDEX IF NOT EXISTS people_club ON people (site, club_id);
+CREATE INDEX IF NOT EXISTS events_start ON events (site, start);
+-- events.athletes/divisions/teams/fought: kept counts (stats.js EVENT_COUNTS).
+-- ALTER TABLE events ADD COLUMN athletes INTEGER; ALTER TABLE events ADD COLUMN divisions INTEGER; ALTER TABLE events ADD COLUMN teams INTEGER; ALTER TABLE events ADD COLUMN fought INTEGER;

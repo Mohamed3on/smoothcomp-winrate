@@ -9,8 +9,10 @@ binding = "DB"
 database_name = "mat-stats-careers"
 database_id = "63a2b393-f89d-4642-9ad7-e578cb2638e9"
 
+# No cron: careers are kept however old (the stats site shows the latest read; the extension's lookups
+# skip any past 30 days and read those again).
 [triggers]
-crons = ["17 4 * * *"]
+crons = []
 
 # The public stats site. The Worker answers first (pages get a fresh CSP nonce), except for the built files,
 # which keep site/public/_headers.
