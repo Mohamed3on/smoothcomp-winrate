@@ -151,36 +151,36 @@ export function EventPage({ id }: { id: string }) {
   // Won and lost bars share one scale: the most finishes anyone shown won or lost.
   const most = Math.max(1, ...shown.flatMap((p) => [winsOf(p.won, f.counted), winsOf(p.lost, f.counted)]));
   const athleteColumns: Column<Person>[] = [
-    { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => rank(i) },
+    { key: 'rank', label: '#', width: '3.5rem', compact: '3rem', align: 'start', cell: (_, i) => rank(i) },
     // Once fought, each division and their place there sits under the name, as in the extension.
-    { key: 'who', label: 'Athlete', width: fought ? undefined : '34%', align: 'start', cell: (p) => <Identity a={p} f={f}>{fought &&
+    { key: 'who', label: 'Athlete', width: fought ? undefined : '34%', compact: 'auto', align: 'start', cell: (p) => <Identity a={p} f={f}>{fought &&
       <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Place p={r.place} /><DivisionLink event={id} name={r.division} f={f} className="min-w-0 break-words" /></li>)}</ul>}</Identity> },
     ...(fought ? [] : [{ key: 'div', label: 'Brackets', align: 'start' as const, narrow: true, cell: (p: Person) =>
       <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Dot call={r.call} /><DivisionLink event={id} name={r.division} f={f} className="min-w-0 break-words" /></li>)}</ul> }]),
     ...(fought ? [
-      { key: 'record', label: 'Record', width: '5.5rem', cell: (p: Person) => <Record w={p.w} l={p.l} /> },
-      { key: 'rate', label: 'Win rate', width: '5.5rem', title: 'Wins over matches here, counted finishes', cell: (p: Person) => <span className="font-semibold">{rate(p.w, p.l) ?? '–'}</span> },
-      { key: 'won', label: 'How they won', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.won, f.counted) ? <Mix types={p.won} f={f} scale={winsOf(p.won, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
-      { key: 'lost', label: 'How they lost', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.lost, f.counted) ? <Mix types={p.lost} f={f} scale={winsOf(p.lost, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
+      { key: 'record', label: 'Record', width: '5.5rem', compact: '4.5rem', cell: (p: Person) => <Record w={p.w} l={p.l} /> },
+      { key: 'rate', label: 'Win rate', width: '5.5rem', compact: '4.5rem', title: 'Wins over matches here, counted finishes', cell: (p: Person) => <span className="font-semibold">{rate(p.w, p.l) ?? '–'}</span> },
+      { key: 'won', label: 'How they won', width: '13%', align: 'start' as const, narrow: true, cell: (p: Person) => (winsOf(p.won, f.counted) ? <Mix types={p.won} f={f} scale={winsOf(p.won, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
+      { key: 'lost', label: 'How they lost', width: '13%', align: 'start' as const, narrow: true, cell: (p: Person) => (winsOf(p.lost, f.counted) ? <Mix types={p.lost} f={f} scale={winsOf(p.lost, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
     ] : []),
-    ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', sort: 'expected', title: 'Rank by the medals their brackets point to, then career wins', cell: (p: Person) => <Expected e={expectedOf(p)} /> }]),
+    ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', compact: '8.5rem', narrow: fought, sort: 'expected', title: 'Rank by the medals their brackets point to, then career wins', cell: (p: Person) => <Expected e={expectedOf(p)} /> }]),
     ...(fought ? [] : [
-      { key: 'seed', label: 'Win rate', width: '6.5rem', sort: 'rate', title: 'Rank by career win rate, as brackets are seeded after belt: a short record leans to 50%', cell: (p: Person) => <Seed r={p} /> },
-      { key: 'subs', label: 'Subs', width: '5.5rem', sort: 'submission', title: 'Rank by career wins by submission', cell: (p: Person) => <Num n={p.rows[0].tally?.[1]} /> },
+      { key: 'seed', label: 'Win rate', width: '6.5rem', narrow: true, sort: 'rate', title: 'Rank by career win rate, as brackets are seeded after belt: a short record leans to 50%', cell: (p: Person) => <Seed r={p} /> },
+      { key: 'subs', label: 'Subs', width: '5.5rem', narrow: true, sort: 'submission', title: 'Rank by career wins by submission', cell: (p: Person) => <Num n={p.rows[0].tally?.[1]} /> },
     ]),
-    { key: 'career', label: 'Career wins', width: '8rem', sort: 'career', title: 'Rank by wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },
+    { key: 'career', label: 'Career wins', width: '8rem', narrow: true, sort: 'career', title: 'Rank by wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },
   ];
   const academyColumns: Column<Academy>[] = [
-    { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => rank(i) },
+    { key: 'rank', label: '#', width: '3.5rem', compact: '3rem', align: 'start', cell: (_, i) => rank(i) },
     { key: 'name', label: 'Academy', align: 'start', cell: (t) => t.id ? <Link href={f.link(`/academy/${t.id}`)} className="font-medium hover:text-primary">{t.name ?? `Academy ${t.id}`}</Link> : <span className="font-medium">{t.name}</span> },
-    { key: 'athletes', label: 'Athletes', width: '8rem', cell: (t) => <Num n={t.athletes} /> },
+    { key: 'athletes', label: 'Athletes', width: '8rem', narrow: true, cell: (t) => <Num n={t.athletes} /> },
     ...(fought ? [
-      { key: 'medals', label: 'Medals', width: '12rem', cell: (t: Academy) => <Medals g={t.g} s={t.s} b={t.b} /> },
-      { key: 'record', label: 'Record', width: '8rem', cell: (t: Academy) => <Record w={t.w} l={t.l} /> },
-      ...(live ? [{ key: 'expected', label: 'Still expected', width: '12rem', title: 'Medals the brackets not yet decided point to, by career wins', cell: (t: Academy) => <Expected e={t.expected} /> }] : []),
+      { key: 'medals', label: 'Medals', width: '12rem', compact: '8.5rem', cell: (t: Academy) => <Medals g={t.g} s={t.s} b={t.b} /> },
+      { key: 'record', label: 'Record', width: '8rem', narrow: true, cell: (t: Academy) => <Record w={t.w} l={t.l} /> },
+      ...(live ? [{ key: 'expected', label: 'Still expected', width: '12rem', narrow: true, title: 'Medals the brackets not yet decided point to, by career wins', cell: (t: Academy) => <Expected e={t.expected} /> }] : []),
     ] : [
-      { key: 'expected', label: 'Expected medals', width: '12rem', sort: 'expected', title: 'Rank by the medals their brackets point to, by career wins', cell: (t: Academy) => <Expected e={t.expected} /> },
-      { key: 'career', label: 'Career wins', width: '9rem', sort: 'career', title: "Rank by their entrants' career wins added up", cell: (t: Academy) => <Num n={t.career} /> },
+      { key: 'expected', label: 'Expected medals', width: '12rem', compact: '8.5rem', sort: 'expected', title: 'Rank by the medals their brackets point to, by career wins', cell: (t: Academy) => <Expected e={t.expected} /> },
+      { key: 'career', label: 'Career wins', width: '9rem', narrow: true, sort: 'career', title: "Rank by their entrants' career wins added up", cell: (t: Academy) => <Num n={t.career} /> },
     ]),
   ];
   const roster = (t: Academy) => (
@@ -212,17 +212,17 @@ export function EventPage({ id }: { id: string }) {
     </ol>
   );
   const podiumColumns: Column<Division>[] = [
-    { key: 'name', label: 'Division', width: '34%', align: 'start', cell: (d) => <div className="flex flex-col gap-0.5"><DivisionLink event={id} name={d.name} f={f} className="font-medium" /><span className="text-xs text-muted-foreground">{plural(d.rows.length, 'athlete')}</span></div> },
-    ...[1, 2, 3].map((place) => ({ key: `p${place}`, label: ['Gold', 'Silver', 'Bronze'][place - 1], align: 'start' as const, cell: (d: Division) => {
+    { key: 'name', label: 'Division', width: '34%', compact: '45%', align: 'start', cell: (d) => <div className="flex flex-col gap-0.5"><DivisionLink event={id} name={d.name} f={f} className="font-medium" /><span className="text-xs text-muted-foreground">{plural(d.rows.length, 'athlete')}</span></div> },
+    ...[1, 2, 3].map((place) => ({ key: `p${place}`, label: ['Gold', 'Silver', 'Bronze'][place - 1], align: 'start' as const, narrow: place > 1, cell: (d: Division) => {
       const at = d.rows.filter((r) => r.place === place);
       return at.length ? <div className="flex flex-col gap-1">{at.map((r) => <span key={r.user} className="flex items-center gap-2"><Place p={place} /><NameLink e={r} f={f} /></span>)}</div> : <span className="text-muted-foreground">–</span>;
     } })),
   ];
   const divisionColumns: Column<Division>[] = [
-    { key: 'name', label: 'Division', width: '40%', align: 'start', cell: (d) => <DivisionLink event={id} name={d.name} f={f} className="font-medium" /> },
-    { key: 'size', label: 'Athletes', width: '7rem', sort: 'athletes', cell: (d) => <Num n={d.rows.length} /> },
-    { key: 'wins', label: 'Career wins', width: '9rem', sort: 'wins', title: "Rank by the entrants' career wins added up", cell: (d) => <div className="flex flex-col items-end"><Num n={d.wins} /><span className="text-xs text-muted-foreground">{fmt(Math.round(d.wins / d.rows.length))} per athlete</span></div> },
-    { key: 'top', label: fought ? 'Podium, or the expected one by belt and win rate' : 'Expected podium, by belt and win rate', align: 'start', cell: (d) => (
+    { key: 'name', label: 'Division', width: '40%', compact: 'auto', align: 'start', cell: (d) => <DivisionLink event={id} name={d.name} f={f} className="font-medium" /> },
+    { key: 'size', label: 'Athletes', width: '7rem', compact: '5.5rem', sort: 'athletes', cell: (d) => <Num n={d.rows.length} /> },
+    { key: 'wins', label: 'Career wins', width: '9rem', compact: '6.5rem', sort: 'wins', title: "Rank by the entrants' career wins added up", cell: (d) => <div className="flex flex-col items-end"><Num n={d.wins} /><span className="text-xs text-muted-foreground">{fmt(Math.round(d.wins / d.rows.length))} per athlete</span></div> },
+    { key: 'top', label: fought ? 'Podium, or the expected one by belt and win rate' : 'Expected podium, by belt and win rate', align: 'start', narrow: true, cell: (d) => (
       <div className="flex flex-col gap-1">{d.rows.slice(0, 3).map((r) => <span key={r.user} className="flex items-center gap-2 text-xs">{r.place != null ? <Place p={r.place} /> : <Dot call={r.call} />}<Photo name={r.name} photo={r.photo} className="size-5" /><NameLink e={r} f={f} /><span className="ml-auto"><Seed r={r} row /></span></span>)}</div>
     ) },
   ];

@@ -14,6 +14,7 @@ import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
 import { BELTS, beltOf, beltSplit, eventRecords, finishOf, normalize, rivalsOf, totals } from '@/lib/rules';
 import { cn } from '@/lib/utils';
+import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
 
 interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; belts?: Belts | null; profile?: Profile | null; seen: { wins: number; losses: number; events: number } | null }
@@ -354,10 +355,10 @@ const AtBelt = ({ belt }: { belt: string | null }) => (belt
 
 export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisions: boolean }) {
   return (
-    <li className="flex min-w-0 items-center gap-2.5 text-sm">
+    <li className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-sm">
       <Photo name={m.opponent} photo={m.image} className="size-6" />
       <span className={cn('shrink-0 text-xs font-semibold', m.won ? 'text-won' : 'text-lost')}>{m.won ? 'Beat' : 'Lost to'}</span>
-      <span className="min-w-0 break-words">{m.user ? <Link href={f.link(`/athlete/${m.user}`)} className="font-medium hover:text-primary">{m.opponent ?? 'Unknown opponent'}</Link> : <span className="font-medium">{m.opponent ?? 'Unknown opponent'}</span>}{m.club && <span className="text-muted-foreground"> · {m.club}</span>}</span>
+      <span className="min-w-0 grow basis-32 break-words">{m.user ? <Link href={f.link(`/athlete/${m.user}`)} className="font-medium hover:text-primary">{m.opponent ?? 'Unknown opponent'}</Link> : <span className="font-medium">{m.opponent ?? 'Unknown opponent'}</span>}{m.club && <span className="text-muted-foreground"> · {m.club}</span>}</span>
       <span className="ml-auto flex max-w-[55%] flex-wrap items-center justify-end gap-x-1.5 pl-3 text-right text-xs text-muted-foreground">
         {m.type && <><i className="size-2 rounded-full" style={{ background: dot(m.type) }} /><span className="text-foreground/85">{m.how || typeName(m.type)}</span></>}
         {scoreOf(m) && <span className="tabular-nums">· {scoreOf(m)}</span>}
@@ -370,12 +371,14 @@ export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisio
 
 // A division's club shows only where it isn't their own.
 function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters; against: Rival | null; show: Show; club: string | null }) {
+  // Phones drop the date and division columns, so the match list spans event, place and record.
+  const phone = !useMedia('(width >= 40rem)');
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <Table className="table-fixed">
         <TableHeader><TableRow className="hover:bg-transparent">
-          <TableHead className="w-28 pl-5">Date</TableHead><TableHead className="w-[30%]">Event</TableHead><TableHead>Division</TableHead>
-          <TableHead className="w-36 text-right">Place or medals</TableHead><TableHead className="w-24 pr-5 text-right">Record</TableHead>
+          <TableHead className="w-28 pl-5 max-sm:hidden">Date</TableHead><TableHead className="max-sm:pl-3 sm:w-[30%]">Event</TableHead><TableHead className="max-sm:hidden">Division</TableHead>
+          <TableHead className="w-20 text-right sm:w-36">Place<span className="max-sm:hidden"> or medals</span></TableHead><TableHead className="w-16 pr-3 text-right sm:w-24 sm:pr-5">Record</TableHead>
         </TableRow></TableHeader>
         <TableBody>
           {list.map((row) => {
@@ -391,18 +394,20 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
               ...Array.from({ length: span }, (_, k) => {
                 const d = divisions[k];
                 const e = d && !Array.isArray(d) ? d : undefined;
+                const division = e
+                  ? <><span className="flex items-start gap-2"><AtBelt belt={beltOf(e.division) ?? beltAt([...(row.read ?? []).map((x) => x.division), ...named])} /><DivisionLink event={row.id} name={e.division} f={f} /></span>{e.club && normalize(e.club) !== normalize(club) && <span className="block pl-[30px] text-xs">{e.club}</span>}</>
+                  : Array.isArray(d) ? d.map((x) => <span key={x} className="flex items-start gap-2"><AtBelt belt={beltOf(x) ?? beltAt(d)} />{x}</span>) : '';
                 return (
                   <TableRow key={`${row.id}-${k}`} className={cn((k < span - 1 || shown.length) && 'border-b-0', 'hover:bg-transparent')}>
-                    <TableCell className="pl-5 align-top text-muted-foreground">{k ? '' : date(row.start)}</TableCell>
-                    <TableCell className="align-top whitespace-normal">{k ? '' : <div className="flex items-start gap-3">{row.listed?.image && <img src={row.listed.image} alt="" loading="lazy" className="mt-0.5 hidden aspect-[16/9] w-16 shrink-0 rounded-md object-cover outline outline-1 -outline-offset-1 outline-white/10 lg:block" />}<div className="flex min-w-0 flex-col gap-0.5"><EventLink row={row} f={f} />{row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}</div></div>}</TableCell>
-                    <TableCell className="align-top whitespace-normal text-muted-foreground">{e
-                      ? <><span className="flex items-start gap-2"><AtBelt belt={beltOf(e.division) ?? beltAt([...(row.read ?? []).map((x) => x.division), ...named])} /><DivisionLink event={row.id} name={e.division} f={f} /></span>{e.club && normalize(e.club) !== normalize(club) && <span className="block pl-[30px] text-xs">{e.club}</span>}</>
-                      : Array.isArray(d) ? d.map((x) => <span key={x} className="flex items-start gap-2"><AtBelt belt={beltOf(x) ?? beltAt(d)} />{x}</span>) : ''}</TableCell>
+                    <TableCell className="pl-5 align-top text-muted-foreground max-sm:hidden">{k ? '' : date(row.start)}</TableCell>
+                    <TableCell className="align-top whitespace-normal max-sm:pl-3">{k ? '' : <div className="flex items-start gap-3">{row.listed?.image && <img src={row.listed.image} alt="" loading="lazy" className="mt-0.5 hidden aspect-[16/9] w-16 shrink-0 rounded-md object-cover outline outline-1 -outline-offset-1 outline-white/10 lg:block" />}<div className="flex min-w-0 flex-col gap-0.5"><EventLink row={row} f={f} />{row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}<span className="text-xs text-muted-foreground sm:hidden">{date(row.start)}</span></div></div>}
+                      {division && <div className={cn('text-muted-foreground sm:hidden', !k && 'mt-2')}>{division}</div>}</TableCell>
+                    <TableCell className="align-top whitespace-normal text-muted-foreground max-sm:hidden">{division}</TableCell>
                     <TableCell className="text-right align-top">
                       {e?.fought ? <Place p={e.place} /> : !k && row.listed && (row.listed.gold || row.listed.silver || row.listed.bronze) && !read.length
-                        ? <Medals g={row.listed.gold} s={row.listed.silver} b={row.listed.bronze} /> : e && !e.fought ? <span className="text-xs text-muted-foreground">Entered</span> : <span className="text-muted-foreground">{k ? '' : '–'}</span>}
+                        ? <Medals g={row.listed.gold} s={row.listed.silver} b={row.listed.bronze} className="flex-wrap" /> : e && !e.fought ? <span className="text-xs text-muted-foreground">Entered</span> : <span className="text-muted-foreground">{k ? '' : '–'}</span>}
                     </TableCell>
-                    <TableCell className="pr-5 text-right align-top">
+                    <TableCell className="pr-3 text-right align-top sm:pr-5">
                       {e?.fought ? <Record w={winsOf(e.wins, f.counted)} l={winsOf(e.losses, f.counted)} />
                         : !k && fin && !read.length ? <Record w={fin[0]} l={fin[1]} />
                         : !k && row.listed?.wins != null && !read.length ? <span><b className="font-semibold">{row.listed.wins}</b> <span className="text-xs text-muted-foreground">{row.listed.wins === 1 ? 'win' : 'wins'}</span></span> : ''}
@@ -412,8 +417,8 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
               }),
               shown.length > 0 && (
                 <TableRow key={`${row.id}-m`} className="hover:bg-transparent">
-                  <TableCell />
-                  <TableCell colSpan={4} className="pt-0 pr-5 pb-3 whitespace-normal">
+                  <TableCell className="max-sm:hidden" />
+                  <TableCell colSpan={phone ? 3 : 4} className="pt-0 pr-3 pb-3 whitespace-normal max-sm:pl-3 sm:pr-5">
                     <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">
                       {/* With more than one division there, each division's matches sit under its name. */}
                       {[...Map.groupBy(shown, (m) => ((row.read?.length ?? named.length) > 1 ? m.division ?? null : null))].map(([division, ms]) => [
@@ -480,7 +485,8 @@ export function AthletePage({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center gap-5">
         <Photo name={a.name} photo={a.photo} className="size-20 text-lg" />
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        {/* basis-60 sends the buttons to their own row before the details get squeezed. */}
+        <div className="flex min-w-0 flex-1 basis-60 flex-col gap-2">
           <h1 className="text-3xl font-semibold tracking-tight">{a.name ?? `Athlete ${id}`}</h1>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {(a.country || a.country_name) && <span className="inline-flex items-center gap-1.5"><Flag code={a.country} name={a.country_name} />{a.country_name ?? a.country?.toUpperCase()}</span>}

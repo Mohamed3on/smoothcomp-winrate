@@ -36,12 +36,12 @@ export function DivisionPage({ id }: { id: string }) {
   const matchesOf = (r: Row): Meeting[] => (r.bouts ?? []).map((b) => ({ won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock }));
   const columns: Column<(typeof rows)[number]>[] = [
     fought
-      ? { key: 'place', label: 'Place', width: '5rem', align: 'start', cell: (r) => <Place p={r.place} /> }
-      : { key: 'seed', label: 'Seed', width: '5rem', align: 'start', title: 'Seeded by belt where belts mix, then career win rate; the dot is the medal it points to', cell: (r, i) => <span className="flex items-center gap-3"><span className="w-5 text-muted-foreground">{i + 1}</span><Dot call={r.call} /></span> },
+      ? { key: 'place', label: 'Place', width: '5rem', compact: '4rem', align: 'start', cell: (r) => <Place p={r.place} /> }
+      : { key: 'seed', label: 'Seed', width: '5rem', compact: '4rem', align: 'start', title: 'Seeded by belt where belts mix, then career win rate; the dot is the medal it points to', cell: (r, i) => <span className="flex items-center gap-3"><span className="w-5 text-muted-foreground">{i + 1}</span><Dot call={r.call} /></span> },
     { key: 'who', label: 'Athlete', align: 'start', cell: (r) => <Identity a={r} f={f} /> },
-    ...(fought ? [{ key: 'record', label: 'Record', width: '7rem', cell: (r: (typeof rows)[number]) => <Record w={r.w} l={r.l} /> }]
-      : [{ key: 'rate', label: 'Win rate', width: '7rem', title: 'Career win rate and record, as the bracket is seeded', cell: (r: (typeof rows)[number]) => <Seed r={r} /> }]),
-    { key: 'career', label: 'Career wins', width: '8rem', title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (r) => <Num n={r.career_wins} /> },
+    ...(fought ? [{ key: 'record', label: 'Record', width: '7rem', compact: '4.5rem', cell: (r: (typeof rows)[number]) => <Record w={r.w} l={r.l} /> }]
+      : [{ key: 'rate', label: 'Win rate', width: '7rem', compact: '4.5rem', title: 'Career win rate and record, as the bracket is seeded', cell: (r: (typeof rows)[number]) => <Seed r={r} /> }]),
+    { key: 'career', label: 'Career wins', width: '8rem', narrow: true, title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (r) => <Num n={r.career_wins} /> },
   ];
   const matches = (r: Row) => {
     const list = matchesOf(r);

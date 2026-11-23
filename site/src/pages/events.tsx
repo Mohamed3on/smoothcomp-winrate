@@ -11,16 +11,16 @@ export function EventsPage() {
   const f = useFilters();
   const { data, isLoading, isFetching } = useApi<{ rows: EventRow[] }>('events', { site: f.site, limit: 2000 });
   const columns: Column<EventRow>[] = [
-    { key: 'date', label: 'Date', width: '9rem', align: 'start', cell: (e) => <span className="text-muted-foreground">{date(e.start)}</span> },
+    { key: 'date', label: 'Date', width: '9rem', compact: '6rem', align: 'start', cell: (e) => <span className="text-muted-foreground">{date(e.start)}</span> },
     { key: 'event', label: 'Event', align: 'start', cell: (e) => (
       <div className="flex flex-col gap-0.5">
         <Link href={f.link(`/event/${e.event}`)} className="font-medium hover:text-primary">{e.title ?? `Event ${e.event}`}</Link>
         <span className="text-xs text-muted-foreground">{[e.city, e.organiser].filter(Boolean).join(' · ')}</span>
       </div>) },
-    { key: 'athletes', label: 'Athletes', width: '8rem', cell: (e) => <Num n={e.athletes} /> },
+    { key: 'athletes', label: 'Athletes', width: '8rem', compact: '4.5rem', cell: (e) => <Num n={e.athletes} /> },
     { key: 'divisions', label: 'Divisions', width: '8rem', narrow: true, cell: (e) => <Num n={e.divisions} /> },
     { key: 'teams', label: 'Academies', width: '8rem', narrow: true, cell: (e) => <Num n={e.teams} /> },
-    { key: 'state', label: 'Read', width: '9rem', cell: (e) => e.fought ? <Badge variant="secondary">Results</Badge> : isUpcoming(e.start) ? <Badge variant="outline" className="border-primary/40 text-primary">Upcoming</Badge> : <Badge variant="outline">Entrants</Badge> },
+    { key: 'state', label: 'Read', width: '9rem', narrow: true, cell: (e) => e.fought ? <Badge variant="secondary">Results</Badge> : isUpcoming(e.start) ? <Badge variant="outline" className="border-primary/40 text-primary">Upcoming</Badge> : <Badge variant="outline">Entrants</Badge> },
   ];
   return (
     <>

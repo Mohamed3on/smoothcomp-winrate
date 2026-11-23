@@ -15,17 +15,17 @@ export function AcademiesPage() {
   const f = useFilters();
   const { data, isFetching, isLoading } = useApi<{ rows: Team[]; total: number }>('teams', { ...f.query, athletes: f.get('athletes') || 3, limit: 2000 });
   const columns: Column<Team>[] = [
-    { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
+    { key: 'rank', label: '#', width: '3.5rem', compact: '3rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
     { key: 'club', label: 'Academy', align: 'start', cell: (t) => (
       <div className="flex flex-col gap-0.5">
         <Link href={f.link(`/academy/${t.club_id}`)} className="font-medium break-words hover:text-primary">{t.club ?? `Academy ${t.club_id}`}</Link>
         <span className="text-xs text-muted-foreground">{t.entered ? `${plural(t.entered, 'event')} with results` : 'No results read yet'}</span>
       </div>) },
-    { key: 'athletes', label: 'Athletes', width: '8%', sort: 'athletes', title: 'Athletes who pass the filters', cell: (t) => <Num n={t.athletes} /> },
-    { key: 'wins', label: 'Wins', width: '8%', sort: 'wins', cell: (t) => <Num n={t.wins} /> },
+    { key: 'athletes', label: 'Athletes', width: '8%', compact: '5.5rem', sort: 'athletes', title: 'Athletes who pass the filters', cell: (t) => <Num n={t.athletes} /> },
+    { key: 'wins', label: 'Wins', width: '8%', compact: '4.5rem', sort: 'wins', cell: (t) => <Num n={t.wins} /> },
     { key: 'avg', label: 'Per athlete', width: '9%', sort: 'average', narrow: true, cell: (t) => (t.wins / t.athletes).toFixed(1) },
-    { key: 'podiums', label: 'Medals', width: '14%', sort: 'podiums', title: 'Medals won for this academy at the events Mat Stats has read results for', cell: (t) => <Medals g={t.podium_gold} s={t.podium_silver} b={t.podium_bronze} /> },
-    { key: 'top', label: 'Top athletes', width: '22%', align: 'start', cell: (t) => (
+    { key: 'podiums', label: 'Medals', width: '14%', sort: 'podiums', narrow: true, title: 'Medals won for this academy at the events Mat Stats has read results for', cell: (t) => <Medals g={t.podium_gold} s={t.podium_silver} b={t.podium_bronze} /> },
+    { key: 'top', label: 'Top athletes', width: '22%', align: 'start', narrow: true, cell: (t) => (
       <div className="flex flex-col gap-1">
         {t.top.map((a) => (
           <Link key={a.user} href={f.link(`/athlete/${a.user}`)} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground hover:text-primary">

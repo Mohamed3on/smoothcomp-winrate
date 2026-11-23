@@ -33,12 +33,13 @@ export function Search({ f }: { f: Filters }) {
   return (
     <>
       {/* Typing on the box starts the search with that letter. */}
-      <button type="button" onClick={() => setOpen(true)}
+      {/* Below md only the icon shows. */}
+      <button type="button" onClick={() => setOpen(true)} aria-label="Search athletes, academies, events"
         onKeyDown={(e) => { if (e.key.length === 1 && e.key !== ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setQ(e.key); setOpen(true); } }}
-        className="flex h-8 w-80 items-center gap-2 rounded-lg border border-input/30 bg-input/30 px-2 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
-        <SearchIcon className="size-4 shrink-0 opacity-50" />
-        <span className="truncate">Search athletes, academies, events</span>
-        <kbd className="ml-auto rounded border border-border px-1.5 font-sans text-xs">{MOD}K</kbd>
+        className="flex size-8 items-center justify-center gap-2 rounded-lg border border-input/30 bg-input/30 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring md:w-48 md:justify-start md:px-2 lg:w-80">
+        <SearchIcon className="size-4 shrink-0 md:opacity-50" />
+        <span className="truncate max-md:hidden">Search athletes, academies, events</span>
+        <kbd className="ml-auto rounded border border-border px-1.5 font-sans text-xs max-md:hidden">{MOD}K</kbd>
       </button>
       <CommandDialog open={open} onOpenChange={setOpen} title="Search" description="Find an athlete, academy or event." className="sm:max-w-xl">
         <Command shouldFilter={false}>

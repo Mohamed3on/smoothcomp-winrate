@@ -68,7 +68,7 @@ export function Identity({ a, f, club = true, children }: { a: Person; f: Filter
           <a href={`${f.home}/en/profile/${a.user}`} rel="noopener" title={on} aria-label={on}
             className="-m-1 shrink-0 rounded p-1 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><ExternalLink className="size-3" /></a>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <Flag code={a.country ?? null} name={a.country_name} className="text-sm" />
           <Belt belt={a.belt ?? null} />
           <Age born={a.born ?? null} />
