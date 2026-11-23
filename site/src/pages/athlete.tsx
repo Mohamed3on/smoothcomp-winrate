@@ -200,10 +200,10 @@ function MatchLine({ m, divisions }: { m: Meeting; divisions: boolean }) {
       <Photo name={m.opponent} photo={m.image} className="size-6" />
       <span className={cn('shrink-0 text-xs font-semibold', m.won ? 'text-won' : 'text-lost')}>{m.won ? 'Beat' : 'Lost to'}</span>
       <span className="min-w-0 break-words"><span className="font-medium">{m.opponent ?? 'Unknown opponent'}</span>{m.club && <span className="text-muted-foreground"> · {m.club}</span>}</span>
-      <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-3 text-xs text-muted-foreground">
+      <span className="ml-auto flex max-w-[55%] flex-wrap items-center justify-end gap-x-1.5 pl-3 text-right text-xs text-muted-foreground">
         {m.type && <><i className="size-2 rounded-full" style={{ background: dot(m.type) }} /><span className="text-foreground/85">{m.how || typeName(m.type)}</span></>}
         {m.stage && <span>{m.type ? '· ' : ''}{m.stage}</span>}
-        {divisions && m.division && <span className="max-w-72 truncate" title={m.division}>· {m.division}</span>}
+        {divisions && m.division && <span>· {m.division}</span>}
       </span>
     </li>
   );
