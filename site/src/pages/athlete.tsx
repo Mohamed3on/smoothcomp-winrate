@@ -55,19 +55,19 @@ function meetingsOf(o: Outcome | undefined): Meeting[] {
   if (!o) return [];
   const losses = [...o.out.losses];
   const out: Meeting[] = (o.out.faced ?? []).map((m) => {
-    if (m.won) return { won: true, opponent: m.name, club: m.club, image: m.image, type: m.type, how: m.how, division: m.division, stage: m.stage };
+    if (m.won) return { won: true, opponent: m.name, club: m.club, image: m.image, type: m.type, how: m.how, division: m.division, stage: m.stage, user: m.user };
     const i = losses.findIndex((l) => person(l.opponent) === person(m.name));
-    return i < 0 ? { won: false, opponent: m.name, club: m.club, image: m.image } : { ...losses.splice(i, 1)[0], won: false };
+    return i < 0 ? { won: false, opponent: m.name, club: m.club, image: m.image, user: m.user } : { ...losses.splice(i, 1)[0], won: false };
   });
   return [...out, ...losses.map((l) => ({ ...l, won: false }))];
 }
 // An event's matches: their profile's match list where it was read, else the matches the results
 // read there give, each division's in the order fought. The match lists don't name an opponent's
-// account, so it is taken from the results read there.
+// account: the server finds it among their divisions' entrants, else the results read there give it.
 const meetingsOfRow = (r: Row): Meeting[] => {
   if (!r.outcome) return boutsOf(r);
   const ids = new Map(boutsOf(r).map((m) => [person(m.opponent), m.user]));
-  return meetingsOf(r.outcome).map((m) => ({ ...m, user: ids.get(person(m.opponent)) }));
+  return meetingsOf(r.outcome).map((m) => ({ ...m, user: m.user ?? ids.get(person(m.opponent)) }));
 };
 const boutsOf = (r: Row): Meeting[] => (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
     won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock,

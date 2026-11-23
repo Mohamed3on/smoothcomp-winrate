@@ -201,7 +201,7 @@ async function athlete(env, params) {
   const f = filters(params);
   const user = params.get('id') ?? '';
   if (!/^\d{1,12}$/.test(user)) return json({ error: 'Bad athlete' }, 400);
-  const [career, person, entries, seen, history, outcomes, belts, extras] = await env.DB.batch([
+  const [career, person, entries, seen, history, outcomes, belts, extras, rivals] = await env.DB.batch([
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT * FROM careers WHERE user = ?4`).bind(f.site, f.off, Date.now() - KEPT, user),
     env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
@@ -215,7 +215,15 @@ async function athlete(env, params) {
     env.DB.prepare("SELECT worn, starts FROM belts WHERE site = ?1 AND user = ?2").bind(f.site, user),
     // Belts in each art, rankings, academy and affiliation, match videos, as their profile shows them.
     env.DB.prepare('SELECT entry FROM profiles WHERE site = ?1 AND user = ?2').bind(f.site, user),
+    // Everyone in their divisions, so each opponent the match lists name (by name alone) links to their page.
+    env.DB.prepare(`SELECT DISTINCT e.event, e.user, p.name FROM entries mine CROSS JOIN entries e ON e.site = mine.site AND e.event = mine.event AND e.division = mine.division AND e.user != mine.user
+      JOIN people p ON p.site = e.site AND p.user = e.user WHERE mine.site = ?1 AND mine.user = ?2`).bind(f.site, user),
   ]);
+  // An opponent links to the one entrant in their divisions there who goes by that name.
+  const key = (event, name) => `${event} ${String(name ?? '').trim().toLowerCase().replace(/\s+/g, ' ')}`;
+  const met = new Map();
+  for (const r of rivals.results) { const k = key(r.event, r.name); met.set(k, met.has(k) && met.get(k) !== r.user ? null : r.user); }
+  const link = (event, name, m) => ({ ...m, user: met.get(key(event, name)) ?? null });
   if (!career.results.length && !person.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
   return json({
     history: history.results,
@@ -223,7 +231,10 @@ async function athlete(env, params) {
     person: person.results[0] ?? null,
     entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses), bouts: e.bouts ? JSON.parse(e.bouts) : null })),
     seen: seen.results[0]?.events ? seen.results[0] : null,
-    outcomes: outcomes.results.map((o) => ({ ...o, out: JSON.parse(o.out) })),
+    outcomes: outcomes.results.map((o) => {
+      const out = JSON.parse(o.out);
+      return { ...o, out: { ...out, faced: (out.faced ?? []).map((m) => link(o.event, m.name, m)), losses: (out.losses ?? []).map((l) => link(o.event, l.opponent, l)) } };
+    }),
     profile: extras.results[0] ? JSON.parse(extras.results[0].entry) : null,
     belts: belts.results[0] ? { worn: JSON.parse(belts.results[0].worn), starts: JSON.parse(belts.results[0].starts) } : null,
   }, 200, 'no-store'); // a profile just opened shows at once
