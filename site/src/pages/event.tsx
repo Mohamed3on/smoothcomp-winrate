@@ -73,7 +73,11 @@ export function EventPage({ id }: { id: string }) {
     return { name, rows, wins: rows.reduce((n, r) => n + (r.career ?? 0), 0) };
   });
   const calls = Map.groupBy(divisions.flatMap((d) => d.rows.filter((r) => r.call)), (r) => r.user);
-  const people: Person[] = [...Map.groupBy(divisions.flatMap((d) => d.rows), (e) => e.user).values()].map((rows) => ({
+  // Each athlete's divisions: best place (or the medal expected there) first, then the biggest bracket.
+  const size = new Map(divisions.map((d) => [d.name, d.rows.length]));
+  const seat = (r: Ranked) => r.place ?? (r.call ? r.call.medal + 1 : 999);
+  const bySeat = (a: Ranked, b: Ranked) => seat(a) - seat(b) || (size.get(b.division.trim()) ?? 0) - (size.get(a.division.trim()) ?? 0);
+  const people: Person[] = [...Map.groupBy(divisions.flatMap((d) => d.rows), (e) => e.user).values()].map((rows) => rows.toSorted(bySeat)).map((rows) => ({
     ...rows[0], belt: beltAt(rows.map((r) => r.division)), rows, w: rows.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), l: rows.reduce((n, r) => n + winsOf(r.losses, f.counted), 0),
     won: sum(rows.map((r) => r.wins)), lost: sum(rows.map((r) => r.losses)),
     best: Math.min(...rows.map((r) => r.place ?? 999)), career: rows[0].career,
