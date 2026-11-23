@@ -90,7 +90,7 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
     const hidden = typeof a.hidden === 'boolean' ? Number(a.hidden) : null;
     const club = text(a.club, 160);
     const clubId = /^\d{1,12}$/.test(a.clubId) ? a.clubId : null;
-    people.push({ user, name: text(a.name, 120), club, clubId, country: /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
+    people.push({ user, name: text(a.name, 120), club, clubId, country: typeof a.country === 'string' && /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
       countryName: text(a.countryName, 80), photo: photo(a.photo), belt: oneBelt(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
     // An install sends one athlete's list per career read, so a request carries a few lists at most.
     if (Array.isArray(a.history) && Object.keys(history).length < 20 && Object.values(history).flat().length + a.history.length <= 2000) history[user] = a.history.slice(0, 500).filter((e) => /^\d{1,9}$/.test(e?.event)).map((e) => ({
