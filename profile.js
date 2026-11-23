@@ -206,6 +206,8 @@
     const theirs = known.size || whole ? [] : (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? [];
     if (theirs.every(e => e?.out?.v === 2)) for (const e of theirs) {
       if (!Number.isSafeInteger(e?.id) || !(Date.parse(e.start_date) || e.out?.extra === true)) continue;
+      // An event under a week old is read again here, as its results can still change.
+      if (Date.now() - Date.parse(e.start_date) <= WEEK) continue;
       known.set(e.id, { id: e.id, start_date: Date.parse(e.start_date) ? e.start_date : null, title: typeof e.title === 'string' ? e.title : null, out: clean(e.out), settled: true });
       shared.add(e.id);
     }
@@ -246,8 +248,9 @@
     const events = [...fresh, ...[...known.values()]];
     if (events.filter(e => !e.out.extra).length !== total && !whole && known.size) return readStats(true);
     // Settled events the server lacks go to it: all of them the first time this browser
-    // shares an athlete, then only the newly settled.
-    const unshared = events.filter(e => e.settled && !shared.has(e.id) && (!kept?.shared || fresh.includes(e)));
+    // shares an athlete, then only the newly settled. Events under a week old go every
+    // visit, as read again, so the stats site counts what this profile counts.
+    const unshared = events.filter(e => (e.settled ? !shared.has(e.id) && (!kept?.shared || fresh.includes(e)) : fresh.includes(e)));
     let sent = !!kept?.shared || shared.size > 0;
     if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
     keep(key, { seen: Date.now(), shared: sent, events });
