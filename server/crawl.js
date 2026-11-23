@@ -2,14 +2,16 @@
 // Smoothcomp JSON answer without a browser: an event's schedule (every match: division, stage,
 // winner, finish, and each side's registration) and a match's bracket card, which names both
 // sides' users. Every past event Mat Stats knows of with no results yet is queued, newest first;
-// each minute reads a bounded number of requests of it, keeping what it has read, until every
-// side is named. The event then goes in as a results page would send it, its medals from the
+// each minute's run reads for 50 seconds, six requests at a time (a Worker's open connections),
+// keeping what it has read, until every side is named. The event then goes in as a results page would send it, its medals from the
 // final and bronze match, as the extension counts a division not yet published. A results page
 // read later replaces it.
 const HOSTS = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36';
-const BUDGET = 200; // requests to the site per run
-const AT_ONCE = 4;
+const RUN = 50e3; // each run reads this long, then leaves the rest to the next minute's
+const BUDGET = 5000; // requests per run, well under a paid Worker's 10,000
+const ROUND = 300; // bracket cards read between saves
+const AT_ONCE = 6;
 const DAY = 864e5;
 const PODIUM = { Final: [1, 2], 'Bronze match': [3] };
 const normalize = (s) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -19,15 +21,17 @@ class Busy extends Error {}
 
 function client() {
   let used = 0;
+  const until = Date.now() + RUN;
+  const left = () => (Date.now() < until ? BUDGET - used : 0);
   const get = async (url) => {
-    if (used >= BUDGET) throw new Busy('budget');
+    if (!left()) throw new Busy('budget');
     used++;
     const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
     if (r.status === 429 || r.status >= 500) throw new Busy(`${r.status}`);
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Gone(`${r.status}`);
     return r.json();
   };
-  return { get, left: () => BUDGET - used };
+  return { get, left };
 }
 
 // A few at a time; the first refusal stops the rest.
@@ -67,7 +71,7 @@ async function schedule(get, base) {
 
 // Who each registration is, from a bracket card of one of its matches: matches that name two
 // unknown sides first. A card that fails leaves its sides to another match, or unnamed.
-async function name(get, host, data) {
+async function name(get, host, data, keep) {
   const users = data.users;
   const tried = new Set(data.tried);
   const open = (reg) => !(reg in users) && !(data.missed ?? []).includes(reg);
@@ -86,7 +90,7 @@ async function name(get, host, data) {
     return { out, want };
   };
   for (;;) {
-    data.room = Math.max(0, data.left() - 1);
+    data.room = Math.min(ROUND, Math.max(0, data.left() - 1));
     const { out, want } = pick();
     if (!out.length) {
       // Nothing left to try for these: they stay unnamed.
@@ -110,6 +114,7 @@ async function name(get, host, data) {
       }
     });
     data.tried = [...tried];
+    await keep();
   }
 }
 
@@ -205,7 +210,7 @@ export async function crawl(env, record) {
         data = { matches: read.matches, ends: read.ends, users: {}, tried: [] };
         await save('reading', data, 0);
       }
-      try { await name(get, host, Object.assign(data, { left })); } finally { delete data.left; delete data.room; }
+      try { await name(get, host, Object.assign(data, { left }), () => save('reading', data)); } finally { delete data.left; delete data.room; }
       // Results a page sent meanwhile stand.
       const has = await env.DB.prepare('SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 LIMIT 1').bind(job.site, job.event).first();
       if (!has) {
@@ -216,7 +221,14 @@ export async function crawl(env, record) {
       }
       await save('done', { named: Object.keys(data.users).length, missed: data.missed?.length ?? 0, matches: data.matches.length });
     } catch (e) {
-      if (e instanceof Busy) { if (data) await save('reading', data, e.message === 'budget' ? 0 : now + 15 * 60e3); else await env.DB.prepare('UPDATE crawls SET next = 0 WHERE site = ?1 AND event = ?2').bind(job.site, job.event).run(); return; }
+      // Out of time: the next run goes on from here. Told to slow down (429): this run stops. A site
+      // erroring (5xx): this event waits a quarter hour while the others go on.
+      if (e instanceof Busy) {
+        const later = e.message === 'budget' ? 0 : Date.now() + 15 * 60e3;
+        if (data) await save('reading', data, later); else await env.DB.prepare('UPDATE crawls SET next = ?3 WHERE site = ?1 AND event = ?2').bind(job.site, job.event, later).run();
+        if (e.message === 'budget' || e.message === '429') return;
+        continue;
+      }
       const tries = job.tries + 1;
       // No schedule (never published, or hidden): asked again a week, then a month on, then left.
       if (e instanceof Gone || !data) await save(tries >= 3 ? 'gone' : 'queued', null, now + (tries === 1 ? 7 : 30) * DAY, tries);
