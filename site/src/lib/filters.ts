@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { useLocation, useSearchParams } from 'wouter';
 
 export const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'] as const;
@@ -16,14 +17,31 @@ const tidy = (p: URLSearchParams) => {
   return s ? `?${s}` : '';
 };
 
+// The reader's own settings, kept in this browser: a kept key the address leaves out reads from here,
+// so the site opens as they left it, while a link that names a key still shows what it names.
+const SAVED = 'mat-stats:filters';
+let saved: Record<string, string> = (() => { try { return JSON.parse(localStorage.getItem(SAVED) ?? '{}') ?? {}; } catch { return {}; } })();
+const listeners = new Set<() => void>();
+const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
+const save = (changes: Record<string, string | null>) => {
+  const next = { ...saved };
+  for (const [k, v] of Object.entries(changes)) if ((KEPT as readonly string[]).includes(k)) { if (v == null || (v === '' && k !== 'off')) delete next[k]; else next[k] = v; }
+  saved = next;
+  try { localStorage.setItem(SAVED, JSON.stringify(saved)); } catch { /* private mode: the address still holds them */ }
+  listeners.forEach((l) => l());
+};
+
 export function useFilters() {
   const [params] = useSearchParams();
   const [, navigate] = useLocation();
-  const get = (key: string) => params.get(key) ?? '';
+  const kept = useSyncExternalStore(subscribe, () => saved);
+  const has = (key: string) => params.has(key) || key in kept;
+  const get = (key: string) => params.get(key) ?? kept[key] ?? '';
   // Only walkovers start uncounted; nobody is filtered out until the reader sets a minimum.
-  const off = new Set((params.has('off') ? get('off') : 'walkover').split(',').filter(Boolean));
+  const off = new Set((has('off') ? get('off') : 'walkover').split(',').filter(Boolean));
   const site = get('site') === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com';
   const set = (changes: Record<string, string | null>) => {
+    save(changes);
     // The live address, not this render's: a debounced field writes after others may have.
     const next = new URLSearchParams(window.location.search);
     for (const [k, v] of Object.entries(changes)) if (v == null || (v === '' && k !== 'off')) next.delete(k); else next.set(k, v);
