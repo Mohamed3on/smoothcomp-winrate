@@ -13,6 +13,8 @@ import { AcademyPage } from '@/pages/academy';
 import { EventPage } from '@/pages/event';
 import { DivisionPage } from '@/pages/division';
 import { Empty } from '@/components/empty';
+// Dev only: the Demo data / Worst case switch (src/dev).
+const DataToggle = import.meta.env.DEV ? lazy(() => import('@/dev/data-toggle')) : null;
 
 const SITES = [{ value: 'smoothcomp.com', label: 'Smoothcomp' }, { value: 'ajptour.com', label: 'AJP Tour' }];
 
@@ -63,6 +65,7 @@ export function App() {
           <Route><Empty title="No page here" text="Try the athlete ranking instead." /></Route>
         </Switch>
       </main>
+      {DataToggle && <Suspense><DataToggle /></Suspense>}
       <footer className="border-t">
         <p className="mx-auto max-w-7xl px-4 py-6 text-xs sm:px-6 text-muted-foreground">
           Recounted by <a className="underline decoration-white/20 underline-offset-4 hover:text-foreground" href="https://chromewebstore.google.com/detail/foadjommplmenhenheolmdmkfmhjflpf">Mat Stats for Smoothcomp</a>: every install shares the careers and results it reads on Smoothcomp. Each athlete's latest career read counts; an athlete without one ranks on their results at the events read.

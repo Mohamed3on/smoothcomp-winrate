@@ -42,6 +42,12 @@ export interface EventEntry extends Entry {
 }
 
 export async function get<T>(route: string, query: Record<string, string | number | null | undefined>): Promise<T> {
+  // Dev only: ?data= answers from a fixture instead (src/dev/fixtures.ts); the build drops this branch.
+  if (import.meta.env.DEV) {
+    const state = new URLSearchParams(location.search).get('data');
+    const found = state ? (await import('@/dev/fixtures')).fixture(route, state) : undefined;
+    if (found !== undefined) return found as T;
+  }
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) if (v != null && v !== '') params.set(k, String(v));
   if (query.off === '') params.set('off', '');
