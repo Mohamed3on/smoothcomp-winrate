@@ -56,7 +56,7 @@ export function DivisionPage({ id }: { id: string }) {
           <a href={`${f.home}/en/event/${id}/${fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
         </div>
       </header>
-      <Ledger rows={rows} loading={false} columns={columns} rowKey={(r) => r.user} empty={<Empty title="Nobody here" text="Nobody is listed in this division." />} expand={fought ? matches : undefined} />
+      <Ledger rows={rows} loading={false} columns={columns} rowKey={(r) => r.user} empty={<Empty title="Nobody here" text="Nobody is listed in this division." />} expand={fought ? matches : undefined} openAll />
     </div>
   );
 }

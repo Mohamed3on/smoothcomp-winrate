@@ -14,11 +14,11 @@ const cellClass = (c: { align?: string; narrow?: boolean }, sorted: boolean) =>
   cn('px-3 py-2.5 align-middle first:pl-5 last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
 
 // A ranked ledger: sortable headers, every row reachable, only the rows on screen drawn.
-export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, loading, empty, expand }: {
+export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, loading, empty, expand, openAll }: {
   rows: T[] | undefined; columns: Column<T>[]; sort?: string; asc?: boolean; onSort?: (s: string, asc: boolean) => void; rowKey: (r: T) => string; loading: boolean;
-  empty: React.ReactNode; expand?: (r: T) => React.ReactNode;
+  empty: React.ReactNode; expand?: (r: T) => React.ReactNode; openAll?: boolean;
 }) {
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<Set<string>>(() => new Set(openAll ? rows?.map(rowKey) : []));
   const [fresh, setFresh] = useState<string | null>(null);
   const header = (
     <tr className="text-xs text-muted-foreground">
