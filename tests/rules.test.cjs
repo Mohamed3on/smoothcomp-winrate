@@ -75,4 +75,7 @@ test('a bracket seeds by win rate where a record is known, then wins per event',
   const list = order.map((k) => seeds[k]);
   assert.deepEqual(list.map((_, i) => sureSeed(list, i)), [true, true, true, true, false]);
   assert.equal(sureSeed([{ won: 1, lost: 1 }, { won: 2, lost: 2 }, { won: 1, lost: 1 }], 0), false);
+  // A short perfect record doesn't outrank a long strong one.
+  assert.ok(bySeed({ won: 9, lost: 2 }, { won: 2, lost: 0 }) < 0);
+  assert.ok(bySeed({ won: 20, lost: 2 }, { won: 9, lost: 2 }) < 0);
 });

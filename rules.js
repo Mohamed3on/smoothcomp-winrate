@@ -133,11 +133,14 @@ globalThis.SCWRRules = (() => {
   const poolPlaces = (rows, beat) => new Map([...rows].sort((a, b) => b.wins - a.wins || b.subs - a.subs || (beat(a.key, b.key) ? -1 : beat(b.key, a.key) ? 1 : 0)).map((r, i) => [r.key, i + 1]));
 
   // A bracket's seeding, best first, which points to its medals: the best win rate where their record
-  // is known (at one rate, more matches first), then wins per event, the most wins, most by submission,
+  // is known, then wins per event, the most wins, most by submission,
   // most on points, and the younger athlete; any figure unknown ranks after every known one. A seed is
   // { won, lost, wins, events, submission, points, born } (born: a higher number is younger).
+  // The rate is ranked as if they had also won and lost two more, so a short record leans to 50% (the
+  // average, as every match has a winner) and a long one barely moves: 2–0 ranks as 67%, below 9–2 at 73%.
+  // At one rate, more matches first.
   const seedKey = ({ won, lost, wins, events, submission, points, born }) => [
-    ...(won + lost > 0 ? [won / (won + lost), won + lost] : [-1, -1]), wins != null && events ? wins / events : -1,
+    ...(won + lost > 0 ? [(won + 2) / (won + lost + 4), won + lost] : [-1, -1]), wins != null && events ? wins / events : -1,
     wins ?? -1, submission ?? -1, points ?? -1, born ?? -Infinity,
   ];
   const bySeed = (a, b) => {
