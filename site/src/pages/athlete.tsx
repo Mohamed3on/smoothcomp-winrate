@@ -42,12 +42,22 @@ function finishes(career: Athlete | null, outcomes: Outcome[], entries: Entry[])
   return [...by.values()].filter((x) => x.w + (x.l ?? 0) > 0).sort((a, b) => b.w + (b.l ?? 0) - a.w - (a.l ?? 0));
 }
 
-// Every match the profile's lists give: each loss with its finish, each win (its finish too from v 2).
+// Every match the profile's lists give, in the order fought: each win (its finish too from v 2),
+// each loss with its finish. A loss the match list names twice is matched once.
 interface Meeting { won: boolean; opponent: string | null; club: string | null; image: string | null; type?: string; how?: string; division?: string | null; stage?: string | null }
-const meetingsOf = (o: Outcome | undefined): Meeting[] => (o ? [
-  ...o.out.losses.map((l) => ({ ...l, won: false })),
-  ...(o.out.faced ?? []).filter((m) => m.won).map((m) => ({ won: true, opponent: m.name, club: m.club, image: m.image, type: m.type, how: m.how, division: m.division, stage: m.stage })),
-] : []);
+function meetingsOf(o: Outcome | undefined): Meeting[] {
+  if (!o) return [];
+  const losses = [...o.out.losses];
+  const out: Meeting[] = (o.out.faced ?? []).map((m) => {
+    if (m.won) return { won: true, opponent: m.name, club: m.club, image: m.image, type: m.type, how: m.how, division: m.division, stage: m.stage };
+    const i = losses.findIndex((l) => person(l.opponent) === person(m.name));
+    return i < 0 ? { won: false, opponent: m.name, club: m.club, image: m.image } : { ...losses.splice(i, 1)[0], won: false };
+  });
+  return [...out, ...losses.map((l) => ({ ...l, won: false }))];
+}
+// A match counts under the finishes switched on; a win from before v 2 names none, so it always shows.
+const countedMatch = (m: Meeting, f: Filters) => !m.type || f.counted(keyOf(m.type));
+type Show = 'all' | 'won' | 'lost';
 
 // Everyone who beat them more than once, with the whole head-to-head; the newest meeting
 // gives the club and photo. Furthest behind first.
@@ -209,7 +219,7 @@ function MatchLine({ m, divisions }: { m: Meeting; divisions: boolean }) {
   );
 }
 
-function EventsTable({ list, f, against }: { list: Row[]; f: Filters; against: Rival | null }) {
+function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; against: Rival | null; show: Show }) {
   return (
     <Card className="gap-0 overflow-hidden py-0">
       <Table className="table-fixed">
@@ -221,7 +231,7 @@ function EventsTable({ list, f, against }: { list: Row[]; f: Filters; against: R
           {list.map((row) => {
             const read = row.read?.filter((e) => e.fought) ?? [];
             const all = meetingsOf(row.outcome);
-            const shown = against ? all.filter((m) => person(m.opponent) === against.key) : all.filter((m) => !m.won && m.type && f.counted(keyOf(m.type)));
+            const shown = all.filter((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won')));
             // Divisions read from the results, else the ones the match lists name.
             const named = [...new Set(all.map((m) => m.division).filter(Boolean))] as string[];
             const divisions: (Entry | string[])[] = row.read?.length ? row.read : [named];
@@ -282,6 +292,7 @@ function Upcoming({ list, f }: { list: Row[]; f: Filters }) {
 export function AthletePage({ id }: { id: string }) {
   const f = useFilters();
   const [against, setAgainst] = useState<Rival | null>(null);
+  const [show, setShow] = useState<Show>('all');
   const { data, isLoading, error } = useApi<Data>('athlete', { site: f.site, off: f.query.off, id });
   if (isLoading) return <div className="flex items-center gap-5"><Skeleton className="size-20 rounded-full" /><Skeleton className="h-8 w-64" /></div>;
   if (!data) return <Empty title={(error as { status?: number })?.status === 404 ? 'No athlete here' : 'That didn’t load'} text={(error as { status?: number })?.status === 404 ? 'Mat Stats has nothing under this athlete on this site. They may be on the other site, or nobody has read them yet.' : 'The stats server didn’t answer. Try again in a moment.'} />;
@@ -296,7 +307,10 @@ export function AthletePage({ id }: { id: string }) {
   const rivals = rivalsOf(outcomes);
   const losses = outcomes.reduce((n, o) => n + o.out.losses.length, 0);
   const pick = (r: Rival | null) => { setAgainst(r); if (r) document.getElementById('events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  const shownPast = against ? past.filter((r) => meetingsOf(r.outcome).some((m) => person(m.opponent) === against.key)) : past;
+  const matches = past.flatMap((r) => meetingsOf(r.outcome)).filter((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)));
+  const won = matches.filter((m) => m.won).length;
+  // Won or lost alone lists just those matches, event by event; all keeps every event.
+  const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOf(r.outcome).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
   const over = outcomes.length ? `across ${plural(outcomes.length, 'event')}` : fromResults ? `at ${plural(career?.events ?? 0, 'event')} read` : '';
   return (
     <div className="flex flex-col gap-6">
@@ -348,8 +362,18 @@ export function AthletePage({ id }: { id: string }) {
               <button type="button" onClick={() => setAgainst(null)} aria-label="Show every event" className="grid size-6 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><X className="size-3.5" /></button>
             </span>
           ) : <span className="text-sm text-muted-foreground">{past.length}</span>}
+          {matches.length > 0 && (
+            <div className="ml-auto flex rounded-full border border-input p-0.5" role="group" aria-label="Matches shown">
+              {([['all', 'All matches', matches.length], ['won', 'Won', won], ['lost', 'Lost', matches.length - won]] as const).map(([key, label, n]) => (
+                <button key={key} type="button" aria-pressed={show === key} onClick={() => setShow(key)}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-primary/15 aria-pressed:text-foreground">
+                  {label}<b className={cn('font-semibold', key === 'won' ? 'text-won' : key === 'lost' ? 'text-lost' : 'text-foreground')}>{n}</b>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        {shownPast.length ? <EventsTable list={shownPast} f={f} against={against} /> : <Card><Empty title="No past events seen yet" text="They appear once someone with Mat Stats reads this athlete's career or an event they entered." /></Card>}
+        {shownPast.length ? <EventsTable list={shownPast} f={f} against={against} show={show} /> : <Card><Empty title="No past events seen yet" text="They appear once someone with Mat Stats reads this athlete's career or an event they entered." /></Card>}
       </section>
     </div>
   );
