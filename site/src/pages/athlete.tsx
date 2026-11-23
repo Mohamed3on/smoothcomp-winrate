@@ -24,8 +24,9 @@ const pct = (w: number, l: number) => `${Math.round((w / (w + l)) * 100)}%`;
 // A rate's hue runs from red at 40% or under, through amber, to green at 85% and over, as on the profile.
 const tone = (w: number, l: number) => ({ color: `oklch(0.8 0.14 ${25 + 120 * Math.min(1, Math.max(0, (w / (w + l) - 0.4) / 0.45))})` });
 
-// Each finish they won or lost by: W–L from their profile's match lists, or from the events
-// read; a finish only the career names (walkovers, the rarer ones) comes as wins alone.
+// Each finish they won or lost by: W–L from their profile's match lists with the results read at
+// any event those don't hold yet, or from the events read alone; a finish only the career names
+// (walkovers, the rarer ones) comes as wins alone.
 interface Finish { key: string; w: number; l: number | null }
 function finishes(career: Athlete | null, outcomes: Outcome[], entries: Entry[]): Finish[] {
   const by = new Map<string, Finish>();
@@ -33,14 +34,17 @@ function finishes(career: Athlete | null, outcomes: Outcome[], entries: Entry[])
     const was = by.get(keyOf(t));
     by.set(keyOf(t), { key: keyOf(t), w: (was?.w ?? 0) + w, l: (was?.l ?? 0) + l });
   };
-  if (outcomes.length) for (const o of outcomes) for (const [t, [w, l]] of Object.entries(o.out.types)) add(t, w, l);
-  else if (career?.source === 'results') for (const e of entries.filter((x) => x.fought)) {
+  for (const o of outcomes) for (const [t, [w, l]] of Object.entries(o.out.types)) add(t, w, l);
+  if (outcomes.length || career?.source === 'results') for (const e of unlisted(entries, outcomes)) {
     for (const [t, n] of Object.entries(e.wins ?? {})) add(t, Number(n) || 0, 0);
     for (const [t, n] of Object.entries(e.losses ?? {})) add(t, 0, Number(n) || 0);
   }
   for (const [t, n] of Object.entries(career?.types ?? {})) if (Number(n) > 0 && !by.has(keyOf(t))) by.set(keyOf(t), { key: keyOf(t), w: Number(n), l: null });
   return [...by.values()].filter((x) => x.w + (x.l ?? 0) > 0).sort((a, b) => b.w + (b.l ?? 0) - a.w - (a.l ?? 0));
 }
+
+// The divisions whose results were read at events their profile's match lists don't hold.
+const unlisted = (entries: Entry[], outcomes: Outcome[]) => entries.filter((e) => e.fought && !outcomes.some((o) => o.event === e.event));
 
 // Every match the profile's lists give, in the order fought: each win (its finish too from v 2),
 // each loss with its finish. A loss the match list names twice is matched once.
@@ -169,11 +173,13 @@ function Rivals({ rivals, losses, pick, picked }: { rivals: Rival[]; losses: num
 
 // W–L at each past event, oldest first: wins up, coloured by the best medal there; losses down.
 function Form({ list, f }: { list: Row[]; f: Filters }) {
-  const points = list.filter((r) => r.outcome || r.listed?.wins != null).reverse().map((r) => {
+  const points = list.filter((r) => r.outcome || r.read?.some((e) => e.fought) || r.listed?.wins != null).reverse().map((r) => {
     const fin = r.outcome && Object.entries(r.outcome.out.types).reduce(([a, b], [t, [w, l]]) => (f.counted(keyOf(t)) ? [a + w, b + l] : [a, b]), [0, 0]);
+    const read = r.read?.filter((e) => e.fought) ?? [];
     return {
       name: r.title ?? '', date: date(r.start), tick: r.start ? new Date(r.start).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }) : '–',
-      wins: fin ? fin[0] : r.listed!.wins!, losses: fin ? -fin[1] : 0,
+      wins: fin ? fin[0] : read.length ? read.reduce((n, e) => n + winsOf(e.wins, f.counted), 0) : r.listed!.wins!,
+      losses: fin ? -fin[1] : -read.reduce((n, e) => n + winsOf(e.losses, f.counted), 0),
       medal: r.listed?.gold ? 'var(--color-gold)' : r.listed?.silver ? 'var(--color-silver)' : r.listed?.bronze ? 'var(--color-bronze)' : 'var(--color-win-decision)',
     };
   });
@@ -293,7 +299,7 @@ export function AthletePage({ id }: { id: string }) {
   const f = useFilters();
   const [against, setAgainst] = useState<Rival | null>(null);
   const [show, setShow] = useState<Show>('all');
-  const { data, isLoading, error } = useApi<Data>('athlete', { site: f.site, off: f.query.off, id });
+  const { data, isLoading, error } = useApi<Data>('athlete', { site: f.site, off: f.query.off, id }, true, 0);
   if (isLoading) return <div className="flex items-center gap-5"><Skeleton className="size-20 rounded-full" /><Skeleton className="h-8 w-64" /></div>;
   if (!data) return <Empty title={(error as { status?: number })?.status === 404 ? 'No athlete here' : 'That didn’t load'} text={(error as { status?: number })?.status === 404 ? 'Mat Stats has nothing under this athlete on this site. They may be on the other site, or nobody has read them yet.' : 'The stats server didn’t answer. Try again in a moment.'} />;
   const { career, person: who, entries, history, outcomes = [] } = data;
@@ -311,7 +317,7 @@ export function AthletePage({ id }: { id: string }) {
   const won = matches.filter((m) => m.won).length;
   // Won or lost alone lists just those matches, event by event; all keeps every event.
   const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOf(r.outcome).some((m) => (against ? person(m.opponent) === against.key : countedMatch(m, f)) && (show === 'all' || m.won === (show === 'won'))));
-  const over = outcomes.length ? `across ${plural(outcomes.length, 'event')}` : fromResults ? `at ${plural(career?.events ?? 0, 'event')} read` : '';
+  const over = outcomes.length ? `across ${plural(outcomes.length + new Set(unlisted(entries, outcomes).map((e) => e.event)).size, 'event')}` : fromResults ? `at ${plural(career?.events ?? 0, 'event')} read` : '';
   return (
     <div className="flex flex-col gap-6">
       <header className="flex items-center gap-5">

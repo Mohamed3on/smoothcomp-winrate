@@ -3,7 +3,7 @@
 const SITES = ['smoothcomp.com', 'ajptour.com'];
 const BELTS = ['white', 'grey', 'yellow', 'orange', 'green', 'blue', 'purple', 'brown', 'black'];
 const KEPT = 30 * 24 * 60 * 60 * 1000;
-const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'public, max-age=60' } });
+const json = (body, status = 200, cache = 'public, max-age=60') => Response.json(body, { status, headers: { 'Cache-Control': cache } });
 const whole = (value, fallback, max = 1e6) => {
   const n = value == null || value === '' ? NaN : Number(value);
   return Number.isSafeInteger(n) && n >= 0 ? Math.min(n, max) : fallback;
@@ -35,11 +35,20 @@ function filters(params) {
 // with none readable (a profile not public, or not read yet), an athlete's results at
 // the events Mat Stats has read stand in: wins by finish, losses, placements, events.
 // Where a profile was opened, its match lists give a record too: `won`, `lost` (walkovers never
-// count there; its fastest escape is a career's fastest_escape). An athlete ranked on results has theirs.
+// count there; its fastest escape is a career's fastest_escape), with the results read at any event
+// those lists don't hold yet. An athlete ranked on results has theirs.
 // ?1 site, ?2 the finish types left out (JSON), ?3 oldest career kept.
-const CAREERS = `rated AS (
-    SELECT o.user, total(j.value ->> 0) AS won, total(j.value ->> 1) AS lost FROM outcomes o, json_each(o.out, '$.types') j
-    WHERE o.site = ?1 AND iif(j.key = 'escape', 'fastest_escape', j.key) NOT IN (SELECT value FROM json_each(?2)) GROUP BY o.user),
+const CAREERS = `listed AS (SELECT DISTINCT user FROM outcomes WHERE site = ?1),
+  unlisted AS (
+    SELECT e.* FROM entries e JOIN listed USING (user)
+    WHERE e.site = ?1 AND e.fought = 1 AND NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = e.user AND x.event = e.event)),
+  rated AS (
+    SELECT user, total(w) AS won, total(l) AS lost FROM (
+      SELECT o.user, j.value ->> 0 AS w, j.value ->> 1 AS l FROM outcomes o, json_each(o.out, '$.types') j
+      WHERE o.site = ?1 AND iif(j.key = 'escape', 'fastest_escape', j.key) NOT IN (SELECT value FROM json_each(?2))
+      UNION ALL SELECT u.user, j.value, 0 FROM unlisted u, json_each(u.wins) j WHERE j.key NOT IN (SELECT value FROM json_each(?2))
+      UNION ALL SELECT u.user, 0, j.value FROM unlisted u, json_each(u.losses) j WHERE j.key NOT IN (SELECT value FROM json_each(?2)))
+    GROUP BY user),
   seen_wins AS (
     SELECT e.user, j.key AS type, sum(j.value) AS n FROM entries e, json_each(e.wins) j WHERE e.site = ?1 AND e.fought = 1 GROUP BY e.user, j.key),
   seen_losses AS (
@@ -165,7 +174,7 @@ async function athlete(env, params) {
     entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses) })),
     seen: seen.results[0]?.events ? seen.results[0] : null,
     outcomes: outcomes.results.map((o) => ({ ...o, out: JSON.parse(o.out) })),
-  });
+  }, 200, 'no-store'); // a profile just opened shows at once
 }
 
 async function team(env, params) {
