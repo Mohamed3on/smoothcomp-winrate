@@ -20,11 +20,13 @@ export function useFilters() {
     site, off: [...off].join(','), belt: get('belt'), wins: get('wins'), events: get('events'), agemin: get('agemin'), agemax: get('agemax'),
     country: get('country'), active: get('active'), sort: get('sort') || 'wins', q: get('q'),
   };
+  // A path with the reader's filters carried along, after any query of its own.
   const link = (path: string) => {
-    const keep = new URLSearchParams();
+    const [base, own] = path.split('?');
+    const keep = new URLSearchParams(own);
     for (const k of KEPT) if (params.has(k) && (params.get(k) || k === 'off')) keep.set(k, params.get(k)!);
     const q = keep.toString();
-    return q ? `${path}?${q}` : path;
+    return q ? `${base}?${q}` : base;
   };
   return { params, get, set, off, counted: (type: string) => !off.has(type), site, query, link, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };
 }

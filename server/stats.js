@@ -168,7 +168,8 @@ const TEAM_SORTS = {
   athletes: 'athletes DESC, wins DESC',
   average: 'sum(wins) * 1.0 / count(*) DESC, wins DESC',
   submission: 'submission DESC, wins DESC',
-  medals: 'gold DESC, silver DESC, bronze DESC, wins DESC',
+  // Medals won for the academy (an older link's "medals" sorts the same).
+  medals: 'podium_gold DESC, podium_silver DESC, podium_bronze DESC, wins DESC',
   podiums: 'podium_gold DESC, podium_silver DESC, podium_bronze DESC, wins DESC',
 };
 
@@ -279,6 +280,28 @@ async function event(env, params) {
   });
 }
 
+// One division of an event: its athletes, each with their place, record and matches.
+async function division(env, params) {
+  const f = filters(params);
+  const id = params.get('id') ?? '';
+  const name = (params.get('name') ?? '').trim().slice(0, 200);
+  if (!/^\d{1,9}$/.test(id) || !name) return json({ error: 'Bad division' }, 400);
+  const [meta, entries] = await env.DB.batch([
+    env.DB.prepare('SELECT * FROM events WHERE site = ?1 AND event = ?2').bind(f.site, id),
+    env.DB.prepare(`WITH ${careersOf(f.off)} SELECT e.user, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, e.at,
+        p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt, c.wins AS career_wins
+      FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
+      WHERE e.site = ?1 AND e.event = ?4 AND trim(e.division) = ?5
+        AND (e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user AND x.division = e.division AND x.fought = 1))`)
+      .bind(f.site, f.off, Date.now() - KEPT, id, name),
+  ]);
+  if (!entries.results.length) return json({ error: 'Not found' }, 404);
+  return json({
+    event: meta.results[0] ?? { event: id },
+    entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses), bouts: e.bouts ? JSON.parse(e.bouts) : null })),
+  });
+}
+
 async function search(env, params) {
   const f = filters(params);
   if (f.q.length < 2) return json({ athletes: [], teams: [], events: [] });
@@ -308,4 +331,4 @@ async function summary(env, params) {
   return json(row);
 }
 
-export const API = { athletes, teams, athlete, team, events, event, search, summary, countries };
+export const API = { athletes, teams, athlete, team, events, event, division, search, summary, countries };

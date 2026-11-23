@@ -12,6 +12,7 @@ import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, t
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { DivisionLink } from '@/pages/division';
 
 interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; belts?: Belts | null; profile?: Profile | null; seen: { wins: number; losses: number; events: number } | null }
 
@@ -48,7 +49,7 @@ const unlisted = (entries: Entry[], outcomes: Outcome[]) => entries.filter((e) =
 
 // Every match the profile's lists give, in the order fought: each win (its finish too from v 2),
 // each loss with its finish. A loss the match list names twice is matched once.
-interface Meeting { won: boolean; opponent: string | null; club: string | null; image: string | null; type?: string; how?: string; division?: string | null; stage?: string | null; user?: string | null; us?: Bout['us']; them?: Bout['them']; clock?: Bout['clock'] }
+export interface Meeting { won: boolean; opponent: string | null; club: string | null; image: string | null; type?: string; how?: string; division?: string | null; stage?: string | null; user?: string | null; us?: Bout['us']; them?: Bout['them']; clock?: Bout['clock'] }
 function meetingsOf(o: Outcome | undefined): Meeting[] {
   if (!o) return [];
   const losses = [...o.out.losses];
@@ -334,7 +335,7 @@ function Form({ list, f }: { list: Row[]; f: Filters }) {
   );
 }
 
-function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisions: boolean }) {
+export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisions: boolean }) {
   return (
     <li className="flex min-w-0 items-center gap-2.5 text-sm">
       <Photo name={m.opponent} photo={m.image} className="size-6" />
@@ -376,7 +377,7 @@ function EventsTable({ list, f, against, show }: { list: Row[]; f: Filters; agai
                   <TableRow key={`${row.id}-${k}`} className={cn((k < span - 1 || shown.length) && 'border-b-0', 'hover:bg-transparent')}>
                     <TableCell className="pl-5 align-top text-muted-foreground">{k ? '' : date(row.start)}</TableCell>
                     <TableCell className="align-top whitespace-normal">{k ? '' : <div className="flex items-start gap-3">{row.listed?.image && <img src={row.listed.image} alt="" loading="lazy" className="mt-0.5 hidden aspect-[16/9] w-16 shrink-0 rounded-md object-cover outline outline-1 -outline-offset-1 outline-white/10 lg:block" />}<div className="flex min-w-0 flex-col gap-0.5"><EventLink row={row} f={f} />{row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}</div></div>}</TableCell>
-                    <TableCell className="align-top whitespace-normal text-muted-foreground">{e ? <>{e.division}{e.club && <span className="block text-xs">{e.club}</span>}</> : Array.isArray(d) ? d.map((x) => <span key={x} className="block">{x}</span>) : ''}</TableCell>
+                    <TableCell className="align-top whitespace-normal text-muted-foreground">{e ? <><DivisionLink event={row.id} name={e.division} f={f} />{e.club && <span className="block text-xs">{e.club}</span>}</> : Array.isArray(d) ? d.map((x) => <span key={x} className="block">{x}</span>) : ''}</TableCell>
                     <TableCell className="text-right align-top">
                       {e?.fought ? <Place p={e.place} /> : !k && row.listed && (row.listed.gold || row.listed.silver || row.listed.bronze) && !read.length
                         ? <Medals g={row.listed.gold} s={row.listed.silver} b={row.listed.bronze} /> : e && !e.fought ? <span className="text-xs text-muted-foreground">Entered</span> : <span className="text-muted-foreground">{k ? '' : '–'}</span>}

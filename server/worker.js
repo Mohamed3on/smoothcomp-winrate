@@ -56,12 +56,12 @@ async function keep(env, body) {
     .filter(({ user, entry }) => validUser(user) && Number.isFinite(entry?.at) && entry.at <= Date.now() + 60000 && JSON.stringify(entry).length <= 1000);
   if (rows.length > 20000) return json({ error: 'Too many' }, 413);
   // One statement for the lot; an entry only replaces an older one.
-  await env.DB.prepare(`INSERT INTO athletes (site, user, kind, at, entry)
+  const { results: changed } = await env.DB.prepare(`INSERT INTO athletes (site, user, kind, at, entry)
     SELECT ?1, value ->> 'user', value ->> 'kind', value ->> '$.entry.at', value ->> 'entry' FROM json_each(?2) WHERE true
-    ON CONFLICT (site, user, kind) DO UPDATE SET at = excluded.at, entry = excluded.entry WHERE excluded.at > athletes.at`)
-    .bind(body.site, JSON.stringify(rows)).run();
-  // A career or belt read changes their ranking row.
-  await retally(env, body.site, rows.map((row) => row.user));
+    ON CONFLICT (site, user, kind) DO UPDATE SET at = excluded.at, entry = excluded.entry WHERE excluded.at > athletes.at RETURNING user`)
+    .bind(body.site, JSON.stringify(rows)).all();
+  // A career or belt read changes their ranking row: only those that changed are recounted.
+  await retally(env, body.site, changed.map((row) => row.user));
   return json({});
 }
 
@@ -315,8 +315,8 @@ const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster':
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy
 // is made behind them, and an athlete's page is made again before it is served, so a profile just
 // opened shows within a minute. Reads go to the nearest read replica (a D1 session).
-const FRESH = { athletes: 600, teams: 600, event: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60 };
-const STALE_OK = new Set(['athletes', 'teams', 'event', 'team', 'events', 'search', 'countries', 'summary']);
+const FRESH = { athletes: 600, teams: 600, event: 600, division: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60 };
+const STALE_OK = new Set(['athletes', 'teams', 'event', 'division', 'team', 'events', 'search', 'countries', 'summary']);
 async function cached(request, ctx, name, make) {
   const cache = caches.default;
   const key = new Request(request.url, { method: 'GET' });

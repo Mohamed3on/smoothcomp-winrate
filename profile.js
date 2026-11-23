@@ -52,18 +52,26 @@
     return detail && ['submission', 'decision', 'points'].includes(type) ? `${nameOf(type)} (${detail})` : nameOf(type);
   };
   // A refusal (a 429, or the failed fetch Cloudflare's challenge makes of one) is
-  // tried again after 1, 2, 4 and 8 s.
+  // tried again after 1, 2, 4 and 8 s. Some pages Smoothcomp never answers (Cloudflare
+  // gives up on them after two minutes), so a page given 15 s fails for good.
   const read = async (kind, page, tries = 0) => {
     const url = new URL(pastUrl.replace('/past-events', `/${kind}`), location.href);
     url.searchParams.set('page', page);
-    const response = await fetch(url, { headers: { Accept: 'application/json' } }).catch(() => null);
+    const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15000) })
+      .catch((error) => { if (error.name === 'TimeoutError') throw error; return null; });
     if (response?.ok) return response.json();
     if ((response && response.status !== 429) || tries > 3) throw new Error(`${kind} unavailable`);
     await new Promise(done => setTimeout(done, 1000 * 2 ** tries));
     return read(kind, page, tries + 1);
   };
-  const pages = (kind, count, from) => Promise.all(Array.from({ length: Math.max(0, count - from + 1) }, (_, i) => read(kind, from + i)))
-    .then(bodies => bodies.flatMap(body => body.data ?? []));
+  // Pages from..count at once, each handed to each() as it lands; a page that fails is
+  // left out and counted.
+  const pages = async (kind, count, from, each) => {
+    let failed = 0;
+    const bodies = await Promise.all(Array.from({ length: Math.max(0, count - from + 1) }, (_, i) => read(kind, from + i)
+      .then(body => (each?.(body), body), () => (failed++, {}))));
+    return { data: bodies.flatMap(body => body.data ?? []), failed };
+  };
   const add = (into, types) => {
     for (const [type, [won, lost]] of Object.entries(types)) {
       into[type] ??= [0, 0];
@@ -216,37 +224,41 @@
     // The events since the newest kept one: the page has the first page of them, and
     // further pages are read only while none of a page is kept (all at once when none is).
     let list = [...past.data];
-    if (!known.size) list.push(...await pages('past-events', past.meta?.last_page ?? 1, 2));
+    if (!known.size) list.push(...(await pages('past-events', past.meta?.last_page ?? 1, 2)).data);
     else for (let page = 2; page <= (past.meta?.last_page ?? 1) && !list.some(e => known.has(e.id)); page++) list.push(...(await read('past-events', page)).data);
     const firstKept = list.findIndex(e => known.has(e.id));
     const news = firstKept < 0 ? list : list.slice(0, firstKept);
-    // Their match lists, three events a page, newest first: all pages at once with nothing
-    // kept, else page by page until every new event is found.
-    const wanted = new Set(news.map(e => e.id));
-    const found = new Map();
-    if (!known.size) for (const event of await pages('event-statistics', Math.ceil(total / 3), 1)) found.set(event.id, event);
-    else for (let page = 1; [...wanted].some(id => !found.has(id)) && page <= Math.ceil(total / 3); page++) {
-      const body = await read('event-statistics', page);
-      for (const event of body.data ?? []) found.set(event.id, event);
-      if (!(body.data ?? []).some(event => wanted.has(event.id))) break;
-    }
+    const listed = new Map(news.map(e => [e.id, e]));
+    // An event's result from its match list. A match list can hold an event the event list
+    // leaves out (an event under two ids): its matches count all the same, dated by the
+    // belt list when it names it.
+    const dated = new Map((got.skills?.data ?? []).flatMap(s => s.events ?? []).map(e => [e.id, e.event_start]));
     const empty = { v: 2, types: {}, losses: [], faced: [] };
-    const fresh = news.map(e => {
-      const event = found.get(e.id);
-      return { id: e.id, start_date: e.start_date, title: event?.title ?? e.title ?? null, out: event ? outcomes(event) : empty, settled: Date.now() - Date.parse(e.start_date) > WEEK };
-    });
-    // A match list can hold an event the event list leaves out (an event under two
-    // ids): its matches count all the same, dated by the belt list when it names it.
-    if (!known.size) {
-      const dated = new Map((got.skills?.data ?? []).flatMap(s => s.events ?? []).map(e => [e.id, e.event_start]));
-      for (const event of found.values()) {
-        if (news.some(e => e.id === event.id)) continue;
-        const start = dated.get(event.id) ?? null;
-        fresh.push({ id: event.id, start_date: start, title: event.title ?? null, out: { ...outcomes(event), extra: true }, settled: !start || Date.now() - Date.parse(start) > WEEK });
-      }
+    const entry = (e, event) => {
+      const start = e ? e.start_date : dated.get(event.id) ?? null;
+      return { id: e?.id ?? event.id, start_date: start, title: event?.title ?? e?.title ?? null, out: !event ? empty : e ? outcomes(event) : { ...outcomes(event), extra: true },
+        settled: (!e && !start) || Date.now() - Date.parse(start) > WEEK };
+    };
+    // Their match lists, three events a page, newest first: all pages at once with nothing
+    // kept, the figures so far shown as each lands; else page by page until every new event is found.
+    const found = new Map();
+    let failed = 0;
+    if (!known.size) ({ failed } = await pages('event-statistics', Math.ceil(total / 3), 1, (body) => {
+      for (const event of body.data ?? []) found.set(event.id, event);
+      show({ ...(whole && stats ? stats : tally([...found.values()].map(event => entry(listed.get(event.id), event)))), reading: [found.size, total] });
+    }));
+    else for (let page = 1; news.some(e => !found.has(e.id)) && page <= Math.ceil(total / 3); page++) {
+      const body = await read('event-statistics', page).catch(() => (failed++, null));
+      for (const event of body?.data ?? []) found.set(event.id, event);
+      if (body && !(body.data ?? []).some(event => listed.has(event.id))) break;
     }
+    // With a page unanswered, an event missing from the match lists may be on it: it is
+    // left out, unkept, so the next visit reads it again.
+    const fresh = news.filter(e => !failed || found.has(e.id)).map(e => entry(e, found.get(e.id)));
+    const missing = news.length - fresh.length;
+    if (!known.size) for (const event of found.values()) if (!listed.has(event.id)) fresh.push(entry(null, event));
     const events = [...fresh, ...[...known.values()]];
-    if (events.filter(e => !e.out.extra).length !== total && !whole && known.size) return readStats(true);
+    if (events.filter(e => !e.out.extra).length !== total && !whole && known.size && !failed) return readStats(true);
     // Settled events the server lacks go to it: all of them the first time this browser
     // shares an athlete, then only the newly settled. Events under a week old go every
     // visit, as read again, so the stats site counts what this profile counts.
@@ -260,7 +272,7 @@
     // page on a first read, the new ones after.
     if (news.length) ask('/people', { site, athletes: { [user]: { name: document.title.split(' - ')[0].trim(), history: list.slice(0, 500).map(e => ({
       event: String(e.id), title: e.title, start: e.start_date, city: e.city, wins: e.wins, image: e.cover_image, medals: [e.medals?.gold, e.medals?.silver, e.medals?.bronze] })) } } }).catch(() => {});
-    show(tally(events));
+    show({ ...tally(events), missing });
     reading = false;
     shareProfile();
   }
@@ -310,6 +322,10 @@
     let html = `<div class="scwr-rate" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
       + (wins + losses ? `<span class="scwr-rate-figure" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
         : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
+    // While the match lists come in, how far it has got; after, what Smoothcomp never sent.
+    const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
+      : stats.missing ? `${plural(stats.missing, 'event')} Smoothcomp didn't send, left out until it does` : '';
+    if (note) html += `<div class="scwr-progress gi-text-xs gi-text-secondary" role="status">${note}</div>`;
     // Each finish the athlete has won or lost by, its record on the chip, the most
     // matches first; pressed ones count.
     const matches = (type) => stats.types[type][0] + stats.types[type][1];
@@ -417,7 +433,7 @@
     const chart = document.querySelector(ajp ? CARD : `${CARD} > div`);
     if (!chart || !got['wins-and-medals'] || !got.skills || !Array.isArray(got['past-events']?.data) || !got['past-events'].meta?.total || !pastUrl) return;
     plan ??= planBelts();
-    if (!reading) readStats().catch(() => { plan.loading = false; draw(); });
+    if (!reading) readStats().catch(() => { plan.loading = false; if (stats?.reading) show({ ...stats, reading: null }); else draw(); });
     // See losses sits beside Smoothcomp's own See all wins, made of the same parts
     // (its scoped style attributes and its chevron) so the two read as a pair.
     const theirs = document.querySelector('.match-statistics-action button:not(.scwr-losses-open)');

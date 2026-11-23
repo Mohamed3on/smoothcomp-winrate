@@ -10,6 +10,7 @@ import { useApi, type EventEntry, type EventMeta } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { date, fmt, plural, winsOf } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { DivisionLink } from '@/pages/division';
 
 // The medal a bracket's career ranking points to: first gold, second silver, third bronze, fourth nothing.
 // A call is sure when the athlete's career is known and nobody else in the bracket has as many wins;
@@ -96,7 +97,7 @@ export function EventPage({ id }: { id: string }) {
     { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => rank(i) },
     { key: 'who', label: 'Athlete', width: '34%', align: 'start', cell: (p) => <Identity a={p} f={f} /> },
     { key: 'div', label: fought ? 'Division' : 'Brackets', align: 'start', narrow: true, cell: (p) => fought
-      ? <span className="text-xs text-muted-foreground" title={p.rows.map((r) => r.division).join('\n')}>{p.rows[0].division}{p.rows.length > 1 && ` +${p.rows.length - 1}`}</span>
+      ? <span className="text-xs text-muted-foreground" title={p.rows.map((r) => r.division).join('\n')}><DivisionLink event={id} name={p.rows[0].division} f={f} />{p.rows.length > 1 && ` +${p.rows.length - 1}`}</span>
       : <ul className="flex flex-col gap-1 text-xs text-muted-foreground">{p.rows.map((r) => <li key={r.division} className="flex items-center gap-2"><Dot call={r.call} /><span className="min-w-0 break-words">{r.division.trim()}</span></li>)}</ul> },
     ...(fought ? [
       { key: 'place', label: 'Place', width: '6rem', cell: (p: Person) => <Place p={p.best < 999 ? p.best : null} /> },
@@ -147,14 +148,14 @@ export function EventPage({ id }: { id: string }) {
     </ol>
   );
   const podiumColumns: Column<Division>[] = [
-    { key: 'name', label: 'Division', width: '34%', align: 'start', cell: (d) => <div className="flex flex-col gap-0.5"><span className="font-medium">{d.name}</span><span className="text-xs text-muted-foreground">{plural(d.rows.length, 'athlete')}</span></div> },
+    { key: 'name', label: 'Division', width: '34%', align: 'start', cell: (d) => <div className="flex flex-col gap-0.5"><DivisionLink event={id} name={d.name} f={f} className="font-medium" /><span className="text-xs text-muted-foreground">{plural(d.rows.length, 'athlete')}</span></div> },
     ...[1, 2, 3].map((place) => ({ key: `p${place}`, label: ['Gold', 'Silver', 'Bronze'][place - 1], align: 'start' as const, cell: (d: Division) => {
       const at = d.rows.filter((r) => r.place === place);
       return at.length ? <div className="flex flex-col gap-1">{at.map((r) => <span key={r.user} className="flex items-center gap-2"><Place p={place} /><NameLink e={r} f={f} /></span>)}</div> : <span className="text-muted-foreground">–</span>;
     } })),
   ];
   const divisionColumns: Column<Division>[] = [
-    { key: 'name', label: 'Division', width: '40%', align: 'start', cell: (d) => <span className="font-medium">{d.name}</span> },
+    { key: 'name', label: 'Division', width: '40%', align: 'start', cell: (d) => <DivisionLink event={id} name={d.name} f={f} className="font-medium" /> },
     { key: 'size', label: 'Athletes', width: '7rem', sort: 'athletes', cell: (d) => <Num n={d.rows.length} /> },
     { key: 'wins', label: 'Career wins', width: '9rem', sort: 'wins', title: "Rank by the entrants' career wins added up", cell: (d) => <div className="flex flex-col items-end"><Num n={d.wins} /><span className="text-xs text-muted-foreground">{fmt(Math.round(d.wins / d.rows.length))} per athlete</span></div> },
     { key: 'top', label: fought ? 'Podium, or the expected one by career wins' : 'Expected podium, by career wins', align: 'start', cell: (d) => (

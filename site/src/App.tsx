@@ -11,6 +11,7 @@ import { EventsPage } from '@/pages/events';
 const AthletePage = lazy(() => import('@/pages/athlete').then((m) => ({ default: m.AthletePage })));
 import { AcademyPage } from '@/pages/academy';
 import { EventPage } from '@/pages/event';
+import { DivisionPage } from '@/pages/division';
 import { Empty } from '@/components/empty';
 
 const SITES = [{ value: 'smoothcomp.com', label: 'Smoothcomp' }, { value: 'ajptour.com', label: 'AJP Tour' }];
@@ -54,6 +55,7 @@ export function App() {
           <Route path="/events"><EventsPage /></Route>
           <Route path="/athlete/:id">{(p) => <Suspense><AthletePage id={p.id} /></Suspense>}</Route>
           <Route path="/academy/:id">{(p) => <AcademyPage id={p.id} />}</Route>
+          <Route path="/event/:id/division">{(p) => <DivisionPage id={p.id} />}</Route>
           <Route path="/event/:id">{(p) => <EventPage id={p.id} />}</Route>
           <Route><Empty title="No page here" text="Try the athlete ranking instead." /></Route>
         </Switch>

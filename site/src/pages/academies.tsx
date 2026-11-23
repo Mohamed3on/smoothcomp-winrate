@@ -9,7 +9,7 @@ import { useFilters } from '@/lib/filters';
 import { plural } from '@/lib/format';
 import { Roster, resetAction } from '@/pages/athletes';
 
-const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['medals', 'Career medals'], ['podiums', 'Podiums at events read']];
+const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
 
 export function AcademiesPage() {
   const f = useFilters();
@@ -24,8 +24,7 @@ export function AcademiesPage() {
     { key: 'athletes', label: 'Athletes', width: '8%', sort: 'athletes', title: 'Athletes who pass the filters', cell: (t) => <Num n={t.athletes} /> },
     { key: 'wins', label: 'Wins', width: '8%', sort: 'wins', cell: (t) => <Num n={t.wins} /> },
     { key: 'avg', label: 'Per athlete', width: '9%', sort: 'average', narrow: true, cell: (t) => (t.wins / t.athletes).toFixed(1) },
-    { key: 'medals', label: 'Medals', width: '14%', sort: 'medals', title: 'Career medals added up', cell: (t) => <Medals g={t.gold} s={t.silver} b={t.bronze} /> },
-    { key: 'podiums', label: 'Podiums', width: '13%', sort: 'podiums', narrow: true, title: 'Places at the events Mat Stats read results for', cell: (t) => <Medals g={t.podium_gold} s={t.podium_silver} b={t.podium_bronze} /> },
+    { key: 'podiums', label: 'Medals', width: '14%', sort: 'podiums', title: 'Medals won for this academy at the events Mat Stats has read results for', cell: (t) => <Medals g={t.podium_gold} s={t.podium_silver} b={t.podium_bronze} /> },
     { key: 'top', label: 'Top athletes', width: '22%', align: 'start', cell: (t) => (
       <div className="flex flex-col gap-1">
         {t.top.map((a) => (
