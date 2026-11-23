@@ -80,12 +80,18 @@ export function EventPage({ id }: { id: string }) {
   const size = new Map(divisions.map((d) => [d.name, d.rows.length]));
   const seat = (r: Ranked) => r.place ?? (r.call ? r.call.medal + 1 : 999);
   const bySeat = (a: Ranked, b: Ranked) => seat(a) - seat(b) || (size.get(b.division.trim()) ?? 0) - (size.get(a.division.trim()) ?? 0);
+  const medalOrder = (a: number[], b: number[]) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
+  const expectedOf = (p: Person) => [0, 1, 2].map((m) => p.calls.filter((c) => c.medal === m).length);
+  const byWins = (a: Person, b: Person) => (b.career ?? -1) - (a.career ?? -1) || byCareer(a.rows[0], b.rows[0]);
+  // Ranked by a header: expected medals or career wins; once fought, by place unless a header is picked.
+  const athleteSort = f.get('sort') || (fought ? '' : 'expected');
   const people: Person[] = [...Map.groupBy(divisions.flatMap((d) => d.rows), (e) => e.user).values()].map((rows) => rows.toSorted(bySeat)).map((rows) => ({
     ...rows[0], belt: beltAt(rows.map((r) => r.division)), rows, w: rows.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), l: rows.reduce((n, r) => n + winsOf(r.losses, f.counted), 0),
     won: sum(rows.map((r) => r.wins)), lost: sum(rows.map((r) => r.losses)),
     best: Math.min(...rows.map((r) => r.place ?? 999)), career: rows[0].career,
     calls: (calls.get(rows[0].user) ?? []).map((r) => r.call!).sort((a, b) => a.medal - b.medal),
-  })).sort(fought ? (a, b) => a.best - b.best || b.w - a.w || a.l - b.l : (a, b) => byCareer(a.rows[0], b.rows[0]));
+  })).sort(athleteSort === 'career' ? byWins : athleteSort === 'expected' ? (a, b) => medalOrder(expectedOf(a), expectedOf(b)) || byWins(a, b)
+    : (a, b) => a.best - b.best || b.w - a.w || a.l - b.l);
   // The athletes tab answers to the leaderboard's filters: belt, age, country, fewest career wins, and a search.
   const q = f.get('q').trim().toLowerCase(), belts = f.get('belt').split(',').filter(Boolean);
   const [agemin, agemax, least] = ['agemin', 'agemax', 'wins'].map((k) => (f.get(k) === '' ? null : Number(f.get(k))));
@@ -107,7 +113,6 @@ export function EventPage({ id }: { id: string }) {
       w: ps.reduce((n, p) => n + p.w, 0), l: ps.reduce((n, p) => n + p.l, 0), career: ps.reduce((n, p) => n + (p.career ?? 0), 0),
     };
   });
-  const medalOrder = (a: number[], b: number[]) => b[0] - a[0] || b[1] - a[1] || b[2] - a[2];
   academies.sort(fought ? (a, b) => medalOrder([a.g, a.s, a.b], [b.g, b.s, b.b]) || b.w - a.w
     : teamSort === 'expected' ? (a, b) => medalOrder(a.expected, b.expected) || b.career - a.career : (a, b) => b.career - a.career || b.athletes - a.athletes);
   divisions.sort(fought || bracketSort === 'athletes' ? (a, b) => b.rows.length - a.rows.length || a.name.localeCompare(b.name)
@@ -130,8 +135,8 @@ export function EventPage({ id }: { id: string }) {
       { key: 'won', label: 'How they won', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.won, f.counted) ? <Mix types={p.won} f={f} scale={winsOf(p.won, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
       { key: 'lost', label: 'How they lost', width: '13%', align: 'start' as const, cell: (p: Person) => (winsOf(p.lost, f.counted) ? <Mix types={p.lost} f={f} scale={winsOf(p.lost, f.counted) / most} /> : <span className="text-muted-foreground">–</span>) },
     ] : []),
-    ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', title: 'Medals their brackets point to, by career wins', cell: (p: Person) => <Expected e={[0, 1, 2].map((m) => p.calls.filter((c) => c.medal === m).length)} /> }]),
-    { key: 'career', label: 'Career wins', width: '8rem', title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },
+    ...(fought && !live ? [] : [{ key: 'expected', label: 'Expected', width: '11rem', sort: 'expected', title: 'Rank by the medals their brackets point to, then career wins', cell: (p: Person) => <Expected e={expectedOf(p)} /> }]),
+    { key: 'career', label: 'Career wins', width: '8rem', sort: 'career', title: 'Rank by wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (p) => <Num n={p.career} /> },
   ];
   const academyColumns: Column<Academy>[] = [
     { key: 'rank', label: '#', width: '3.5rem', align: 'start', cell: (_, i) => rank(i) },
@@ -216,7 +221,7 @@ export function EventPage({ id }: { id: string }) {
           <TabsList variant="line">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<NumberFlow value={n} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>)}</TabsList>
           <TabsContent value="podiums"><Ledger rows={divisions} loading={false} columns={podiumColumns} rowKey={(d) => d.name} empty={empty} /></TabsContent>
           <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} empty={empty} sort={fought ? undefined : teamSort} onSort={sortBy('expected')} expand={roster} /></TabsContent>
-          <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event hide={stoppages ? [] : ['stoppage']} /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user}
+          <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event hide={stoppages ? [] : ['stoppage']} /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user} sort={athleteSort} onSort={sortBy(fought ? '' : 'expected')}
             empty={<Empty title="No athletes match" text="Widen the age range, lower the minimum wins, or clear the belt, country and search." action={resetAction(f)} />} /></TabsContent>
           <TabsContent value="divisions"><Ledger rows={divisions} loading={false} columns={divisionColumns} rowKey={(d) => d.name} empty={empty} sort={bracketSort} onSort={sortBy('wins')} expand={bracket} /></TabsContent>
         </Tabs>
