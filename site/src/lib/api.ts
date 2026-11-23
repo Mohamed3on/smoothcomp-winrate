@@ -17,8 +17,10 @@ export interface Entry {
 }
 export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number }
 // One settled event as the athlete's profile match lists gave it: [won, lost] per finish, and each loss.
-export interface Loss { type: string; how: string; opponent: string | null; club: string | null; division: string | null; image: string | null; stage: string | null }
-export interface Outcome { event: string; start: string | null; title: string | null; out: { types: Record<string, [number, number]>; losses: Loss[] } }
+export interface Loss { type: string; how: string; opponent: string | null; club: string | null; division: string | null; image: string | null; reg: number | null; bracket: number | null; stage: string | null }
+// Everyone met there; a win names its finish, division and round too (from v 2).
+export interface Faced { name: string; club: string | null; image: string | null; reg: number | null; won: boolean; type?: string; how?: string; division?: string | null; bracket?: number | null; stage?: string | null }
+export interface Outcome { event: string; start: string | null; title: string | null; out: { v?: 2; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean } }
 export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null }
 export interface EventRow extends EventMeta { athletes: number; divisions: number; teams: number; fought: number }
 export interface EventEntry extends Entry {

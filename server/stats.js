@@ -154,8 +154,8 @@ async function athlete(env, params) {
     env.DB.prepare('SELECT sum(wins) AS wins, sum(losses) AS losses, count(*) AS events FROM records WHERE site = ?1 AND user = ?2').bind(f.site, user),
     env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
       FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(f.site, user),
-    // Each event's finishes won and lost and every loss, as their profile's match lists gave them.
-    env.DB.prepare(`SELECT event, start, title, json_remove(out, '$.faced') AS out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(f.site, user),
+    // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
+    env.DB.prepare(`SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(f.site, user),
   ]);
   if (!career.results.length && !person.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
   return json({
