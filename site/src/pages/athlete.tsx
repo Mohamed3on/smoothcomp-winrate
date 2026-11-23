@@ -498,6 +498,8 @@ export function AthletePage({ id }: { id: string }) {
   if (!data) return <Empty title={(error as { status?: number })?.status === 404 ? 'No athlete here' : 'That didn’t load'} text={(error as { status?: number })?.status === 404 ? 'Mat Stats has nothing under this athlete on this site. They may be on the other site, or nobody has read them yet.' : 'The stats server didn’t answer. Try again in a moment.'} />;
   const { career, person: who, entries, history, outcomes = [] } = data;
   const a = { ...(who ?? {}), ...(career ?? {}), name: who?.name ?? career?.name ?? null, born: who?.born ?? career?.born ?? null } as Athlete & { hidden: number | null };
+  // With no belt read for them, the highest one their divisions name.
+  a.belt ??= (BELT_ORDER.findLast((b) => entries.some((e) => beltIn(e.division) === b)) ?? null) as Athlete["belt"];
   document.title = `${a.name ?? `Athlete ${id}`} · Mat Stats`;
   const all = rows(entries, history, outcomes);
   const upcoming = all.filter((r) => isUpcoming(r.start) && !r.read?.some((e) => e.fought));
