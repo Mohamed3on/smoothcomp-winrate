@@ -25,7 +25,7 @@ export function AcademiesPage() {
     { key: 'wins', label: 'Wins', width: '8%', compact: '4.5rem', sort: 'wins', cell: (t) => <Num n={t.wins} /> },
     { key: 'avg', label: 'Per athlete', width: '9%', sort: 'average', narrow: true, cell: (t) => (t.wins / t.athletes).toFixed(1) },
     { key: 'podiums', label: 'Medals', width: '14%', sort: 'podiums', narrow: true, title: 'Medals won for this academy at the events Mat Stats has read results for', cell: (t) => <Medals g={t.podium_gold} s={t.podium_silver} b={t.podium_bronze} /> },
-    { key: 'top', label: 'Top athletes', width: '22%', align: 'start', narrow: true, cell: (t) => (
+    { key: 'top', label: 'Top athletes', width: '22%', align: 'start', narrow: true, preview: true, cell: (t) => (
       <div className="flex flex-col gap-1">
         {t.top.map((a) => (
           <Link key={a.user} href={f.link(`/athlete/${a.user}`)} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground hover:text-primary">

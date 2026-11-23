@@ -6,9 +6,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 
-// width: the column's width from lg up; compact: its width below lg (width by default); narrow: left off below lg, or below xl with 'xl'.
+// width: the column's width from lg up; compact: its width below lg (width by default); narrow: left off below lg, or below xl with 'xl',
+// and then listed in the row's expansion, unless preview (a glimpse of what the expansion shows in full).
 export interface Column<T> {
-  key: string; label: string; width?: string; compact?: string; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean | 'xl';
+  key: string; label: string; width?: string; compact?: string; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean | 'xl'; preview?: boolean;
   cell: (row: T, index: number) => React.ReactNode;
 }
 
@@ -24,7 +25,11 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   const [fresh, setFresh] = useState<string | null>(null);
   // An expansion spans only the columns shown: spanning hidden ones would add empty columns that take width.
   const lg = useMedia('(width >= 64rem)'), xl = useMedia('(width >= 80rem)');
-  const span = columns.filter((c) => !c.narrow || (c.narrow === 'xl' ? xl : lg)).length;
+  const shows = (c: Column<T>) => !c.narrow || (c.narrow === 'xl' ? xl : lg);
+  const span = columns.filter(shows).length;
+  // What the width leaves off opens under its row instead, so a tap still reaches every column.
+  const tucked = columns.filter((c) => !shows(c) && !c.preview);
+  const opens = !!expand || tucked.length > 0;
   const header = (
     <tr className="text-xs text-muted-foreground">
       {columns.map((c) => (
@@ -51,7 +56,7 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   if (!rows?.length) return <div className="rounded-xl border bg-card">{empty}</div>;
   // Each row, then its expansion when open: one flat list for the virtualizer.
   type Item = { row: T; index: number; detail: boolean };
-  const items: Item[] = rows.flatMap((row, index) => (open.has(rowKey(row)) && expand ? [{ row, index, detail: false }, { row, index, detail: true }] : [{ row, index, detail: false }]));
+  const items: Item[] = rows.flatMap((row, index) => (open.has(rowKey(row)) && opens ? [{ row, index, detail: false }, { row, index, detail: true }] : [{ row, index, detail: false }]));
   const toggle = (key: string) => { setFresh(open.has(key) ? null : key); setOpen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; }); };
   return (
     <div className={cn('rounded-xl border bg-card transition-opacity', loading && 'opacity-60')} aria-busy={loading}>
@@ -65,16 +70,28 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
           TableHead: forwardRef((props, ref) => <thead {...props} ref={ref} className="sticky top-24! z-10 sm:top-14! [&_th]:border-b" />),
           TableRow: ({ item, ...props }) => (
             <tr {...props}
-              aria-expanded={expand && !item.detail ? open.has(rowKey(item.row)) : undefined}
-              onClick={expand && !item.detail ? (e) => { if (!(e.target as HTMLElement).closest('a,button')) toggle(rowKey(item.row)); } : undefined}
-              className={cn('[&>td]:border-b [&>td]:border-border', !item.detail && 'transition-colors hover:bg-muted/40', expand && !item.detail && 'cursor-pointer',
-                expand && open.has(rowKey(item.row)) && 'bg-primary/8 hover:bg-primary/10')} />
+              aria-expanded={opens && !item.detail ? open.has(rowKey(item.row)) : undefined}
+              onClick={opens && !item.detail ? (e) => { if (!(e.target as HTMLElement).closest('a,button')) toggle(rowKey(item.row)); } : undefined}
+              className={cn('[&>td]:border-b [&>td]:border-border', !item.detail && 'transition-colors hover:bg-muted/40', opens && !item.detail && 'cursor-pointer',
+                opens && open.has(rowKey(item.row)) && 'bg-primary/8 hover:bg-primary/10')} />
           ),
         }}
         fixedHeaderContent={() => header}
         itemContent={(_, item) => item.detail
-          ? <td colSpan={span} className="bg-primary/8 px-3 pb-4 sm:px-5 sm:pl-16"><div className={cn(rowKey(item.row) === fresh && 'transition-[opacity,translate] duration-200 ease-out-strong starting:-translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0')}>{expand!(item.row)}</div></td>
-          : <>{columns.map((c) => <td key={c.key} className={cellClass(c, !!c.sort && c.sort === sort)}>{c.cell(item.row, item.index)}</td>)}</>}
+          ? <td colSpan={span} className="bg-primary/8 px-3 pb-4 sm:px-5 sm:pl-16"><div className={cn('flex flex-col gap-3', rowKey(item.row) === fresh && 'transition-[opacity,translate] duration-200 ease-out-strong starting:-translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0')}>
+              {tucked.length > 0 && (
+                <dl className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-x-4 gap-y-3 pt-1">
+                  {tucked.map((c) => <div key={c.key} className="flex min-w-0 flex-col gap-1"><dt className="text-xs text-muted-foreground">{c.label}</dt><dd className="[&>*]:items-start">{c.cell(item.row, item.index)}</dd></div>)}
+                </dl>
+              )}
+              {expand?.(item.row)}
+            </div></td>
+          : <>{columns.map((c, i) => (
+            <td key={c.key} className={cellClass(c, !!c.sort && c.sort === sort)}>{c.cell(item.row, item.index)}
+              {/* Where columns are tucked away, a chevron says the row opens. */}
+              {!i && tucked.length > 0 && <ChevronDown aria-hidden className={cn('mt-1 block size-3.5 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none', open.has(rowKey(item.row)) && 'rotate-180')} />}
+            </td>
+          ))}</>}
       />
     </div>
   );

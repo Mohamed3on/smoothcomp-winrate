@@ -222,7 +222,7 @@ export function EventPage({ id }: { id: string }) {
     { key: 'name', label: 'Division', width: '40%', compact: 'auto', align: 'start', cell: (d) => <DivisionLink event={id} name={d.name} f={f} className="font-medium" /> },
     { key: 'size', label: 'Athletes', width: '7rem', compact: '5.5rem', sort: 'athletes', cell: (d) => <Num n={d.rows.length} /> },
     { key: 'wins', label: 'Career wins', width: '9rem', compact: '6.5rem', sort: 'wins', title: "Rank by the entrants' career wins added up", cell: (d) => <div className="flex flex-col items-end"><Num n={d.wins} /><span className="text-xs text-muted-foreground">{fmt(Math.round(d.wins / d.rows.length))} per athlete</span></div> },
-    { key: 'top', label: fought ? 'Podium, or the expected one by belt and win rate' : 'Expected podium, by belt and win rate', align: 'start', narrow: true, cell: (d) => (
+    { key: 'top', label: fought ? 'Podium, or the expected one by belt and win rate' : 'Expected podium, by belt and win rate', align: 'start', narrow: true, preview: true, cell: (d) => (
       <div className="flex flex-col gap-1">{d.rows.slice(0, 3).map((r) => <span key={r.user} className="flex items-center gap-2 text-xs">{r.place != null ? <Place p={r.place} /> : <Dot call={r.call} />}<Photo name={r.name} photo={r.photo} className="size-5" /><NameLink e={r} f={f} /><span className="ml-auto"><Seed r={r} row /></span></span>)}</div>
     ) },
   ];
