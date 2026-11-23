@@ -180,6 +180,11 @@
       if (got['match-videos']?.meta) body.videos = got['match-videos'].meta.total;
       body.images = Object.fromEntries((got['past-events']?.data ?? []).filter(e => e.cover_image).map(e => [e.id, e.cover_image]));
       ask('/profile', body).catch(() => {});
+      // The career this page shows is the one participants pages read (careers.js), so the stats site ranks on it.
+      const career = got['wins-and-medals']?.data;
+      if (Array.isArray(career?.win_method_breakdown) && career.medals) ask('/keep', { site: body.site, careers: { [user]: { at: Date.now(),
+        wins: Object.fromEntries(career.win_method_breakdown.map(t => [t.won_by, t.count])), medals: [career.medals.gold, career.medals.silver, career.medals.bronze],
+        ...(Number.isSafeInteger(got['past-events']?.meta?.total) && { events: got['past-events'].meta.total }) } } }).catch(() => {});
     }, 1500);
   }
   // New figures replace the shown ones in place, without the opening or the bars regrowing.
