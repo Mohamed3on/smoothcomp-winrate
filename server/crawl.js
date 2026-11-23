@@ -12,6 +12,10 @@ const RUN = 50e3; // each run reads this long, then leaves the rest to the next 
 const BUDGET = 5000; // requests per run, well under a paid Worker's 10,000
 const ROUND = 300; // bracket cards read between saves
 const AT_ONCE = 6;
+// Smoothcomp answers a placed crawler in about 100 ms. When the median of a lane's last 30 requests
+// passes this, it is straining (crawling at 80 requests a second took it to a second for everyone),
+// so the lane stops until the next minute.
+const SLOW = 300;
 const DAY = 864e5;
 const PODIUM = { Final: [1, 2], 'Bronze match': [3] };
 const normalize = (s) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -23,11 +27,13 @@ class Busy extends Error {}
 // one was in flight (the rest went to the database and the counting), and events finished.
 function client() {
   let used = 0, waited = 0, open = 0, since = 0, busy = 0;
+  const recent = [];
   const started = Date.now();
   const until = started + RUN;
   const left = () => (Date.now() < until ? BUDGET - used : 0);
   const get = async (url) => {
     if (!left()) throw new Busy('budget');
+    if (recent.length >= 30 && [...recent].sort((a, b) => a - b)[15] > SLOW) throw new Busy('slow');
     used++;
     const t = Date.now();
     if (!open++) since = t;
@@ -38,10 +44,12 @@ function client() {
       return await r.json();
     } finally {
       waited += Date.now() - t;
+      recent.push(Date.now() - t);
+      if (recent.length > 30) recent.shift();
       if (!--open) busy += Date.now() - since;
     }
   };
-  const report = (done) => console.log('lane', JSON.stringify({ used, avg: Math.round(waited / (used || 1)), busy, wall: Date.now() - started, done }));
+  const report = (done, why) => console.log('lane', JSON.stringify({ used, avg: Math.round(waited / (used || 1)), busy, wall: Date.now() - started, done, why }));
   return { get, left, report };
 }
 
@@ -203,8 +211,8 @@ export async function queue(env) {
 
 export async function crawl(env, record) {
   const { get, left, report } = client();
-  let done = 0;
-  try { await lane(env, record, get, left, () => done++); } finally { report(done); }
+  let done = 0, why = 'time';
+  try { why = (await lane(env, record, get, left, () => done++)) ?? why; } finally { report(done, why); }
 }
 
 async function lane(env, record, get, left, finished) {
@@ -241,9 +249,9 @@ async function lane(env, record, get, left, finished) {
       // Out of time: the next run goes on from here. Told to slow down (429): this run stops. A site
       // erroring (5xx): this event waits a quarter hour while the others go on.
       if (e instanceof Busy) {
-        const later = e.message === 'budget' ? 0 : Date.now() + 15 * 60e3;
+        const later = e.message === 'budget' || e.message === 'slow' ? 0 : Date.now() + 15 * 60e3;
         if (data) await save('reading', data, later); else await env.DB.prepare('UPDATE crawls SET next = ?3 WHERE site = ?1 AND event = ?2').bind(job.site, job.event, later).run();
-        if (e.message === 'budget' || e.message === '429') return;
+        if (e.message === 'budget' || e.message === 'slow' || e.message === '429') return e.message;
         continue;
       }
       const tries = job.tries + 1;

@@ -3,7 +3,7 @@
 name = "mat-stats-crawler"
 main = "crawler.js"
 compatibility_date = "2026-11-01"
-workers_dev = false
+workers_dev = true
 preview_urls = false
 
 # Nearest Smoothcomp's servers (measured: AWS Ireland).
