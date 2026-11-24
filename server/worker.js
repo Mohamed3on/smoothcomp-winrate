@@ -223,6 +223,10 @@ async function record(env, { site, event, records, meta, athletes, read }) {
     .bind(site, event, at, JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
   await identify(env, site, event, meta, athletes, true, at);
   await settle(env, site, event, [...before, ...rows.map(([user]) => user), ...Object.keys(athletes ?? {}).slice(0, 5000)]);
+  // Results sent with their matches leave the crawler nothing to read: the event leaves its queue
+  // (taken off, not marked done, so it never counts against the crawler's day).
+  await env.DB.prepare(`DELETE FROM crawls WHERE site = ?1 AND event = ?2 AND state = 'queued'
+    AND EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 AND bouts IS NOT NULL)`).bind(site, event).run();
   return json({});
 }
 
@@ -376,13 +380,19 @@ async function cached(request, ctx, name, env, make) {
   const hit = await cache.match(key);
   const stored = Number(hit?.headers.get('X-Stored'));
   try {
-    const stamps = hit ? (await db.prepare("SELECT k, v FROM meta WHERE k IN ('changed', 'reset')").all()).results : [];
+    // An event's or division's page also reads when that event's results last arrived.
+    const id = (name === 'event' || name === 'division') && new URL(request.url).searchParams.get('id');
+    const stamps = hit ? (await db.prepare(`SELECT k, v FROM meta WHERE k IN ('changed', 'reset')${id ? " UNION ALL SELECT 'event', max(at) FROM events WHERE site IN ('smoothcomp.com', 'ajptour.com') AND event = ?1" : ''}`)
+      .bind(...(id ? [id] : [])).all()).results : [];
     const stamp = (k) => Number(stamps.find((row) => row.k === k)?.v ?? 0);
     if (hit && stamp('reset') <= stored) {
       const age = (Date.now() - stored) / 1000;
       const changed = stamp('changed') > stored;
-      if (age <= fresh && (!changed || (STALE_OK.has(name) && age < 60))) return new Response(hit.body, { headers: headers('HIT') });
-      if (STALE_OK.has(name)) {
+      // Results for this event since the copy was read (or while it was: the stamp is taken as an upload
+      // starts writing) make it again before it is served, so a results page just opened shows at once.
+      const arrived = stamp('event') + 60e3 > stored;
+      if (age <= fresh && !arrived && (!changed || (STALE_OK.has(name) && age < 60))) return new Response(hit.body, { headers: headers('HIT') });
+      if (STALE_OK.has(name) && !arrived) {
         ctx.waitUntil(build().catch(() => {}));
         return new Response(hit.body, { headers: headers('STALE') });
       }
@@ -434,6 +444,14 @@ export default {
     if (pathname === '/api/here' && request.method === 'GET') {
       const cf = request.cf ?? {};
       return Response.json({ lat: coord(cf.latitude, 90), lng: coord(cf.longitude, 180), city: cf.city ?? null, country: cf.country ?? null }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+    // An academy someone opens has its athletes' unread events read next, ahead of the rest of the queue
+    // (the crawler's day stays the same size), as /crawled does for a profile's. CROSS JOIN and +state keep
+    // SQLite on the academy's members, then their events, then those crawls, not walking the whole queue.
+    if (pathname === '/api/team' && /^\d{1,12}$/.test(searchParams.get('id') ?? '')) {
+      ctx.waitUntil(env.DB.prepare(`UPDATE crawls SET priority = 3 WHERE site = ?1 AND +state = 'queued' AND +priority < 3 AND event IN (
+        SELECT h.event FROM people p CROSS JOIN history h WHERE p.site = ?1 AND p.club_id = ?2 AND h.site = p.site AND h.user = p.user)`)
+        .bind(SITES.includes(searchParams.get('site')) ? searchParams.get('site') : SITES[0], searchParams.get('id')).run().catch(() => {}));
     }
     const read = pathname.startsWith('/api/') && API[pathname.slice(5)];
     if (read) return request.method === 'GET' ? cached(request, ctx, pathname.slice(5), env, (db) => read({ ...env, DB: db }, searchParams)) : json({ error: 'Not found' }, 404);
