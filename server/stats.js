@@ -123,6 +123,16 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
 // One person's accounts are the ones with their name as written (case and runs of spaces aside), birth year and
 // country, on either site: AJP keeps its own accounts, and both sites hold duplicates. people_ident reads them.
 const IDENT = (p) => `lower(trim(replace(replace(replace(${p}name, '  ', ' '), '  ', ' '), '  ', ' ')))`;
+// The birth year an account goes by: its own, else (none read) the one birth year of everyone with its name and country,
+// where one of them was at its academy too.
+const BORN = (p) => `coalesce(${p}born, (SELECT iif(count(DISTINCT q.born) = 1 AND max(lower(trim(q.club)) = lower(trim(${p}club))), min(q.born), NULL)
+  FROM people q WHERE ${IDENT('q.')} = ${IDENT(p)} AND q.country = ${p}country AND q.born IS NOT NULL))`;
+// Every account sharing a person with the accounts `from` names (aliased f: site, user), as members (site, user, and
+// the person: k name, kb birth year, kc country).
+const MEMBERS = (from) => `seeds AS MATERIALIZED (SELECT ${IDENT('p.')} AS k, ${BORN('p.')} AS kb, p.country AS kc FROM ${from} CROSS JOIN people p ON p.site = f.site AND p.user = f.user
+      WHERE trim(p.name) != '' AND p.country IS NOT NULL),
+  members AS MATERIALIZED (SELECT DISTINCT m.site, m.user, s.k, s.kb, s.kc FROM seeds s CROSS JOIN people m ON ${IDENT('m.')} = s.k AND m.country = s.kc
+    WHERE s.kb IS NOT NULL AND (m.born = s.kb OR (m.born IS NULL AND ${BORN('m.')} = s.kb)))`;
 
 // Each account's board row holds its whole person: every account sharing them, on either site, summed, after BOARD has
 // rebuilt these athletes' own rows. An account that shares its person keeps its own row in board_own, which the sums
@@ -131,10 +141,7 @@ const IDENT = (p) => `lower(trim(replace(replace(replace(${p}name, '  ', ' '), '
 const BOARD_COLS = `site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
     ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')}`;
 const COUNTS = ['w', 'rw', 'rl', 'sl'].flatMap((p) => GROUPS.map((g) => `${p}_${g}`));
-const PEOPLE = `seeds AS MATERIALIZED (SELECT p.name, p.born, p.country FROM json_each(?2) j CROSS JOIN people p ON p.site = ?1 AND p.user = j.value
-      WHERE trim(p.name) != '' AND p.born IS NOT NULL AND p.country IS NOT NULL),
-  members AS MATERIALIZED (SELECT DISTINCT m.site, m.user, ${IDENT('s.')} AS k, s.born AS kb, s.country AS kc
-    FROM seeds s CROSS JOIN people m ON ${IDENT('m.')} = ${IDENT('s.')} AND m.born = s.born AND m.country = s.country),
+const PEOPLE = `${MEMBERS('(SELECT ?1 AS site, value AS user FROM json_each(?2)) f')},
   shared AS MATERIALIZED (SELECT * FROM members WHERE (k, kb, kc) IN (SELECT k, kb, kc FROM members GROUP BY k, kb, kc HAVING count(*) > 1))`;
 export const MERGE = [`DELETE FROM board_own WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))`,
 `INSERT OR IGNORE INTO board_own (${BOARD_COLS}) WITH ${PEOPLE}
@@ -322,9 +329,8 @@ async function athlete(env, params) {
   const f = filters(params);
   const user = params.get('id') ?? '';
   if (!/^\d{1,12}$/.test(user)) return json({ error: 'Bad athlete' }, 400);
-  const { results: others } = await env.DB.prepare(`WITH me AS (SELECT ${IDENT('')} AS k, born, country FROM people
-      WHERE site = ?1 AND user = ?2 AND trim(name) != '' AND born IS NOT NULL AND country IS NOT NULL)
-    SELECT p.site, p.user, p.name, p.club FROM me CROSS JOIN people p WHERE ${IDENT('p.')} = me.k AND p.born = me.born AND p.country = me.country AND NOT (p.site = ?1 AND p.user = ?2)
+  const { results: others } = await env.DB.prepare(`WITH ${MEMBERS('(SELECT ?1 AS site, ?2 AS user) f')}
+    SELECT p.site, p.user, p.name, p.club FROM members m CROSS JOIN people p ON p.site = m.site AND p.user = m.user WHERE NOT (p.site = ?1 AND p.user = ?2)
     ORDER BY p.site = ?1 DESC, p.seen DESC LIMIT 10`).bind(f.site, user).all();
   const accounts = [{ site: f.site, user }, ...others];
   const read = await env.DB.batch(accounts.flatMap((a) => account(env, f, a.site, a.user)));

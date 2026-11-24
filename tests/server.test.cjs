@@ -130,6 +130,15 @@ test("an athlete's accounts with their name, birth year and country read as one"
   // Its academy counts them once.
   const teams = (await (await API.teams(env, new URLSearchParams('site=ajptour.com&athletes=1'))).json()).rows.map((t) => [t.club_id, t.athletes, t.wins]);
   assert.deepEqual(teams.sort(), [['7', 1, 6], ['8', 1, 3]]);
+  // An account with no birth year joins them where their name and country match one person, one of whose accounts was
+  // at its academy; at an academy none of theirs was at, it stays apart.
+  await post('/record', { site: 'smoothcomp.com', event: '902', records: { 13: [2, 0], 14: [4, 0] }, meta: { ...meta, title: 'Berlin Open III' }, athletes: {
+    13: { name: 'Kim Lee', club: 'alpha bjj', clubId: '501', country: 'NL', entries: [{ division: 'Adult / Blue / -76 kg', place: 1, wins: { submission: 2 }, losses: {} }] },
+    14: { name: 'Kim Lee', club: 'Omega', clubId: '599', country: 'NL', entries: [{ division: 'Adult / Blue / -82 kg', place: 1, wins: { points: 4 }, losses: {} }] },
+  }, read: Date.now() });
+  assert.deepEqual(await ranked('smoothcomp.com'), [['11', 8, 8, 1], ['14', 4, 4, 0], ['12', 1, 1, 2]]);
+  const unborn = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=13'))).json();
+  assert.deepEqual(unborn.accounts.map((a) => [a.site, a.user]).sort(), [['ajptour.com', '77'], ['ajptour.com', '79'], ['smoothcomp.com', '11']]);
 });
 
 test('listed events are found by place, date, sport and size, and academies where they compete', async () => {
