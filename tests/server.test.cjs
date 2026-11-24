@@ -196,9 +196,14 @@ test("an athlete's belt is at least the lowest belt of every division they enter
   await post('/record', { site: 'smoothcomp.com', event: '951', records: { 21: [2, 0], 22: [1, 0] }, meta: { ...meta, start: '2026-05-23T07:00:00Z' }, athletes: {
     21: { name: 'Tam Nja', entries: [{ division: 'Male Gi / Brown/Black / Master 1 (30+) / -85,00 kg', place: 1, wins: { submission: 2 }, losses: {} }] },
     22: { name: 'Kid Ko', belt: 'White', entries: [{ division: 'Adult / White / -70 kg', place: 1, wins: { points: 1 }, losses: {} }] },
+    // A brown belt who fought the black division once, and is in brown again at a later event.
+    23: { name: 'Mo Ve', belt: 'Brown', entries: [{ division: 'Gi Adult / Male / Black / Master (30+) / -170 lbs', place: 1, wins: { points: 1 }, losses: {} }] },
+  }, read: Date.now() });
+  await post('/record', { site: 'smoothcomp.com', event: '952', records: { 23: [1, 0] }, meta: { ...meta, start: '2026-12-13T07:00:00Z' }, athletes: {
+    23: { name: 'Mo Ve', entries: [{ division: 'Gi Adult / Male / Brown / Adult / -170 lbs', place: 1, wins: { points: 1 }, losses: {} }] },
   }, read: Date.now() });
   const rows = (await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json()).rows;
-  assert.deepEqual(rows.map((r) => [r.user, r.belt]).sort(), [['21', 'brown'], ['22', 'white']]);
+  assert.deepEqual(rows.map((r) => [r.user, r.belt]).sort(), [['21', 'brown'], ['22', 'white'], ['23', 'brown']]);
 });
 
 test('listed events are found by place, date, sport and size, and academies where they compete', async () => {

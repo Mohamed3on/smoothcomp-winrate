@@ -91,10 +91,14 @@ const namedBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each
       ORDER BY k.key DESC LIMIT 1)`;
 // The least belt an athlete holds now, as their divisions show it: belts only go up, so every division they entered
 // puts them at its lowest belt or above ("Brown/Black": brown). Only blue and up count: a kids' belt never lifts an adult.
-const names = (belt) => `replace(lower(e.division), 'gray', 'grey') LIKE '%' || ${belt} || '%'`;
+// A division one belt names at that event or later, lower, says they moved up once (a brown belt in the black division).
+const names = (belt, e = 'e') => `replace(lower(${e}.division), 'gray', 'grey') LIKE '%' || ${belt} || '%'`;
 const floorBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each(${NAMED}) k
       WHERE e.site = ?1 AND e.user = ${user} AND k.key >= ${BELTS.indexOf('blue')} AND ${names('k.value')}
         AND NOT EXISTS (SELECT 1 FROM json_each(${NAMED}) j WHERE j.key < k.key AND ${names('j.value')})
+        AND NOT EXISTS (SELECT 1 FROM events v CROSS JOIN entries x INDEXED BY entries_user CROSS JOIN events xv ON xv.site = x.site AND xv.event = x.event CROSS JOIN json_each(${NAMED}) j
+          WHERE v.site = e.site AND v.event = e.event AND x.site = e.site AND x.user = e.user AND xv.start >= v.start AND j.key < k.key AND ${names('j.value', 'x')}
+            AND (SELECT count(*) FROM json_each(${NAMED}) i WHERE ${names('i.value', 'x')}) = 1)
       ORDER BY k.key DESC LIMIT 1)`;
 // The higher of two belts; one not a colour gives way.
 const higher = (a, b) => `(SELECT value FROM json_each(${NAMED}) WHERE value = lower(${a}) OR value = ${b} ORDER BY key DESC LIMIT 1)`;
