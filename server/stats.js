@@ -277,10 +277,17 @@ async function athletes(env, params) {
   const [limit, offset] = [arg(f.limit), arg(f.offset)];
   // Ranked by wins, the page's fewest wins are read off board_record first, so ties are sorted by finish among the
   // athletes with at least that many alone (the finishes left SQLite sorting every athlete: 3 s).
+  // With walkovers and more left out, an athlete's wins are at most their default wins (board_ranked's key), so
+  // the page's athletes hold at least the floor there too: the floor and the page read that slice of the index, not
+  // every athlete (1M rows read, 2.3 s). It starts at the page's fewest wins among the athletes the default ranks
+  // highest (four pages of them), which is never more than the floor itself.
+  const ranked = counted('["walkover"]').map((g) => `w_${g}`).join(' + ');
+  const bound = !club && sort.startsWith('wins DESC') && JSON.parse(f.off).includes('walkover') && f.off !== '["walkover"]'
+    ? ` AND ${ranked} >= coalesce((SELECT wins FROM (SELECT wins FROM careers WHERE ${matching} ORDER BY ${ranked} DESC LIMIT 4 * (${limit} + ${offset})) ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
   const floor = !club && sort.startsWith('wins DESC')
-    ? ` AND wins >= coalesce((SELECT wins FROM careers WHERE ${matching} ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
+    ? ` AND wins >= coalesce((SELECT wins FROM careers WHERE ${matching}${bound} ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off, club ? 'AND +dup = 0' : 'AND dup = 0')},
-    top AS (SELECT user FROM careers WHERE ${matching}${floor} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
+    top AS (SELECT user FROM careers WHERE ${matching}${bound}${floor} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
     SELECT careers.*, (SELECT count(*) FROM careers WHERE ${matching}) AS total FROM top CROSS JOIN careers USING (user) ORDER BY ${sort}, user`)
     .bind(...args).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
