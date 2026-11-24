@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS crawls (
   PRIMARY KEY (site, event)
 );
 CREATE INDEX IF NOT EXISTS crawls_next ON crawls (state, start);
+-- The events still to read, in the order the crawler takes them (crawl.js lane).
+CREATE INDEX IF NOT EXISTS crawls_due ON crawls (priority DESC, start DESC) WHERE state IN ('queued', 'reading');
 -- Each athlete's totals (stats.js TALLY), recounted whenever their results, match lists or event
 -- list change: per finish [won, lost] as rated (`rec`) and as read (`seen`), medals, events.
 CREATE TABLE IF NOT EXISTS tallies (
@@ -179,7 +181,8 @@ CREATE TABLE IF NOT EXISTS club_places (
   site TEXT NOT NULL, club_id TEXT NOT NULL, lat REAL, lng REAL, city TEXT, country TEXT, address TEXT, source TEXT, checked INTEGER NOT NULL, google INTEGER,
   PRIMARY KEY (site, club_id)
 );
--- Small values the worker keeps: 'changed' = when an install last uploaded (ms), so the edge cache knows its copies are old.
+-- Small values the worker keeps: 'changed' = when an install last uploaded (ms), so the edge cache knows its copies are old;
+-- 'reset' = when every stored copy stopped counting (set by hand after a deploy changes a reply's shape).
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v INTEGER);
 -- Search (stats.js search): athletes' names and academies, and events' titles and cities, indexed by
 -- trigram with accents folded (ö = o), kept in step by triggers. Fill once with

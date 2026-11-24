@@ -197,7 +197,7 @@ async function athletes(env, params) {
 const TEAM_SORTS = {
   wins: 'wins DESC',
   athletes: 'athletes DESC, wins DESC',
-  average: 'sum(wins) * 1.0 / count(*) DESC, wins DESC',
+  average: 'wins * 1.0 / athletes DESC, wins DESC',
   submission: 'submission DESC, wins DESC',
   // Medals won for the academy (an older link's "medals" sorts the same).
   medals: 'podium_gold DESC, podium_silver DESC, podium_bronze DESC, wins DESC',
@@ -208,24 +208,26 @@ const TEAM_SORTS = {
 async function teams(env, params) {
   const f = filters(params);
   const sort = flip(TEAM_SORTS[params.get('sort')] ?? TEAM_SORTS.wins, params.get('dir'));
-  // Each academy's three athletes with the most wins come with it.
+  // Each academy's three athletes with the most wins come with it, read for the academies shown alone.
   const least = whole(params.get('athletes'), 3, 1000);
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
-    members AS (SELECT *, row_number() OVER (PARTITION BY club_id ORDER BY wins DESC, user) AS place FROM careers
+    members AS (SELECT * FROM careers
       WHERE club_id IS NOT NULL AND wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)),
     podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
         iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, iif(o.lat IS NULL, c.country, o.country) AS country,
         iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
-      FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1)
-    SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
+      FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1),
+    totals AS (SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
       sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
-      json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born)) FILTER (WHERE m.place <= 3) AS top,
       count(*) OVER () AS total
     FROM members m LEFT JOIN podiums p USING (club_id)
     WHERE (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17)
-    GROUP BY m.club_id HAVING count(*) >= ?8
-    ORDER BY ${sort}, m.club_id LIMIT ?9 OFFSET ?10`)
+    GROUP BY m.club_id HAVING count(*) >= ?8),
+    shown AS (SELECT * FROM totals ORDER BY ${sort}, club_id LIMIT ?9 OFFSET ?10)
+    SELECT *, (SELECT json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born))
+        FROM (SELECT * FROM members t WHERE t.club_id = shown.club_id ORDER BY wins DESC, user LIMIT 3)) AS top
+    FROM shown ORDER BY ${sort}, club_id`)
     .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since, f.lat, f.lng, f.km).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });
 }

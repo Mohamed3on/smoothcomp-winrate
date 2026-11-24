@@ -350,8 +350,10 @@ const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster':
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy
 // is made behind them, and an athlete's page is made again before it is served, so a profile just
 // opened shows within a minute. Reads go to the nearest read replica (a D1 session). An install's
-// upload stamps the time (meta 'changed'), and any copy stored before it is made again before it is
-// served; the crawler's minute-by-minute results don't, or no list would ever be served from here.
+// upload stamps the time (meta 'changed'): an athlete's page stored before it is made again before it is
+// served, and a list is served as stored and made again behind it, at most once a minute, so nobody
+// waits on a list being counted again. Stamping meta 'reset' (after a deploy changes a reply's shape)
+// makes every copy stored before it again before it is served. The crawler's results stamp neither.
 const FRESH = { athletes: 600, teams: 600, event: 600, division: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60, places: 30 * 86400 };
 const STALE_OK = new Set(['athletes', 'teams', 'event', 'division', 'team', 'events', 'search', 'countries', 'summary', 'places']);
 async function cached(request, ctx, name, env, make) {
@@ -371,10 +373,12 @@ async function cached(request, ctx, name, env, make) {
   };
   const hit = await cache.match(key);
   const stored = Number(hit?.headers.get('X-Stored'));
-  const changed = hit && (await db.prepare("SELECT v FROM meta WHERE k = 'changed'").first('v')) > stored;
-  if (hit && !changed) {
+  const stamps = hit ? (await db.prepare("SELECT k, v FROM meta WHERE k IN ('changed', 'reset')").all()).results : [];
+  const stamp = (k) => Number(stamps.find((row) => row.k === k)?.v ?? 0);
+  if (hit && stamp('reset') <= stored) {
     const age = (Date.now() - stored) / 1000;
-    if (age <= fresh) return new Response(hit.body, { headers: headers('HIT') });
+    const changed = stamp('changed') > stored;
+    if (age <= fresh && (!changed || (STALE_OK.has(name) && age < 60))) return new Response(hit.body, { headers: headers('HIT') });
     if (STALE_OK.has(name)) {
       ctx.waitUntil(build().catch(() => {}));
       return new Response(hit.body, { headers: headers('STALE') });

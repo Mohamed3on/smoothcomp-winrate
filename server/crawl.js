@@ -363,10 +363,13 @@ export async function queue(env) {
       SELECT site, event, start, title, city FROM events UNION ALL SELECT site, event, start, title, city FROM history) k
     WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
     GROUP BY k.site, k.event`).bind(Date.now()).run();
-  // Events a results page sent without matches: read for those alone.
+  // Events a results page sent without matches: read for those alone. Event by event through the
+  // event key, skipping those queued already, instead of walking every entry.
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at)
-    SELECT e.site, e.event, 'queued', v.start, v.title, v.city, 0, ?1 FROM entries e JOIN events v ON v.site = e.site AND v.event = e.event
-    WHERE e.fought = 1 AND v.start < datetime('now', '-1 day') GROUP BY e.site, e.event HAVING max(e.bouts IS NOT NULL) = 0`).bind(Date.now()).run();
+    SELECT v.site, v.event, 'queued', v.start, v.title, v.city, 0, ?1 FROM events v
+    WHERE v.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = v.site AND c.event = v.event)
+      AND EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1)
+      AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1 AND e.bouts IS NOT NULL)`).bind(Date.now()).run();
   // Results can still be corrected after an event: one read under ten days after it started is
   // read again once ten days have passed.
   await env.DB.prepare(`UPDATE crawls SET state = 'queued', data = NULL, next = 0, tries = 0 WHERE state = 'done' AND wrote IS NOT NULL
@@ -382,8 +385,9 @@ export async function crawl(env, record, addBouts) {
 async function lane(env, record, addBouts, get, left, finished) {
   const now = Date.now();
   while (left() > 10) {
-    // Taken and held in one statement, so lanes running side by side never take the same event.
-    const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY priority DESC, start DESC LIMIT 1) RETURNING *`)
+    // Taken and held in one statement, so lanes running side by side never take the same event; through
+    // crawls_due, in the order taken, so it stops at the first one due instead of sorting the queue.
+    const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls INDEXED BY crawls_due WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY priority DESC, start DESC LIMIT 1) RETURNING *`)
       .bind(Date.now(), Date.now() + 10 * 60e3).first();
     if (!job) return;
     const host = HOSTS[job.site];
