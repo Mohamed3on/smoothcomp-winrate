@@ -57,4 +57,6 @@ export async function get<T>(route: string, query: Record<string, string | numbe
 }
 
 export const useApi = <T,>(route: string, query: Record<string, string | number | null | undefined>, enabled = true, staleTime = 60_000) =>
-  useQuery({ queryKey: [route, query], queryFn: () => get<T>(route, query), enabled, staleTime, placeholderData: (previous) => previous, retry: (n, e: { status?: number }) => e.status !== 404 && n < 2 });
+  useQuery({ queryKey: [route, query], queryFn: () => get<T>(route, query), enabled, staleTime, placeholderData: (previous) => previous, retry: (n, e: { status?: number }) => e.status !== 404 && n < 2,
+    // A 503 is D1 overloaded for a 10 s window: retrying sooner (1 s, then 2 s) lands in the same window.
+    retryDelay: (n, e: { status?: number }) => e.status === 503 ? 5000 * (n + 1) : Math.min(1000 * 2 ** n, 30_000) });
