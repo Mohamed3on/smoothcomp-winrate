@@ -10,7 +10,7 @@ import { fmt, plural } from '@/lib/format';
 import { Roster, resetAction } from '@/pages/athletes';
 
 // Where an academy's place comes from, said on hover.
-const PLACED = { pin: 'Where its Smoothcomp page pins it', town: 'The town its Smoothcomp page names', events: 'Where its athletes have competed most: its page names no place' };
+const PLACED = { pin: 'Where its Smoothcomp page pins it', town: 'The town its Smoothcomp page names', google: 'Where Google Maps finds it: its page names no place', events: 'Where its athletes have competed most: its page names no place' };
 const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
 
 export function AcademiesPage() {

@@ -289,6 +289,49 @@ export async function placeClubs(env, take = 20, gap = 2500) {
   return read;
 }
 
+// Academies whose page names no place, looked up on Google Maps (Text Search, which gives each place's
+// name, location and address), searched by the academy's name near where its athletes compete: the busiest
+// first, one every ten minutes (inside the 5,000 a month Google gives free), kept until the academy's page is
+// read again, half a year on. A place counts if its name shares a word with the academy's, past the words every
+// academy uses and that town's, within 150 km of there; or, as a team that travels competes far from home, if
+// its name holds every such word of the academy's and it is in the academy's country. Without env.GOOGLE_MAPS_KEY, nothing.
+const COMMON = new Set(['for', 'of', 'bjj', 'jj', 'jiu', 'jitsu', 'jiujitsu', 'brazilian', 'academy', 'academia', 'akademie', 'team', 'club', 'mma', 'gym', 'fight', 'fighting', 'martial', 'arts', 'the', 'and', 'de', 'do', 'da', 'e', 'v', 'ev', 'grappling', 'school', 'association', 'sport', 'sports', 'center', 'centre', 'combat', 'kampfsport', 'verein']);
+const tokens = (s) => String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
+export function sameAcademy(ours, theirs, town, every = false) {
+  const skip = new Set([...COMMON, ...(every ? [] : tokens(town))]);
+  const named = new Set(tokens(theirs));
+  const words = tokens(ours).filter((w) => !skip.has(w));
+  return words.length > 0 && words[every ? 'every' : 'some']((w) => named.has(w));
+}
+const between = (a, b, c, d) => 6371 * Math.acos(Math.min(1, Math.sin(a * Math.PI / 180) * Math.sin(c * Math.PI / 180) + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.cos((d - b) * Math.PI / 180)));
+export function pickPlace(club, places) {
+  const part = (p, type, form = 'longText') => p.addressComponents?.find((c) => c.types?.includes(type))?.[form] ?? null;
+  const placed = (places ?? []).filter((p) => Number.isFinite(p.location?.latitude) && Number.isFinite(p.location?.longitude));
+  const near = (p) => club.lat == null || between(club.lat, club.lng, p.location.latitude, p.location.longitude) <= 150;
+  const found = placed.find((p) => near(p) && sameAcademy(club.club, p.displayName?.text, club.city))
+    ?? placed.find((p) => club.country && part(p, 'country', 'shortText') === club.country && sameAcademy(club.club, p.displayName?.text, club.city, true));
+  return found ? { lat: found.location.latitude, lng: found.location.longitude, city: part(found, 'locality') ?? part(found, 'postal_town'),
+    address: typeof found.formattedAddress === 'string' ? found.formattedAddress.slice(0, 200) : null } : null;
+}
+export async function findClubs(env) {
+  if (!env.GOOGLE_MAPS_KEY) return 0;
+  const club = await env.DB.prepare(`SELECT p.site, p.club_id, c.club, c.lat, c.lng, c.city, coalesce(p.country, c.country) AS country FROM club_places p JOIN clubs c ON c.site = p.site AND c.club_id = p.club_id
+    WHERE p.source IS NULL AND p.google IS NULL AND c.club IS NOT NULL ORDER BY coalesce(c.entered, 0) DESC LIMIT 1`).first();
+  if (!club) return 0;
+  const answer = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_MAPS_KEY, 'X-Goog-FieldMask': 'places.displayName,places.location,places.formattedAddress,places.addressComponents' },
+    body: JSON.stringify({ textQuery: club.club, pageSize: 5,
+      ...(club.lat != null && { locationBias: { circle: { center: { latitude: club.lat, longitude: club.lng }, radius: 50000 } } }) }),
+  });
+  if (!answer.ok) return 0; // a refused key or a spent quota asks again next time
+  const found = pickPlace(club, (await answer.json()).places);
+  await env.DB.prepare(`UPDATE club_places SET google = ?3, lat = coalesce(?4, lat), lng = coalesce(?5, lng), city = coalesce(?6, city), address = coalesce(?7, address),
+    source = iif(?4 IS NULL, source, 'google') WHERE site = ?1 AND club_id = ?2`)
+    .bind(club.site, club.club_id, Date.now(), found?.lat ?? null, found?.lng ?? null, found?.city ?? null, found?.address ?? null).run();
+  return found ? 1 : 0;
+}
+
 export async function listEvents(env) {
   const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
   const read = async (site, path) => listed(await (await fetch(`${HOSTS[site]}/en/events/${path}`, { headers: { 'User-Agent': UA } })).text());

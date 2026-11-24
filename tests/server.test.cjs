@@ -141,3 +141,35 @@ test("an academy's own page places it, over where it competes most", async () =>
   assert.deepEqual(await near('near=52.52,13.40&km=50'), [['502', 'Berlin', 'events']]);
   assert.deepEqual(await near('near=48.14,11.58&km=50'), [['501', 'München', 'pin']]);
 });
+
+test('Google Maps places an academy whose page names no place, only on a matching name nearby', async () => {
+  const { sameAcademy, pickPlace, findClubs } = await import('../server/crawl.js');
+  assert.equal(sameAcademy('POUND FOR POUND TEAM', 'Pound for Pound Team München', 'Berlin'), true);
+  assert.equal(sameAcademy('Berlin BJJ', 'Berlin Boxing Club', 'Berlin'), false); // the town and "BJJ" say nothing
+  assert.equal(sameAcademy('Fightzone Berlin', 'FIGHTZONE e.V.', 'Berlin'), true);
+  const at = (name, latitude, longitude, locality, country = 'DE') => ({ displayName: { text: name }, location: { latitude, longitude }, formattedAddress: `${name}, ${locality}`,
+    addressComponents: [{ longText: locality, types: ['locality', 'political'] }, { longText: country, shortText: country, types: ['country', 'political'] }] });
+  const club = { club: 'Gracie Barra Berlin', city: 'Berlin', lat: 52.52, lng: 13.4, country: 'DE' };
+  // Hamburg's branch shares the name but lies 255 km off; Berlin's is taken.
+  assert.deepEqual(pickPlace(club, [at('Gracie Barra Hamburg', 53.55, 9.99, 'Hamburg'), at('Gracie Barra Berlin Mitte', 52.53, 13.41, 'Berlin')]),
+    { lat: 52.53, lng: 13.41, city: 'Berlin', address: 'Gracie Barra Berlin Mitte, Berlin' });
+  assert.equal(pickPlace(club, [at('Kingdom Boxing', 52.5, 13.4, 'Berlin')]), null);
+  assert.equal(pickPlace(club, [at('Gracie Barra Hamburg', 53.55, 9.99, 'Hamburg')]), null); // far, and "Berlin" isn't in its name
+  // A team that travels: its athletes compete in Berlin, but every word of its name is in a Munich gym's, in its country.
+  const travels = { club: 'POUND FOR POUND TEAM', city: 'Berlin', lat: 52.52, lng: 13.4, country: 'DE' };
+  assert.equal(pickPlace(travels, [at('Pound for Pound Team', 48.1, 11.53, 'München')]).city, 'München');
+  assert.equal(pickPlace(travels, [at('Pound for Pound Team', 40.7, -74, 'New York', 'US')]), null);
+  // The whole step, with Google answered here.
+  const { DB, db } = d1();
+  db.exec(`INSERT INTO clubs (site, club_id, club, entered, lat, lng, city, country) VALUES ('smoothcomp.com', '5879', 'POUND FOR POUND TEAM', 104, 52.52, 13.4, 'Berlin', 'DE');
+    INSERT INTO club_places (site, club_id, source, checked) VALUES ('smoothcomp.com', '5879', NULL, 1);`);
+  assert.equal(await findClubs({ DB }), 0); // no key, no lookup
+  const real = globalThis.fetch;
+  let asked;
+  globalThis.fetch = async (url, init) => { asked = JSON.parse(init.body); return Response.json({ places: [at('Pound for Pound Team', 48.1, 11.53, 'München')] }); };
+  try { assert.equal(await findClubs({ DB, GOOGLE_MAPS_KEY: 'k' }), 1); } finally { globalThis.fetch = real; }
+  assert.equal(asked.textQuery, 'POUND FOR POUND TEAM');
+  assert.deepEqual(asked.locationBias.circle.center, { latitude: 52.52, longitude: 13.4 });
+  assert.deepEqual({ ...db.prepare("SELECT source, city, google IS NOT NULL AS asked FROM club_places WHERE club_id = '5879'").get() }, { source: 'google', city: 'München', asked: 1 });
+  assert.equal(await findClubs({ DB, GOOGLE_MAPS_KEY: 'k' }), 0); // asked once
+});

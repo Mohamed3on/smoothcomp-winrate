@@ -7,7 +7,7 @@ export interface Athlete {
   wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
 }
 export interface Team {
-  club_id: string; club: string | null; city: string | null; club_country: string | null; km: number | null; placed: 'pin' | 'town' | 'events' | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
+  club_id: string; club: string | null; city: string | null; club_country: string | null; km: number | null; placed: 'pin' | 'town' | 'google' | 'events' | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
   podium_gold: number; podium_silver: number; podium_bronze: number; entered: number;
   top: { user: string; name: string | null; wins: number; belt: string | null; photo: string | null; born: number | null }[];
 }

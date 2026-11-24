@@ -173,9 +173,10 @@ CREATE TABLE IF NOT EXISTS clubs (
 CREATE INDEX IF NOT EXISTS people_club ON people (site, club_id);
 CREATE INDEX IF NOT EXISTS events_start ON events (site, start);
 -- Where an academy's own page puts it (crawl.js placeClubs): source 'pin' (its map pin), 'town' (the town
--- it names, geocoded), or null (neither: it keeps where it competes most, clubs.lat). checked = last read (ms).
+-- it names, geocoded), 'google' (neither, but Google Maps found it: crawl.js findClubs), or null (it keeps where
+-- it competes most, clubs.lat). checked = last read (ms); google = when Google Maps was asked (ms), added later.
 CREATE TABLE IF NOT EXISTS club_places (
-  site TEXT NOT NULL, club_id TEXT NOT NULL, lat REAL, lng REAL, city TEXT, country TEXT, address TEXT, source TEXT, checked INTEGER NOT NULL,
+  site TEXT NOT NULL, club_id TEXT NOT NULL, lat REAL, lng REAL, city TEXT, country TEXT, address TEXT, source TEXT, checked INTEGER NOT NULL, google INTEGER,
   PRIMARY KEY (site, club_id)
 );
 -- Small values the worker keeps: 'changed' = when an install last uploaded (ms), so the edge cache knows its copies are old.
