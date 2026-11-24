@@ -91,9 +91,9 @@ const SHORT: Record<string, string> = { submission: 'sub', stoppage: 'stop', poi
 // Every counted win, most decisive finish first: the extension's ramp.
 // scale: the bar's length as a share of the column's longest, so totals compare down a table.
 // legend 'short': one line naming the two commonest finishes, in the ramp's order, and counting the rest, so the ramp's blues are never the only key.
-export function Mix({ types, f, large = false, legend = true, scale = 1, note }: { types: Types; f: Filters; large?: boolean; legend?: boolean | 'short'; scale?: number; note?: React.ReactNode }) {
+export function Mix({ types, f, large = false, legend = true, scale = 1, note, empty = 'No counted wins' }: { types: Types; f: Filters; large?: boolean; legend?: boolean | 'short'; scale?: number; note?: React.ReactNode; empty?: string }) {
   const shown = ordered(types).filter(([t]) => f.counted(t));
-  if (!shown.length) return <span className="text-xs text-muted-foreground">No counted wins</span>;
+  if (!shown.length) return <span className="text-xs text-muted-foreground">{empty}</span>;
   const title = shown.map(([t, c]) => `${typeName(t)} ${c}`).join(' · ');
   const commonest = [...shown].sort(([, a], [, b]) => Number(b) - Number(a));
   const named = new Set(commonest.slice(0, 2).map(([t]) => t));

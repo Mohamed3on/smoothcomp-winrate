@@ -157,6 +157,7 @@ const careersOf = (off) => {
     iif(source = 'results', ${sum('sl')}, NULL) AS losses,
     iif(${sum('rw')} + ${sum('rl')} > 0, ${sum('rw')}, iif(source = 'results', ${sum('w')}, NULL)) AS won,
     iif(${sum('rw')} + ${sum('rl')} > 0, ${sum('rl')}, iif(source = 'results', ${sum('sl')}, NULL)) AS lost,
+    iif(${sum('rw')} + ${sum('rl')} > 0 OR source = 'results', json_object(${GROUPS.map((g) => `'${g}', rl_${g}`).join(', ')}), NULL) AS lost_types,
     w_walkover AS walkovers, w_submission AS submission, w_points AS points
   FROM board WHERE site = ?1)`;
 };
@@ -165,7 +166,7 @@ const careersOf = (off) => {
 // read (`within` narrows the results that outrank it, as to one division). Entries are aliased e.
 const shown = (within = '') => `(e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user${within} AND x.fought = 1))`;
 
-const careerRow = (row) => ({ ...Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('w_'))), types: JSON.parse(row.types ?? '{}') });
+const careerRow = (row) => ({ ...Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('w_'))), types: JSON.parse(row.types ?? '{}'), lost_types: row.lost_types ? JSON.parse(row.lost_types) : null });
 
 // A sort is a fixed expression, or one finish type's count; ?dir=asc reverses it, blanks still last.
 const flip = (sort, dir) => (dir === 'asc' ? sort.replace(/ DESC( NULLS LAST)?/g, ' ASC NULLS LAST') : sort);

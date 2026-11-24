@@ -4,7 +4,7 @@ export type Types = Record<string, number>;
 export interface Athlete {
   user: string; name: string | null; club: string | null; club_id: string | null; country: string | null; country_name: string | null;
   photo: string | null; born: number | null; hidden: number | null; belt: string | null; affiliation?: string | null; source?: 'career' | 'results';
-  wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
+  wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; lost_types?: Types | null; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
 }
 export interface Team {
   club_id: string; club: string | null; city: string | null; club_country: string | null; km: number | null; placed: 'pin' | 'town' | 'google' | 'events' | null; lat: number | null; lng: number | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
