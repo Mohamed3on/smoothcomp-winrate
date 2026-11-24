@@ -165,10 +165,14 @@ CREATE TABLE IF NOT EXISTS board (
   PRIMARY KEY (site, user)
 );
 CREATE INDEX IF NOT EXISTS board_club ON board (site, club_id);
--- The default ranking's wins (every finish but walkovers, in rules.js FINISHES order, as stats.js careersOf sums
--- them): the athletes ranking reads its page and its count off it. A query that must not walk it (an academy's
--- athletes) writes +wins; without that the academies list walked it once per academy and reset D1 (2026-11-24).
-CREATE INDEX IF NOT EXISTS board_wins ON board (site, (w_submission + w_stoppage + w_fastest_escape + w_points + w_decision + w_disqualification + w_other));
+-- The default ranking's wins and losses (every finish but walkovers, in rules.js FINISHES order, as stats.js careersOf
+-- sums them: wins, then lost): the athletes ranking reads its page and its count off it. A query that must not walk it
+-- (an academy's athletes) writes +wins; without that the academies list walked it once per academy and reset D1 (2026-11-24).
+DROP INDEX IF EXISTS board_wins;
+CREATE INDEX IF NOT EXISTS board_record ON board (site, (w_submission + w_stoppage + w_fastest_escape + w_points + w_decision + w_disqualification + w_other),
+  (iif(rw_submission + rw_stoppage + rw_fastest_escape + rw_points + rw_decision + rw_disqualification + rw_other + rl_submission + rl_stoppage + rl_fastest_escape + rl_points + rl_decision + rl_disqualification + rl_other > 0,
+    rl_submission + rl_stoppage + rl_fastest_escape + rl_points + rl_decision + rl_disqualification + rl_other,
+    iif(source = 'results', sl_submission + sl_stoppage + sl_fastest_escape + sl_points + sl_decision + sl_disqualification + sl_other, NULL))));
 -- Each academy's latest name and its podiums at the events read (stats.js CLUBS), kept as results arrive.
 CREATE TABLE IF NOT EXISTS clubs (
   site TEXT NOT NULL, club_id TEXT NOT NULL, club TEXT, podium_gold INTEGER, podium_silver INTEGER, podium_bronze INTEGER, entered INTEGER,

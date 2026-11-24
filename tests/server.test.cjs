@@ -78,6 +78,9 @@ test("a results page's upload reads back on the stats site", async () => {
   // The rankings count the results read, walkovers left out by default.
   const ranked = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json();
   assert.deepEqual(ranked.rows.map((r) => [r.user, r.wins, r.won, r.lost]), [['11', 3, 3, 0], ['12', 1, 1, 2]]);
+  // An athlete with no win among the finishes counted still ranks on their losses there.
+  const lossesOnly = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&off=walkover,points&sort=winRate&dir=asc'))).json();
+  assert.deepEqual(lossesOnly.rows.map((r) => [r.user, r.wins, r.won, r.lost]), [['12', 0, 0, 2], ['11', 3, 3, 0]]);
   // A registration read after the results stays behind them.
   await post('/roster', { site: 'smoothcomp.com', event: '900', meta, athletes: { 11: { name: 'Kim Lee', entries: [{ division: 'Adult / Blue / -76 kg' }] } }, read: Date.now() });
   const after = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=11'))).json();
