@@ -185,14 +185,26 @@ async function athletes(env, params) {
   const f = filters(params);
   const sort = order(ATHLETE_SORTS, params.get('sort'), params.get('dir'));
   const club = /^\d{1,12}$/.test(params.get('club') ?? '') ? params.get('club') : '';
-  // Ranked on the sort keys alone, then the page's rows read whole: sorting whole rows took three times as long.
+  // Only the filters set go in, so the default ranking (wins, walkovers left out) reads its page and its
+  // count off board_wins; ranked on the sort keys alone, then the page's rows read whole.
+  const args = [f.site];
+  const arg = (value) => `?${args.push(value)}`;
+  // One academy's are read through board_club (the + keeps board_wins out of the filter and the order).
+  const wins = club ? '+wins' : 'wins';
+  const where = [`${wins} > 0`];
+  if (f.wins) where.push(`${wins} >= ${arg(f.wins)}`);
+  if (f.events) where.push(`coalesce(events, 0) >= ${arg(f.events)}`);
+  if (f.belts !== '[]') where.push(`belt IN (SELECT value FROM json_each(${arg(f.belts)}))`);
+  if (f.q) { const q = arg(f.q); where.push(`(name LIKE '%' || ${q} || '%' OR club LIKE '%' || ${q} || '%')`); }
+  if (club) where.push(`club_id = ${arg(club)}`);
+  if (f.country) where.push(`country = ${arg(f.country)}`);
+  if (f.bornFrom !== 0 || f.bornTo !== 9999) where.push(`born BETWEEN ${arg(f.bornFrom)} + 1 AND ${arg(f.bornTo)}`);
+  if (f.since) where.push(`last >= ${arg(f.since)}`);
+  const matching = where.join(' AND ');
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
-    top AS (SELECT user, count(*) OVER () AS total FROM careers
-    WHERE wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?7 = '' OR name LIKE '%' || ?7 || '%' OR club LIKE '%' || ?7 || '%')
-      AND (?8 = '' OR club_id = ?8) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)
-    ORDER BY ${sort}, user LIMIT ?9 OFFSET ?10)
-    SELECT careers.*, top.total FROM top JOIN careers USING (user) ORDER BY ${sort}, user`)
-    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, club, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since).all();
+    top AS (SELECT user FROM careers WHERE ${matching} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${arg(f.limit)} OFFSET ${arg(f.offset)})
+    SELECT careers.*, (SELECT count(*) FROM careers WHERE ${matching}) AS total FROM top JOIN careers USING (user) ORDER BY ${sort}, user`)
+    .bind(...args).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
 }
 
@@ -210,11 +222,13 @@ const TEAM_SORTS = {
 async function teams(env, params) {
   const f = filters(params);
   const sort = flip(TEAM_SORTS[params.get('sort')] ?? TEAM_SORTS.wins, params.get('dir'));
-  // Each academy's three athletes with the most wins come with it, read for the academies shown alone.
+  // Each academy's three athletes with the most wins come with it, read for the academies shown alone,
+  // through board_club: the + keeps them off board_wins, which walked every athlete once per academy and
+  // took D1 past its CPU limit.
   const least = whole(params.get('athletes'), 3, 1000);
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
     members AS (SELECT * FROM careers
-      WHERE club_id IS NOT NULL AND wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)),
+      WHERE club_id IS NOT NULL AND +wins >= ?4 AND +wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)),
     podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
         iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, iif(o.lat IS NULL, c.country, o.country) AS country,
         iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
@@ -228,7 +242,7 @@ async function teams(env, params) {
     GROUP BY m.club_id HAVING count(*) >= ?8),
     shown AS (SELECT * FROM totals ORDER BY ${sort}, club_id LIMIT ?9 OFFSET ?10)
     SELECT *, (SELECT json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born))
-        FROM (SELECT * FROM members t WHERE t.club_id = shown.club_id ORDER BY wins DESC, user LIMIT 3)) AS top
+        FROM (SELECT * FROM members t WHERE t.club_id = shown.club_id ORDER BY +wins DESC, user LIMIT 3)) AS top
     FROM shown ORDER BY ${sort}, club_id`)
     .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since, f.lat, f.lng, f.km).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });

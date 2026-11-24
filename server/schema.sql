@@ -165,6 +165,10 @@ CREATE TABLE IF NOT EXISTS board (
   PRIMARY KEY (site, user)
 );
 CREATE INDEX IF NOT EXISTS board_club ON board (site, club_id);
+-- The default ranking's wins (every finish but walkovers, in rules.js FINISHES order, as stats.js careersOf sums
+-- them): the athletes ranking reads its page and its count off it. A query that must not walk it (an academy's
+-- athletes) writes +wins; without that the academies list walked it once per academy and reset D1 (2026-11-24).
+CREATE INDEX IF NOT EXISTS board_wins ON board (site, (w_submission + w_stoppage + w_fastest_escape + w_points + w_decision + w_disqualification + w_other));
 -- Each academy's latest name and its podiums at the events read (stats.js CLUBS), kept as results arrive.
 CREATE TABLE IF NOT EXISTS clubs (
   site TEXT NOT NULL, club_id TEXT NOT NULL, club TEXT, podium_gold INTEGER, podium_silver INTEGER, podium_bronze INTEGER, entered INTEGER,
