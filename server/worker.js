@@ -312,6 +312,8 @@ async function belts(env, { site, user, worn, starts }) {
     || !Array.isArray(starts) || starts.length !== worn.length || !starts.every(t => t === null || Number.isSafeInteger(t))) return json({ error: 'Bad belts' }, 400);
   await env.DB.prepare('INSERT OR REPLACE INTO belts (site, user, worn, starts, at) VALUES (?1, ?2, ?3, ?4, ?5)')
     .bind(site, user, JSON.stringify(worn), JSON.stringify(starts), Date.now()).run();
+  // The belt worn now (the list's last) outranks the one their registrations name.
+  await retally(env, site, [user]);
   return json({});
 }
 

@@ -99,12 +99,13 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
     SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last,
-      p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(r.entry ->> '$.belt', p.belt, ${namedBelt('us.user')}) AS belt
+      p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt, ${namedBelt('us.user')}) AS belt
     FROM us
     LEFT JOIN athletes c ON c.site = ?1 AND c.user = us.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL
     LEFT JOIN tallies t ON t.site = ?1 AND t.user = us.user
     LEFT JOIN people p ON p.site = ?1 AND p.user = us.user
-    LEFT JOIN athletes r ON r.site = ?1 AND r.user = us.user AND r.kind = 'ranks'),
+    LEFT JOIN athletes r ON r.site = ?1 AND r.user = us.user AND r.kind = 'ranks'
+    LEFT JOIN belts bl ON bl.site = ?1 AND bl.user = us.user),
   b AS (
     SELECT *, iif(entry IS NOT NULL, 'career', 'results') AS source,
       iif(entry IS NOT NULL, (SELECT json_group_object(g, n) FROM (SELECT ${finishSql('key')} AS g, sum(value) AS n FROM json_each(entry, '$.wins') GROUP BY g)),
