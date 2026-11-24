@@ -341,11 +341,11 @@ export async function findClubs(env) {
   return found ? 1 : 0;
 }
 
-// Older events, ARCHIVE pages a site a day past the last year's (about 320 events): the crawler reads them
-// after the recent ones, at about 4,000 rows written each, so the whole archive (some 16,000 events) fills
-// over weeks inside D1's 50 million included writes a month. The page reached is kept in meta, and the walk
-// stops once the database passes 9 GB (D1 holds 10).
-const ARCHIVE = 8;
+// Older events, ARCHIVE pages a site a day past the last year's (about 4,000 events): the crawler reads them
+// after the recent ones, so the whole archive (some 16,000 events) is listed in four days. At about 4,000 rows
+// written each that runs past D1's 50 million included writes a month (the user chose faster: some $30–50
+// once). The page reached is kept in meta, and the walk stops once the database passes 9 GB (D1 holds 10).
+const ARCHIVE = 100;
 
 export async function listEvents(env) {
   const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
