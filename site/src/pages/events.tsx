@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Link } from 'wouter';
 import { ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,8 @@ import { useApi, type EventRow } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { date, fmt } from '@/lib/format';
 
+// The map carries Leaflet, so it loads when first opened.
+const EventsMap = lazy(() => import('@/components/events-map'));
 const items = (pairs: string[][]) => pairs.map(([value, label]) => ({ value, label }));
 const WINDOWS = {
   upcoming: items([['30', 'Next 30 days'], ['90', 'Next 3 months'], ['180', 'Next 6 months'], ['365', 'Next 12 months'], ['0', 'Any time']]),
@@ -42,6 +45,7 @@ function EventCell({ e, f }: { e: EventRow; f: Filters }) {
 export function EventsPage() {
   const f = useFilters();
   const when = f.get('when') === 'past' ? 'past' : 'upcoming';
+  const view = f.get('view') === 'map' ? 'map' : 'list';
   const days = f.get('days') || (when === 'upcoming' ? '90' : '0');
   const near = f.get('near');
   const sort = f.get('sort') === 'athletes' || (f.get('sort') === 'distance' && near) ? f.get('sort') : 'date';
@@ -67,9 +71,14 @@ export function EventsPage() {
         text="Grappling events on Smoothcomp and AJP Tour: find one to enter near you or anywhere, or read how a past one went. Entrants and results show once someone with Mat Stats opens them." />
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-4 rounded-xl border bg-card p-4">
-          <Tabs value={when} onValueChange={(v) => f.set({ when: v === 'past' ? 'past' : null, days: null, sort: null })}>
-            <TabsList><TabsTrigger value="upcoming">Upcoming</TabsTrigger><TabsTrigger value="past">Past</TabsTrigger></TabsList>
-          </Tabs>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Tabs value={when} onValueChange={(v) => f.set({ when: v === 'past' ? 'past' : null, days: null, sort: null })}>
+              <TabsList><TabsTrigger value="upcoming">Upcoming</TabsTrigger><TabsTrigger value="past">Past</TabsTrigger></TabsList>
+            </Tabs>
+            <Tabs value={view} onValueChange={(v) => f.set({ view: v === 'map' ? 'map' : null })}>
+              <TabsList aria-label="Show as"><TabsTrigger value="list">List</TabsTrigger><TabsTrigger value="map">Map</TabsTrigger></TabsList>
+            </Tabs>
+          </div>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
             <Field label="Near"><PlaceFilter f={f} /></Field>
             <Field label="When">
@@ -94,11 +103,13 @@ export function EventsPage() {
             <Field label="Name or city" className="min-w-44 flex-1"><Debounced f={f} name="q" type="search" label="Filter by name or city" placeholder="Filter by name or city" className="w-full max-w-md" /></Field>
           </div>
         </div>
-        <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(e) => e.event}
+        {view === 'map' && !error ? (
+          <Suspense fallback={<div className="h-[70svh] min-h-80 rounded-xl border bg-card" />}><EventsMap rows={data?.rows ?? []} f={f} /></Suspense>
+        ) : <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(e) => e.event}
           sort={sort} asc={sort === 'distance' || (sort === 'date' && when === 'upcoming')} onSort={(s) => f.set({ sort: s === 'date' ? null : s })}
           empty={error
             ? <Empty title="Couldn’t load the events" text="Mat Stats didn’t answer. Try again in a moment." action={{ label: 'Try again', onClick: () => refetch() }} />
-            : <Empty title={when === 'upcoming' ? 'No upcoming events match' : 'No past events match'} text="Widen the distance or the dates, pick another place, or lower the minimum." action={{ label: 'Reset filters', onClick: reset }} />} />
+            : <Empty title={when === 'upcoming' ? 'No upcoming events match' : 'No past events match'} text="Widen the distance or the dates, pick another place, or lower the minimum." action={{ label: 'Reset filters', onClick: reset }} />} />}
       </div>
     </>
   );

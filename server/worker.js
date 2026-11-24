@@ -399,6 +399,21 @@ export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const { pathname, searchParams } = new URL(request.url);
+    // The events map's tiles: Mapbox's dark style, fetched here so its token stays a secret, and kept in
+    // the edge cache a month, so a tile any reader has seen costs Mapbox nothing again. /tiles/{z}/{x}/{y}.
+    const tile = pathname.match(/^\/tiles\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})$/);
+    if (tile && request.method === 'GET') {
+      const [z, x, y] = tile.slice(1).map(Number);
+      if (!env.MAPBOX_TOKEN || z > 20 || x >= 2 ** z || y >= 2 ** z) return new Response(null, { status: 404 });
+      const key = new Request(`https://tiles.cache/${z}/${x}/${y}`);
+      const hit = await caches.default.match(key);
+      if (hit) return hit;
+      const got = await fetch(`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/${z}/${x}/${y}@2x?access_token=${env.MAPBOX_TOKEN}`);
+      if (!got.ok) return new Response(null, { status: got.status === 404 ? 404 : 502 });
+      const served = new Response(got.body, { headers: { 'Content-Type': got.headers.get('Content-Type') ?? 'image/png', 'Cache-Control': 'public, max-age=2592000' } });
+      ctx.waitUntil(caches.default.put(key, served.clone()));
+      return served;
+    }
     // Roughly where the reader is (Cloudflare's guess from their connection, city-level), so the site can
     // look near them without asking for their location. Theirs alone, so never cached.
     if (pathname === '/api/here' && request.method === 'GET') {

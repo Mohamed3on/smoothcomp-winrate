@@ -172,3 +172,18 @@
   ::selection { background: oklch(0.76 0.1 245 / 25%); }
   img.photo { outline: 1px solid oklch(1 0 0 / 0.1); outline-offset: -1px; }
 }
+
+/* The events map (components/events-map.tsx): Leaflet's dots, controls and popups in the site's dark theme. */
+.events-map.leaflet-container { background: var(--background); font: inherit; }
+.events-map .event-dot { fill: var(--muted-foreground); fill-opacity: 0.9; stroke: var(--background); stroke-width: 1.5; }
+.events-map .event-dot.read { fill: var(--primary); }
+.events-map .event-here { fill: var(--foreground); stroke: var(--background); stroke-width: 2; fill-opacity: 1; }
+.events-map .event-area { fill: var(--primary); fill-opacity: 0.05; stroke: var(--primary); stroke-opacity: 0.6; stroke-width: 1; stroke-dasharray: 4 4; }
+.events-map .leaflet-popup-content-wrapper, .events-map .leaflet-popup-tip { background: var(--popover); color: var(--popover-foreground); box-shadow: 0 4px 16px oklch(0 0 0 / 0.4); }
+.events-map .leaflet-popup-content { margin: 10px 12px; font-size: 0.75rem; line-height: 1.4; color: var(--muted-foreground); }
+.events-map .leaflet-popup-content .event-title { display: block; margin-bottom: 2px; font-size: 0.875rem; font-weight: 500; color: var(--foreground); }
+.events-map .leaflet-popup-content .event-title:hover { color: var(--primary); }
+.events-map .leaflet-bar a { background: var(--card); color: var(--foreground); border-color: var(--border); }
+.events-map .leaflet-bar a:hover { background: var(--muted); }
+.events-map .leaflet-control-attribution { background: oklch(0 0 0 / 0.5); color: var(--muted-foreground); }
+.events-map .leaflet-control-attribution a { color: var(--muted-foreground); }
