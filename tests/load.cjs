@@ -8,14 +8,21 @@ const path = require('node:path');
 const vm = require('node:vm');
 const zlib = require('node:zlib');
 
-// A Map is the whole of the localStorage contract this extension uses. `map` is
-// exposed so a test can age an entry or plant one from an older version.
-function memoryStorage() {
+// localStorage over a Map. `map` is exposed so a test can age an entry or plant one from an
+// older version; `quota` (characters, keys and values) makes a write that won't fit throw, as a browser does.
+function memoryStorage(quota = Infinity) {
   const map = new Map();
+  const used = () => [...map].reduce((n, [k, v]) => n + k.length + v.length, 0);
   return {
     map,
+    get length() { return map.size; },
+    key: (i) => [...map.keys()][i] ?? null,
     getItem: (key) => (map.has(key) ? map.get(key) : null),
-    setItem: (key, value) => map.set(key, String(value)),
+    setItem(key, value) {
+      if (used() - (map.get(key)?.length ?? 0) + String(value).length + (map.has(key) ? 0 : key.length) > quota) throw new Error('QuotaExceededError');
+      map.set(key, String(value));
+    },
+    removeItem: (key) => map.delete(key),
   };
 }
 
@@ -37,7 +44,7 @@ function replay(name, { pathname, localStorage = memoryStorage() } = {}) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context, { filename: file });
   }
   const read = (expression) => vm.runInContext(expression, context);
-  return { ...event, fetched, localStorage, SCWRMatches: read('SCWRMatches'), SCWRModel: read('SCWRModel') };
+  return { ...event, fetched, localStorage, SCWRSite: read('SCWRSite'), SCWRMatches: read('SCWRMatches'), SCWRModel: read('SCWRModel') };
 }
 
 // Values built inside the sandbox carry that realm's prototypes, which strict

@@ -62,6 +62,23 @@ const SCWRSite = (() => {
   const VERSION = 9;
   const FINAL_TTL = 12 * 60 * 60 * 1000;
   const LIVE_TTL = 5 * 60 * 1000;
+  // A whole event's matches and their details are big, and this origin's small quota is shared with
+  // Smoothcomp's own saves (an event's filter, on every search), which fail outright when it is full.
+  // So stale ones go whenever a page of ours loads, only the newest few stay, and a full disk drops
+  // them oldest first before a write is tried again. Their stamp ends the entry: write() puts it last.
+  const EVENT_CACHE = /^scwr:(event-matches|match-details):/;
+  const KEEP = 4;
+  const keys = () => { try { return Array.from({ length: localStorage.length ?? 0 }, (_, i) => localStorage.key(i)); } catch { return []; } };
+  const stamp = (key) => {
+    try {
+      const m = localStorage.getItem(key)?.slice(-80).match(/"v":(\d+),"at":(\d+),"final":(true|false)\}$/);
+      return m && +m[1] === VERSION && Date.now() - +m[2] < (m[3] === 'true' ? FINAL_TTL : LIVE_TTL) ? +m[2] : 0;
+    } catch { return 0; }
+  };
+  // Event caches other than `spare`, stale ones (0) and then the oldest first.
+  const caches = (spare) => keys().filter((k) => EVENT_CACHE.test(k) && k !== spare).map((k) => [k, stamp(k)]).sort((a, b) => a[1] - b[1]);
+  const drop = (key) => { try { localStorage.removeItem(key); } catch {} };
+  caches().forEach(([key, at], i, all) => { if (!at || i < all.length - KEEP) drop(key); });
   const store = {
     get(key, fallback = null) {
       try {
@@ -71,7 +88,12 @@ const SCWRSite = (() => {
       }
     },
     set(key, value) {
-      try { localStorage.setItem(`scwr:${key}`, JSON.stringify(value)); } catch {}
+      const name = `scwr:${key}`, json = JSON.stringify(value);
+      // Tried as is, then again after each event cache gives way, oldest first.
+      for (const [oldest] of [[null], ...caches(name)]) {
+        if (oldest) drop(oldest);
+        try { return void localStorage.setItem(name, json); } catch {}
+      }
     },
     // An event still in progress goes stale in minutes; a finished one does not.
     read(key) {
