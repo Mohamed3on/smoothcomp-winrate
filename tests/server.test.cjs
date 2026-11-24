@@ -143,7 +143,9 @@ test("an academy's own page places it, over where it competes most", async () =>
 });
 
 test('Google Maps places an academy whose page names no place, only on a matching name nearby', async () => {
-  const { sameAcademy, pickPlace, findClubs } = await import('../server/crawl.js');
+  const { sameAcademy, pickPlace, findClubs, lookable } = await import('../server/crawl.js');
+  // Placeholders aren't looked for.
+  assert.deepEqual(['(No academy)', 'Independent No club', 'BJJ Team', 'n/a', 'Fightzone Berlin'].map(lookable), [false, false, false, false, true]);
   assert.equal(sameAcademy('POUND FOR POUND TEAM', 'Pound for Pound Team München', 'Berlin'), true);
   assert.equal(sameAcademy('Berlin BJJ', 'Berlin Boxing Club', 'Berlin'), false); // the town and "BJJ" say nothing
   assert.equal(sameAcademy('Fightzone Berlin', 'FIGHTZONE e.V.', 'Berlin'), true);
