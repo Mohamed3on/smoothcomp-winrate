@@ -70,6 +70,15 @@ CREATE TABLE IF NOT EXISTS entries (
   PRIMARY KEY (site, event, user, division)
 );
 CREATE INDEX IF NOT EXISTS entries_user ON entries (site, user);
+-- When each layer of an event's entries (fought: 0 registrations, 1 results) was last read: an older read
+-- arriving after a newer one changes nothing, and the event page says how fresh each layer is.
+CREATE TABLE IF NOT EXISTS reads (
+  site TEXT NOT NULL,
+  event TEXT NOT NULL,
+  fought INTEGER NOT NULL,
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, event, fought)
+);
 -- Every event an athlete entered, as Smoothcomp's past-events list gives it.
 CREATE TABLE IF NOT EXISTS history (
   site TEXT NOT NULL,

@@ -53,7 +53,9 @@ const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3
 // don't hold (for an athlete whose profile nobody opened, every event read); `seen` from every
 // event read. Medals and events from the events read, `listed` the events their profile lists,
 // `last` their latest event. ?1 site, ?2 the athletes (JSON).
-export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last)
+// Each recount writes only the rows it changes (D1 bills every row and index entry written).
+const TALLY_COLS = ['rec','seen','gold','silver','bronze','events','listed','last'];
+export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last)
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   -- CROSS JOIN keeps these athletes the outer loop, so each table is read by athlete, never whole.
   fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1),
@@ -72,7 +74,9 @@ export const TALLY = `INSERT OR REPLACE INTO tallies (site, user, rec, seen, gol
   SELECT ?1, us.user, rec.rec, seen.seen, coalesce(med.gold, 0), coalesce(med.silver, 0), coalesce(med.bronze, 0), coalesce(med.events, 0), coalesce(listed.listed, 0),
     nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), '')
   FROM us LEFT JOIN rec USING (user) LEFT JOIN seen USING (user) LEFT JOIN med USING (user) LEFT JOIN listed USING (user) LEFT JOIN latest USING (user)
-  WHERE rec.rec IS NOT NULL OR seen.seen IS NOT NULL OR med.events IS NOT NULL OR listed.listed IS NOT NULL`;
+  WHERE rec.rec IS NOT NULL OR seen.seen IS NOT NULL OR med.events IS NOT NULL OR listed.listed IS NOT NULL
+  ON CONFLICT (site, user) DO UPDATE SET ${TALLY_COLS.map((c) => `${c} = excluded.${c}`).join(', ')}
+  WHERE (${TALLY_COLS.map((c) => `tallies.${c}`).join(', ')}) IS NOT (${TALLY_COLS.map((c) => `excluded.${c}`).join(', ')})`;
 
 // The finishes every count is kept under (rules.js), a column each on the board.
 const GROUPS = FINISHES;
@@ -95,6 +99,10 @@ const floorBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each
 // The higher of two belts; one not a colour gives way.
 const higher = (a, b) => `(SELECT value FROM json_each(${NAMED}) WHERE value = lower(${a}) OR value = ${b} ORDER BY key DESC LIMIT 1)`;
 
+const BOARD_COLS = `site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
+    ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')}`;
+const BOARD_SET = BOARD_COLS.split(',').map((c) => c.trim()).filter((c) => c !== 'site' && c !== 'user');
+
 // Every athlete with something to rank, one row each, rebuilt with their tally. A career is
 // Smoothcomp's, the latest read however old; with none readable (a profile not public, or not read yet), an
 // athlete's record stands in: wins by finish and losses from their profile's match lists where it was
@@ -102,9 +110,10 @@ const higher = (a, b) => `(SELECT value FROM json_each(${NAMED}) WHERE value = l
 // those their profile lists. Per finish group: w_ the wins (career or record), rw_/rl_ the record
 // their tally gives, sl_ the record's losses. ?1 site, ?2 the athletes (JSON),
 // ?3 the oldest career read that counts (0: all).
-export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ?3 IS NOT NULL`,
-`INSERT INTO board (site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
-    ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')})
+export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
+  AND NOT EXISTS (SELECT 1 FROM athletes c WHERE c.site = ?1 AND c.user = board.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL)
+  AND NOT EXISTS (SELECT 1 FROM tallies t WHERE t.site = ?1 AND t.user = board.user AND t.events > 0)`,
+`INSERT INTO board (${BOARD_COLS})
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
     SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last,
@@ -129,7 +138,9 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[0]', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')}
-  FROM b`];
+  FROM b WHERE true
+  ON CONFLICT (site, user) DO UPDATE SET ${BOARD_SET.map((c) => `${c} = excluded.${c}`).join(', ')}, dup = 0
+  WHERE (${BOARD_SET.map((c) => `board.${c}`).join(', ')}, board.dup) IS NOT (${BOARD_SET.map((c) => `excluded.${c}`).join(', ')}, 0)`];
 
 // One person's accounts are the ones with their name as written (case and runs of spaces aside), birth year and
 // country, on either site: AJP keeps its own accounts, and both sites hold duplicates. people_ident reads them.
@@ -149,8 +160,6 @@ const MEMBERS = (from) => `seeds AS MATERIALIZED (SELECT ${IDENT('p.')} AS k, ${
 // rebuilt these athletes' own rows. An account that shares its person keeps its own row in board_own, which the sums
 // read; one whose row was never summed still holds its own on the board. Of a person's accounts on one site, the one
 // with the most events ranks; the others are dup. ?1 site, ?2 the athletes (JSON).
-const BOARD_COLS = `site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
-    ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')}`;
 const COUNTS = ['w', 'rw', 'rl', 'sl'].flatMap((p) => GROUPS.map((g) => `${p}_${g}`));
 const PEOPLE = `${MEMBERS('(SELECT ?1 AS site, value AS user FROM json_each(?2)) f')},
   shared AS MATERIALIZED (SELECT * FROM members WHERE (k, kb, kc) IN (SELECT k, kb, kc FROM members GROUP BY k, kb, kc HAVING count(*) > 1))`;
@@ -458,17 +467,20 @@ async function event(env, params) {
   const f = filters(params);
   const id = params.get('id') ?? '';
   if (!/^\d{1,9}$/.test(id)) return json({ error: 'Bad event' }, 400);
-  const [meta, entries] = await env.DB.batch([
+  const [meta, entries, reads] = await env.DB.batch([
     env.DB.prepare('SELECT * FROM events WHERE site = ?1 AND event = ?2').bind(f.site, id),
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT e.user, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.at,
         p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt,
         c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold, c.silver AS career_silver, c.bronze AS career_bronze
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
       WHERE e.site = ?1 AND e.event = ?4 AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id),
+    // When its registrations (0) and results (1) were last read: rows only change when what they say does.
+    env.DB.prepare('SELECT fought, at FROM reads WHERE site = ?1 AND event = ?2').bind(f.site, id),
   ]);
   if (!meta.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
   return json({
     event: meta.results[0] ?? { event: id },
+    reads: Object.fromEntries(reads.results.map((r) => [r.fought, r.at])),
     entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses) })),
   });
 }

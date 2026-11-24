@@ -3,6 +3,7 @@
 // so the worker only bounds what it stores.
 import '../rules.js';
 import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
+import { budget } from './budget.js';
 
 const { BELTS, LABELS, finishOf, detailOf, beltOf } = globalThis.SCWRRules;
 
@@ -40,7 +41,9 @@ async function lookup(env, { site, users }) {
     .bind(site, JSON.stringify(Object.keys(kept.careers).filter((user) => kept.careers[user].wins && kept.careers[user].events == null))).all();
   for (const row of counts.results) kept.careers[row.user].events = row.events;
   // What results pages have shown of each athlete, event by event, walkovers aside.
-  const seen = await env.DB.prepare('SELECT user, sum(wins) wins, sum(losses) losses, count(*) events FROM records WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
+  const seen = await env.DB.prepare(`SELECT user, (SELECT sum(value ->> 0) FROM json_each(seen) WHERE key != 'walkover') AS wins,
+      (SELECT sum(value ->> 1) FROM json_each(seen) WHERE key != 'walkover') AS losses, events
+    FROM tallies WHERE site = ?1 AND seen IS NOT NULL AND events > 0 AND user IN (SELECT value FROM json_each(?2))`)
     .bind(site, JSON.stringify(users)).all();
   for (const row of seen.results) kept.seen[row.user] = [row.wins, row.losses, row.events];
   // Each athlete's record by finish, [won, lost], as the stats site rates them (stats.js TALLY): a
@@ -139,63 +142,89 @@ export function upload(event, meta, athletes, now = Date.now()) {
   return { about, people, entries, history };
 }
 
+// Every write below leaves a row as it is unless something in it changed (D1 bills each row and index entry
+// written), and returns the athletes whose rows changed, so only they are recounted.
+const EVENT_COLS = ['title', 'start', 'city', 'country', 'organiser', 'ends', 'lat', 'lng'];
 async function identify(env, site, event, meta, athletes, fought, read = Date.now()) {
   const now = Date.now();
   const said = upload(event, meta, athletes, now);
-  if (!said) return;
+  if (!said) return [];
   const { about, people, entries, history } = said;
   const start = about?.start ?? null;
   const statements = [];
   if (about) {
     statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at, ends, lat, lng) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-      ON CONFLICT (site, event) DO UPDATE SET title = coalesce(excluded.title, title), start = coalesce(excluded.start, start), city = coalesce(excluded.city, city),
-      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at, ends = coalesce(excluded.ends, ends),
-      lat = coalesce(excluded.lat, lat), lng = coalesce(excluded.lng, lng)`)
+      ON CONFLICT (site, event) DO UPDATE SET ${EVENT_COLS.map((c) => `${c} = coalesce(excluded.${c}, ${c})`).join(', ')}, at = excluded.at
+      WHERE (${EVENT_COLS.map((c) => `events.${c}`).join(', ')}) IS NOT (${EVENT_COLS.map((c) => `coalesce(excluded.${c}, events.${c})`).join(', ')})`)
       .bind(site, event, about.title, about.start, about.city, about.country, about.organiser, now, about.ends, about.lat, about.lng));
   }
   // A newer event's academy, photo and name replace an older one's; an older event only fills gaps.
-  const keep = (column) => `${column} = CASE WHEN excluded.seen >= people.seen THEN coalesce(excluded.${column}, people.${column}) ELSE coalesce(people.${column}, excluded.${column}) END`;
+  const next = Object.fromEntries(['name', 'club', 'club_id', 'affiliation', 'country', 'country_name', 'photo', 'belt', 'born'].map((c) => [c,
+    `CASE WHEN excluded.seen >= people.seen THEN coalesce(excluded.${c}, people.${c}) ELSE coalesce(people.${c}, excluded.${c}) END`]));
+  next.hidden = 'coalesce(excluded.hidden, people.hidden)';
+  next.seen = 'max(people.seen, excluded.seen)';
+  const returning = [];
+  returning.push(statements.length);
   statements.push(env.DB.prepare(`INSERT INTO people (site, user, name, club, club_id, affiliation, country, country_name, photo, belt, born, hidden, seen, at)
     SELECT ?1, value ->> 'user', value ->> 'name', value ->> 'club', value ->> 'clubId', value ->> 'affiliation', value ->> 'country', value ->> 'countryName', value ->> 'photo', value ->> 'belt', value ->> 'born', value ->> 'hidden', ?2, ?3 FROM json_each(?4) WHERE true
-    ON CONFLICT (site, user) DO UPDATE SET ${['name', 'club', 'club_id', 'affiliation', 'country', 'country_name', 'photo', 'belt', 'born'].map(keep).join(', ')},
-    hidden = coalesce(excluded.hidden, people.hidden), seen = max(people.seen, excluded.seen), at = excluded.at`)
+    ON CONFLICT (site, user) DO UPDATE SET ${Object.entries(next).map(([c, v]) => `${c} = ${v}`).join(', ')}, at = excluded.at
+    WHERE (${Object.keys(next).map((c) => `people.${c}`).join(', ')}) IS NOT (${Object.values(next).join(', ')})
+    RETURNING user`)
     // A profile has no date: it fills gaps and never outranks an event.
     .bind(site, start ?? (event ? new Date(now).toISOString() : ''), now, JSON.stringify(people)));
   // A profile only says who the athlete is; an event also says who entered and how it went.
   // The registration list (fought = 0) and the results (fought = 1) are two layers, each
-  // replaced whole by its own page's next read, so who entered survives while results arrive.
-  // A results row outranks a registration row under the same athlete and division.
+  // replaced whole by its own page's next read (its rows gone from it deleted, the rest kept or
+  // changed), so who entered survives while results arrive. A results row outranks a registration
+  // row under the same athlete and division. `reads` keeps when each layer was last read: an older
+  // read arriving after a newer one changes nothing.
   if (event) {
     const layer = Number(fought);
-    const newer = 'NOT EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND at > ?4)';
-    statements.push(env.DB.prepare(`DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND ${newer}`).bind(site, event, layer, read));
-    statements.push(env.DB.prepare(`INSERT OR ${fought ? 'REPLACE' : 'IGNORE'} INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at, bouts)
-      SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4, value ->> 'bouts' FROM json_each(?5) WHERE ${newer}`)
+    const newer = 'NOT EXISTS (SELECT 1 FROM reads WHERE site = ?1 AND event = ?2 AND fought = ?3 AND at > ?4)';
+    const cols = ['club', 'club_id', 'place', 'wins', 'losses', 'fought', 'bouts'];
+    returning.push(statements.length);
+    statements.push(env.DB.prepare(`DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND ${newer}
+      AND (user, division) NOT IN (SELECT value ->> 'user', value ->> 'division' FROM json_each(?5)) RETURNING user`)
       .bind(site, event, layer, read, JSON.stringify(entries)));
+    returning.push(statements.length);
+    statements.push(env.DB.prepare(`INSERT INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at, bouts)
+      SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4, value ->> 'bouts' FROM json_each(?5) WHERE ${newer}
+      ON CONFLICT (site, event, user, division) DO UPDATE SET ${cols.map((c) => `${c} = excluded.${c}`).join(', ')}, at = excluded.at
+      WHERE ${layer ? '' : 'entries.fought = 0 AND '}(${cols.map((c) => `entries.${c}`).join(', ')}) IS NOT (${cols.map((c) => `excluded.${c}`).join(', ')})
+      RETURNING user`)
+      .bind(site, event, layer, read, JSON.stringify(entries)));
+    statements.push(env.DB.prepare(`INSERT INTO reads (site, event, fought, at) VALUES (?1, ?2, ?3, ?4)
+      ON CONFLICT (site, event, fought) DO UPDATE SET at = excluded.at WHERE excluded.at > reads.at`).bind(site, event, layer, read));
   }
   // An athlete's events join the ones kept: a career read sends its newest page, a
   // profile every page it read, and a past event never changes.
+  const past = ['title', 'start', 'city', 'wins', 'gold', 'silver', 'bronze'];
   for (const [user, rows] of Object.entries(history)) {
-    statements.push(env.DB.prepare(`INSERT OR REPLACE INTO history (site, user, event, title, start, city, wins, gold, silver, bronze, at, image)
+    returning.push(statements.length);
+    statements.push(env.DB.prepare(`INSERT INTO history (site, user, event, title, start, city, wins, gold, silver, bronze, at, image)
       SELECT ?1, ?2, value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'wins', value ->> '$.medals[0]', value ->> '$.medals[1]', value ->> '$.medals[2]', ?3,
-        coalesce(value ->> 'image', (SELECT image FROM history h WHERE h.site = ?1 AND h.user = ?2 AND h.event = value ->> 'event')) FROM json_each(?4)`)
+        value ->> 'image' FROM json_each(?4) WHERE true
+      ON CONFLICT (site, user, event) DO UPDATE SET ${past.map((c) => `${c} = excluded.${c}`).join(', ')}, image = coalesce(excluded.image, history.image), at = excluded.at
+      WHERE (${past.map((c) => `history.${c}`).join(', ')}, history.image) IS NOT (${past.map((c) => `excluded.${c}`).join(', ')}, coalesce(excluded.image, history.image))
+      RETURNING user`)
       .bind(site, user, now, JSON.stringify(rows)));
   }
-  await env.DB.batch(statements);
+  const done = await env.DB.batch(statements);
+  return [...new Set(returning.flatMap((i) => done[i].results.map((row) => row.user)))];
 }
 
 // Who an athlete is, from the profile page an install read their career from.
 async function people(env, { site, athletes }) {
   if (!SITES.includes(site)) return json({ error: 'Bad people' }, 400);
-  await identify(env, site, null, null, athletes, false);
   // An event list read changes how many events they have and when they last fought; a profile, who they are.
-  await retally(env, site, Object.keys(athletes ?? {}).slice(0, 20));
+  await retally(env, site, (await identify(env, site, null, null, athletes, false)).slice(0, 20));
   return json({});
 }
 
 // After an event's entries change: its athletes' totals and ranking rows, its academies' names and
-// podiums, and its own counts.
+// podiums, and its own counts. Nothing changed, nothing to do.
 async function settle(env, site, event, users) {
+  if (!users.length) return;
   await retally(env, site, users);
   // The + keeps SQLite off the academy index, which reads every entry on the site, onto the event key.
   const ids = (await env.DB.prepare('SELECT DISTINCT +club_id AS club_id FROM entries WHERE site = ?1 AND event = ?2 AND +club_id IS NOT NULL').bind(site, event).all()).results.map((row) => row.club_id);
@@ -205,8 +234,7 @@ async function settle(env, site, event, users) {
 // A registration list's athletes and the event they entered.
 async function roster(env, { site, event, meta, athletes, read }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event)) return json({ error: 'Bad roster' }, 400);
-  await identify(env, site, event, meta, athletes, false, readAt(read));
-  await settle(env, site, event, Object.keys(athletes ?? {}).slice(0, 5000));
+  await settle(env, site, event, await identify(env, site, event, meta, athletes, false, readAt(read)));
   return json({});
 }
 
@@ -215,14 +243,8 @@ async function record(env, { site, event, records, meta, athletes, read }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || typeof records !== 'object' || !records) return json({ error: 'Bad record' }, 400);
   const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
   if (rows.length > 5000) return json({ error: 'Too many' }, 413);
-  const at = readAt(read);
-  // Whoever this read drops from the event's results is recounted too.
-  const before = (await env.DB.prepare('SELECT DISTINCT user FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1').bind(site, event).all()).results.map((e) => e.user);
-  await env.DB.prepare(`INSERT OR REPLACE INTO records (site, event, user, wins, losses, at)
-    SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, ?3 FROM json_each(?4) WHERE NOT EXISTS (SELECT 1 FROM records WHERE site = ?1 AND event = ?2 AND at > ?3)`)
-    .bind(site, event, at, JSON.stringify(rows.map(([user, [wins, losses]]) => [user, wins, losses]))).run();
-  await identify(env, site, event, meta, athletes, true, at);
-  await settle(env, site, event, [...before, ...rows.map(([user]) => user), ...Object.keys(athletes ?? {}).slice(0, 5000)]);
+  // Whoever this read adds, changes or drops is recounted.
+  await settle(env, site, event, await identify(env, site, event, meta, athletes, true, readAt(read)));
   // Results sent with their matches leave the crawler nothing to read: the event leaves its queue
   // (taken off, not marked done, so it never counts against the crawler's day).
   await env.DB.prepare(`DELETE FROM crawls WHERE site = ?1 AND event = ?2 AND state = 'queued'
@@ -457,6 +479,8 @@ export default {
     if (read) return request.method === 'GET' ? cached(request, ctx, pathname.slice(5), env, (db) => read({ ...env, DB: db }, searchParams)) : json({ error: 'Not found' }, 404);
     if ((request.method === 'GET' || request.method === 'HEAD') && !pathname.startsWith('/api/')) return page(request, env);
     if (request.method !== 'POST' || !ROUTES[pathname]) return json({ error: 'Not found' }, 404);
+    // Past 90% of what the plan includes, uploads are not stored (budget.js); the site still reads what it holds.
+    if (!READS.has(pathname) && await budget(env) === 'stop') return json({ error: 'Paused' }, 503);
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
     const response = await ROUTES[pathname](env, body ?? {});

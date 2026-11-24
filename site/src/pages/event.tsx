@@ -80,11 +80,12 @@ export function seeded<T extends EventEntry>(name: string, list: T[], f: Filters
 
 export function EventPage({ id }: { id: string }) {
   const f = useFilters();
-  const { data, isLoading } = useApi<{ event: EventMeta; entries: EventEntry[] }>('event', { site: f.site, off: f.query.off, id });
+  const { data, isLoading } = useApi<{ event: EventMeta; entries: EventEntry[]; reads?: Partial<Record<0 | 1, number>> }>('event', { site: f.site, off: f.query.off, id });
   if (isLoading) return <Skeleton className="h-9 w-96" />;
   if (!data) return <Empty title="No event here" text="Mat Stats has nothing under this event on this site. Nobody has opened it with Mat Stats yet." />;
   const { event } = data;
-  const read = (rows: EventEntry[]) => Math.max(0, ...rows.map((e) => e.at ?? 0));
+  // When a layer was last read: the server's note of it, else its newest row (rows only change when what they say does).
+  const read = (rows: EventEntry[], fought: 0 | 1) => data.reads?.[fought] ?? Math.max(0, ...rows.map((e) => e.at ?? 0));
   const results = data.entries.filter((e) => e.fought), registered = data.entries.filter((e) => !e.fought);
   // Results arrive while the registration list still stands: until the event ends (when its end isn't
   // known, two days from its start: a weekend), registrants without a result are still to fight; after that they didn't show.
@@ -243,7 +244,7 @@ export function EventPage({ id }: { id: string }) {
           {event.organiser && <span>{event.organiser}</span>}
           <span>{fought ? `${fmt(matches)} matches won, counted finishes${live ? `; ${plural(new Set(registered.filter((e) => !results.some((r) => r.user === e.user)).map((e) => e.user)).size, 'athlete')} still to fight` : ''}` : 'Entrants only, no results read yet'}</span>
           <span title="When someone with Mat Stats last opened the event's pages">
-            {fought && <>Results as of {stamp(read(results))}</>}{fought && live && ' · '}{(!fought || live) && registered.length > 0 && <>Entrants as of {stamp(read(registered))}</>}
+            {fought && <>Results as of {stamp(read(results, 1))}</>}{fought && live && ' · '}{(!fought || live) && registered.length > 0 && <>Entrants as of {stamp(read(registered, 0))}</>}
           </span>
           <a href={`${f.home}/en/event/${id}/${fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
         </div>

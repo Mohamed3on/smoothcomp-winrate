@@ -20,9 +20,8 @@ const AT_ONCE = 6;
 // so the lane asks one at a time; past twice this even so, it stops until the next minute.
 const SLOW = 300;
 const DAY = 864e5;
-// Events read a day (UTC) at most: about 4,000–4,500 rows written each, so any month's crawling stays inside
-// the 50 million writes D1 includes (the user pays nothing past the plan). Lanes count at their start, so
-// together they may pass it by a few.
+// Events read a day (UTC) at most; lanes count at their start, so together they may pass it by a few. What
+// keeps D1 inside what the plan includes is the budget (budget.js), which stops the crawler for the day.
 const DAILY = 300;
 const { finishOf, normalize, placeOf, roundOf, isPool, poolPlaces } = globalThis.SCWRRules;
 
@@ -432,7 +431,7 @@ async function lane(env, record, addBouts, get, left, finished) {
       try { await name(get, host, Object.assign(data, { left })); } finally { delete data.left; delete data.room; }
       // Results a page sent meanwhile stand.
       // (A crawl reading an event again replaces its own copy: results written by the time it last wrote.)
-      const has = await env.DB.prepare('SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 AND at > ?3 LIMIT 1').bind(job.site, job.event, job.wrote ?? 0).first();
+      const has = await env.DB.prepare('SELECT 1 FROM reads WHERE site = ?1 AND event = ?2 AND fought = 1 AND at > ?3').bind(job.site, job.event, job.wrote ?? 0).first();
       const { athletes, records } = results(data, job.start);
       // Results a page sent stand; the matches are added to them.
       if (has) await addBouts(env, job.site, job.event, athletes);

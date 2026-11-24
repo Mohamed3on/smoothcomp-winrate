@@ -5,6 +5,7 @@
 // address answers only a request carrying the CRAWL_KEY secret (a lane started by hand).
 import { crawl, findClubs, listEvents, placeClubs, queue } from './crawl.js';
 import { addBouts, record } from './worker.js';
+import { budget, checkBudget } from './budget.js';
 
 const LANES = 3;
 
@@ -12,6 +13,8 @@ export default {
   async fetch(request, env) {
     if (!env.CRAWL_KEY || request.headers.get('x-crawl-key') !== env.CRAWL_KEY) return new Response(null, { status: 404 });
     const { pathname } = new URL(request.url);
+    // Nothing is read while D1's usage is past what the plan includes (budget.js).
+    if (await budget(env) !== 'ok') return new Response(null, { status: 204 });
     if (pathname === '/list') await listEvents(env);
     else if (pathname === '/clubs') await placeClubs(env);
     else await crawl(env, record, addBouts);
@@ -20,6 +23,9 @@ export default {
   async scheduled(controller, env) {
     // The queue is refilled every half hour.
     const at = new Date(controller.scheduledTime);
+    // D1's usage, read every ten minutes: while it nears what the plan includes, the crawler rests (budget.js).
+    if (at.getUTCMinutes() % 10 === 0) await checkBudget(env).catch((e) => console.error('budget', e?.message));
+    if (await budget(env, Date.now(), true) !== 'ok') return;
     if (at.getUTCMinutes() % 30 === 0) await queue(env);
     // The last year's events are listed once a day, before the 03:30 refill queues them.
     if (at.getUTCHours() === 3 && at.getUTCMinutes() === 15) await env.SELF.fetch('https://crawler/list', { headers: { 'x-crawl-key': env.CRAWL_KEY } });

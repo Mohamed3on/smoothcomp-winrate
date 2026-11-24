@@ -141,6 +141,47 @@ test("an athlete's accounts with their name, birth year and country read as one"
   assert.deepEqual(unborn.accounts.map((a) => [a.site, a.user]).sort(), [['ajptour.com', '77'], ['ajptour.com', '79'], ['smoothcomp.com', '11']]);
 });
 
+test('the same results sent again write nothing but when they were read', async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { DB, db } = d1();
+  const env = { DB };
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const changes = () => db.prepare('SELECT total_changes() AS n').get().n;
+  await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
+  const first = changes();
+  await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() + 1000 });
+  // The read time (reads) and the site's change stamp (meta): nothing else.
+  assert.equal(changes() - first, 2);
+  // A result that changes rewrites that athlete alone.
+  const changed = structuredClone(athletes);
+  changed[12].entries[0].place = 3;
+  await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes: changed, read: Date.now() + 2000 });
+  const rows = db.prepare("SELECT user, place FROM entries WHERE event = '900' ORDER BY user").all().map((r) => [r.user, r.place]);
+  assert.deepEqual(rows, [['11', 1], ['12', 3]]);
+  // An older read arriving late changes nothing.
+  await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0] }, meta, athletes: { 11: athletes[11] }, read: Date.now() - 60e3 });
+  assert.equal(db.prepare("SELECT count(*) AS n FROM entries WHERE event = '900'").get().n, 2);
+});
+
+test('D1 usage near what the plan includes rests the crawler, then stops uploads', async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { verdict, budget } = await import('../server/budget.js');
+  assert.equal(verdict({ written: 10e6, read: 5e9, writtenToday: 0.5e6, readToday: 0.2e9 }), 'ok');
+  assert.equal(verdict({ written: 10e6, read: 5e9, writtenToday: 1.7e6, readToday: 0.2e9 }), 'slow');
+  assert.equal(verdict({ written: 36e6, read: 5e9, writtenToday: 0, readToday: 0 }), 'slow');
+  assert.equal(verdict({ written: 10e6, read: 23e9, writtenToday: 0, readToday: 0 }), 'stop');
+  const { DB } = d1();
+  const env = { DB };
+  // No verdict yet: the background work rests; uploads go on.
+  assert.equal(await budget(env), 'slow');
+  await DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('budget', ?1)").bind(JSON.stringify({ state: 'stop', at: Date.now() })).run();
+  assert.equal(await budget(env, Date.now(), true), 'stop');
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  assert.equal((await post('/record', { site: 'smoothcomp.com', event: '900', records: {}, meta, athletes, read: Date.now() })).status, 503);
+  // Lookups still answer.
+  assert.equal((await post('/lookup', { site: 'smoothcomp.com', users: ['11'] })).status, 200);
+});
+
 test("an athlete's belt is at least the lowest belt of every division they entered", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
