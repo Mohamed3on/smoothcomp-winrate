@@ -368,12 +368,13 @@ function hover(link) {
 // Each athlete's medal calls, one per bracket they would place in, gold first,
 // each naming its bracket.
 let foreseen = new Map();
-const id = (r) => String(r.user_id ?? r.id);
+// Not "id": these scripts share the page's global scope, where a Smoothcomp script Rocket Loader runs later declares one.
+const rowUser = (r) => String(r.user_id ?? r.id);
 function foresee() {
   foreseen = new Map();
   for (const [name, groups] of Map.groupBy(vm.all, (g) => g.name.trim())) {
     const rows = rank({ registrations: groups.flatMap((g) => g.registrations) });
-    calls(rows).forEach((call, i) => call && foreseen.set(id(rows[i]), [...foreseen.get(id(rows[i])) ?? [], { ...call, name }]));
+    calls(rows).forEach((call, i) => call && foreseen.set(rowUser(rows[i]), [...foreseen.get(rowUser(rows[i])) ?? [], { ...call, name }]));
   }
   for (const list of foreseen.values()) list.sort((a, b) => a.medal - b.medal);
 }
@@ -387,7 +388,7 @@ function academies() {
     const known = rows.filter((r) => tally(r.user_id));
     const sum = (figures) => known.reduce((total, r) => total.map((n, i) => n + figures(r)[i]), [0, 0, 0]);
     const expected = [0, 0, 0];
-    for (const r of rows) for (const call of foreseen.get(id(r)) ?? []) expected[call.medal]++;
+    for (const r of rows) for (const call of foreseen.get(rowUser(r)) ?? []) expected[call.medal]++;
     return { rows, known, tally: sum((r) => tally(r.user_id)), medals: sum((r) => careers[r.user_id].medals), expected };
   });
   return list.sort((a, b) => b.tally.reduce((order, n, i) => order || n - a.tally[i], 0) || a.rows[0].clubName.localeCompare(b.rows[0].clubName));
@@ -439,7 +440,7 @@ function member(r) {
   const name = esc(`${r.firstname} ${r.lastname}`);
   const grade = belt(r.user_id ?? r.id);
   const approved = r.approved === 1;
-  const called = foreseen.get(id(r)) ?? [];
+  const called = foreseen.get(rowUser(r)) ?? [];
   const face = r.profile_image_id && r.profile_image ? `<img src="${esc(r.profile_image)}" alt="" loading="lazy" decoding="async">`
     : esc([r.firstname, r.lastname].map((part) => String(part ?? '').trim().charAt(0)).join('').toUpperCase());
   const about = [name, t ? plural(t[0], 'career win') : hidden && 'hidden profile', grade && `${grade} belt`,
