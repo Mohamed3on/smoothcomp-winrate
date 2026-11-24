@@ -10,7 +10,8 @@
     "128": "icons/icon128.png"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "unlimitedStorage"
   ],
   "content_scripts": [
     {
@@ -83,7 +84,18 @@
         "https://ajptour.com/*/profile/*"
       ],
       "js": [
+        "shared.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://smoothcomp.com/*/profile/*",
+        "https://ajptour.com/*/profile/*"
+      ],
+      "js": [
         "rules.js",
+        "site.js",
         "profile-model.js",
         "profile.js"
       ],

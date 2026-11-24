@@ -55,15 +55,14 @@ const SCWRCareers = (() => {
   document.addEventListener('scwr:updated', event => { try { merge(JSON.parse(event.detail)); } catch {} });
 
   let saving;
+  // Kept only in this page's memory: background.js keeps every career in the extension's storage.
   function save() {
     clearTimeout(saving);
     for (const [kind, entries] of [['careers', careers], ['ranks', ranks]]) {
       for (const user of Object.keys(entries)) if (!SCWRCache.fresh(entries[user], kind)) delete entries[user];
-      SCWRSite.store.set(kind, entries);
     }
   }
   function saveSoon() { clearTimeout(saving); saving = setTimeout(save, 250); }
-  merge({ careers: SCWRSite.store.get('careers', {}), ranks: SCWRSite.store.get('ranks', {}) });
   // Once an event is over, a career read before it ended misses it, so it is read again:
   // this page's event for everyone, and for each athlete the last one the shared cache saw them enter.
   let since = 0;

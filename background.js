@@ -20,6 +20,27 @@ const PAUSE = 5;
 const SERVER = 'https://mat-stats.mohamed3on.workers.dev';
 const keep = (site, kept) => Object.values(kept).some(entries => Object.keys(entries).length) && fetch(`${SERVER}/keep`, { method: 'POST', body: JSON.stringify({ site, ...kept }) }).catch(() => {});
 
+// Anything a page keeps that is bigger than a preference (site.js store.load/save): whole events'
+// matches and their details, and athletes' event histories, in the extension's storage rather than the
+// site's small localStorage, under cache:<site>:<key>. Each kind holds its latest few, by an index of
+// when each was written, so the oldest go without reading them.
+const CACHE = 'cache:';
+const HOLD = { 'event-matches': 8, 'match-details': 8, profile: 400 };
+async function cache(site, { op, key: name, entry }) {
+  const kind = /^([a-z-]+):[\w.:-]{1,80}$/.exec(typeof name === 'string' ? name : '')?.[1];
+  if (!Object.hasOwn(HOLD, kind)) throw new Error('Unsupported cache');
+  const stored = `${CACHE}${site}:${name}`;
+  if (op === 'cache-get') return { entry: (await chrome.storage.local.get([stored]))[stored] ?? null };
+  if (!entry || typeof entry !== 'object') throw new Error('Bad cache entry');
+  const index = `${CACHE}${site}:index:${kind}`;
+  const written = { ...(await chrome.storage.local.get([index]))[index], [stored]: Date.now() };
+  const gone = Object.keys(written).sort((a, b) => written[a] - written[b]).slice(0, Math.max(0, Object.keys(written).length - HOLD[kind]));
+  for (const name of gone) delete written[name];
+  await chrome.storage.local.set({ [stored]: entry, [index]: written });
+  if (gone.length) await chrome.storage.local.remove(gone);
+  return {};
+}
+
 function siteFor(sender) {
   try {
     const url = new URL(sender.url);
@@ -43,8 +64,11 @@ async function handle(message, sender) {
   const site = siteFor(sender);
   if (!site) throw new Error('Unsupported site');
   const { op, kind, user, token } = message;
+  if (op === 'cache-get' || op === 'cache-set') return cache(site, message);
   if (op === 'read') {
-    const all = await chrome.storage.local.get(null);
+    // Everything but the pages' caches, which are big and read only by key.
+    const names = await chrome.storage.local.getKeys?.();
+    const all = await chrome.storage.local.get(names ? names.filter((name) => !name.startsWith(CACHE)) : null);
     const expired = Object.entries(all).filter(([name, entry]) => name.startsWith(PREFIX) && (!Number.isFinite(entry?.at) || Date.now() - entry.at >= Math.max(SCWRCache.KEPT, entry.hidden === true ? SCWRCache.PRIVATE : 0))).map(([name]) => name);
     if (expired.length) await chrome.storage.local.remove(expired);
     const temporary = await chrome.storage.session.get(null);

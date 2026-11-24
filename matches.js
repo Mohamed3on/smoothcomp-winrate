@@ -65,7 +65,7 @@ async function loadEvent(onProgress, { refresh = false } = {}) {
   const id = eventId();
   if (!id) throw new Error('No competition ID found.');
   const key = `event-matches:${id}`;
-  const hit = refresh ? null : store.read(key);
+  const hit = refresh ? null : await store.read(key);
   if (hit?.matches?.length) return hit;
   const matches = await fetchAll(id, onProgress);
   return store.write(key, { matches }, matches.every((m) => m.finished));

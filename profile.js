@@ -61,19 +61,10 @@
   // lists run newest first, so reading stops at the first event already kept. If the
   // kept events and Smoothcomp's count stop agreeing, the whole history is read again,
   // on top of what is kept; when some match lists never load, at most once a day.
-  const STORE = 'scwr:profile:12:';
+  // Kept in the extension's own storage (site.js store.load/save), which holds the athletes looked at latest.
+  const STORE = 'profile:12:';
   const DAY = 864e5, { WEEK } = SCWRProfile;
-  for (const k of Object.keys(localStorage)) if (/^scwr:profile:\d+:/.test(k) && !k.startsWith(STORE)) localStorage.removeItem(k);
-  // Storage full: the athletes looked at longest ago give way.
-  const keep = (key, value) => {
-    for (let tries = 0; tries < 8; tries++) {
-      try { return localStorage.setItem(key, JSON.stringify(value)); } catch {}
-      const kept = Object.keys(localStorage).filter(k => k.startsWith(STORE) && k !== key)
-        .map(k => { try { return [k, JSON.parse(localStorage.getItem(k)).seen ?? 0]; } catch { return [k, 0]; } }).sort((a, b) => a[1] - b[1]);
-      if (!kept.length) return;
-      for (const [k] of kept.slice(0, Math.ceil(kept.length / 2))) localStorage.removeItem(k);
-    }
-  };
+  const keep = (key, value) => SCWRSite.store.save(key, value);
   // Settled events are shared through Mat Stats' own server, so whoever opens a profile
   // first reads its history for everyone after.
   const SERVER = 'https://mat-stats.mohamed3on.workers.dev';
@@ -87,7 +78,7 @@
     const total = past.meta?.total ?? 0;
     const key = STORE + pastUrl.match(/\/athlete\/(\d+)\//)?.[1];
     let kept = null;
-    try { kept = JSON.parse(localStorage.getItem(key)); } catch {}
+    kept = await SCWRSite.store.load(key);
     const local = (kept?.events ?? []).map(e => ({ ...e, out: clean(e.out) }));
     const known = new Map(local.filter(e => e.settled).map(e => [e.id, e]));
     // Nothing kept here, or the whole history read again: what any install already read

@@ -62,24 +62,28 @@ const SCWRSite = (() => {
   const VERSION = 9;
   const FINAL_TTL = 12 * 60 * 60 * 1000;
   const LIVE_TTL = 5 * 60 * 1000;
-  // A whole event's matches and their details are big, and this origin's small quota is shared with
-  // Smoothcomp's own saves (an event's filter, on every search), which fail outright when it is full.
-  // So stale ones go whenever a page of ours loads, only the newest few stay, and a full disk drops
-  // them oldest first before a write is tried again. Their stamp ends the entry: write() puts it last.
-  const EVENT_CACHE = /^scwr:(event-matches|match-details):/;
-  const KEEP = 4;
-  const keys = () => { try { return Array.from({ length: localStorage.length ?? 0 }, (_, i) => localStorage.key(i)); } catch { return []; } };
-  const stamp = (key) => {
-    try {
-      const m = localStorage.getItem(key)?.slice(-80).match(/"v":(\d+),"at":(\d+),"final":(true|false)\}$/);
-      return m && +m[1] === VERSION && Date.now() - +m[2] < (m[3] === 'true' ? FINAL_TTL : LIVE_TTL) ? +m[2] : 0;
-    } catch { return 0; }
-  };
-  // Event caches other than `spare`, stale ones (0) and then the oldest first.
-  const caches = (spare) => keys().filter((k) => EVENT_CACHE.test(k) && k !== spare).map((k) => [k, stamp(k)]).sort((a, b) => a[1] - b[1]);
-  const drop = (key) => { try { localStorage.removeItem(key); } catch {} };
-  caches().forEach(([key, at], i, all) => { if (!at || i < all.length - KEEP) drop(key); });
+  // What older versions kept in this origin's localStorage, which Smoothcomp's own saves share (an
+  // event's filter, on every search, fails outright when it is full): whole events' matches and their
+  // details, athletes' histories, and a copy of the careers background.js has always kept. Now cleared.
+  const LEGACY = /^scwr:(event-matches:|match-details:|profile:|careers$|ranks$)/;
+  try { Array.from({ length: localStorage.length }, (_, i) => localStorage.key(i)).filter((k) => LEGACY.test(k)).forEach((k) => localStorage.removeItem(k)); } catch {}
+  // Anything bigger than a preference is kept in the extension's own storage instead (background.js's
+  // cache ops, by way of shared.js): asked as a page event, answered by id. careers.js counts its ids up
+  // from 1, so these count down from -1 and never meet them. No answer in 10 s is no answer.
+  let asked = 0;
+  const answers = new Map();
+  if (typeof document !== 'undefined') {
+    document.addEventListener('scwr:response', (event) => { try { const answer = JSON.parse(event.detail); answers.get(answer.id)?.(answer); } catch {} });
+  }
+  const ask = (message) => new Promise((resolve) => {
+    if (typeof document === 'undefined') return resolve(null);
+    const id = --asked;
+    const timer = setTimeout(() => { answers.delete(id); resolve(null); }, 10000);
+    answers.set(id, (answer) => { clearTimeout(timer); answers.delete(id); resolve(answer); });
+    document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ ...message, id }) }));
+  });
   const store = {
+    // Preferences, small, in localStorage: they never expire.
     get(key, fallback = null) {
       try {
         return JSON.parse(localStorage.getItem(`scwr:${key}`)) ?? fallback;
@@ -88,21 +92,22 @@ const SCWRSite = (() => {
       }
     },
     set(key, value) {
-      const name = `scwr:${key}`, json = JSON.stringify(value);
-      // Tried as is, then again after each event cache gives way, oldest first.
-      for (const [oldest] of [[null], ...caches(name)]) {
-        if (oldest) drop(oldest);
-        try { return void localStorage.setItem(name, json); } catch {}
-      }
+      try { localStorage.setItem(`scwr:${key}`, JSON.stringify(value)); } catch {}
     },
-    // An event still in progress goes stale in minutes; a finished one does not.
-    read(key) {
-      const hit = store.get(key);
+    // Anything big, in the extension: load and save as given...
+    async load(key) {
+      const entry = (await ask({ op: 'cache-get', key }))?.entry;
+      return entry && typeof entry === 'object' ? entry : null;
+    },
+    save(key, value) { return ask({ op: 'cache-set', key, entry: value }); },
+    // ...or stamped, where an event still in progress goes stale in minutes and a finished one does not.
+    async read(key) {
+      const hit = await store.load(key);
       return hit?.v === VERSION && Date.now() - hit.at < (hit.final ? FINAL_TTL : LIVE_TTL) ? hit : null;
     },
     write(key, value, final = false) {
       const entry = { ...value, v: VERSION, at: Date.now(), final };
-      store.set(key, entry);
+      store.save(key, entry);
       return entry;
     },
   };

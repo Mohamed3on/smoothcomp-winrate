@@ -755,13 +755,13 @@
   // A finished match's score never changes again, so it is kept between visits
   // and only the matches missing from the store are ever fetched.
   function storedDetails() {
-    detailCache ??= SCWRSite.store.read(DETAIL_KEY)?.details ?? {};
+    detailCache ??= SCWRSite.store.read(DETAIL_KEY).then((hit) => hit?.details ?? {});
     return detailCache;
   }
 
-  function matchDetail(id) {
-    const stored = storedDetails()[id];
-    if (stored) return Promise.resolve(stored);
+  async function matchDetail(id) {
+    const stored = (await storedDetails())[id];
+    if (stored) return stored;
     if (!matchDetails.has(id)) {
       const request = fetch(SCWRSite.url.match(id), {
         credentials: 'include',
@@ -782,7 +782,7 @@
     const read = (await Promise.all(entries.map((entry) => matchDetail(entry.id)
       .then((data) => ({ entry, data, sides: orientedSides(data, entry.leftWon) }))
       .catch(() => null)))).filter(Boolean);
-    const cache = storedDetails();
+    const cache = await storedDetails();
     const fetched = read.filter(({ entry }) => !cache[entry.id]);
     for (const { entry, data } of fetched) cache[entry.id] = data;
     if (fetched.length) {

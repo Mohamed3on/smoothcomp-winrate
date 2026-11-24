@@ -4,8 +4,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { replay, memoryStorage, plain } = require('./load.cjs');
-// The page's store, as site.js gives it to the rest.
-const vmStore = (page) => page.SCWRSite.store;
 
 // What the page counts by default: every decided win type but walkovers.
 const COUNTED = ['submission', 'stoppage', 'points', 'decision', 'disqualification'];
@@ -187,54 +185,35 @@ test('data is read in English whatever language the reader browses in', async ()
 });
 
 test('a finished event is read once; a live one goes stale in minutes', async () => {
-  const done = memoryStorage();
-  await resultsPage('25901', { localStorage: done });
-  assert.equal((await resultsPage('25901', { localStorage: done })).fetched.length, 0);
+  const done = new Map();
+  await resultsPage('25901', { kept: done });
+  assert.equal((await resultsPage('25901', { kept: done })).fetched.length, 0);
 
-  const live = memoryStorage();
-  await resultsPage('29650-live', { localStorage: live });
-  assert.equal((await resultsPage('29650-live', { localStorage: live })).fetched.length, 0);
-  const [key, entry] = [...live.map].find(([k]) => k.startsWith('scwr:event-matches:'));
-  live.map.set(key, JSON.stringify({ ...JSON.parse(entry), at: JSON.parse(entry).at - 6 * 60 * 1000 }));
-  assert.equal((await resultsPage('29650-live', { localStorage: live })).fetched.length, 14);
+  const live = new Map();
+  await resultsPage('29650-live', { kept: live });
+  assert.equal((await resultsPage('29650-live', { kept: live })).fetched.length, 0);
+  const [key, entry] = [...live].find(([k]) => k.startsWith('event-matches:'));
+  live.set(key, { ...entry, at: entry.at - 6 * 60 * 1000 });
+  assert.equal((await resultsPage('29650-live', { kept: live })).fetched.length, 14);
 });
 
 test('an old, unreadable or unwritable cache never costs the reader the numbers', async () => {
-  // Matches cached by the match-list parser this loader replaced.
-  const old = memoryStorage();
-  old.map.set('scwr:event-matches:25901', JSON.stringify({ v: 4, at: Date.now(), final: true, matches: [{ id: '1', sides: [] }] }));
-  const junk = memoryStorage();
-  junk.map.set('scwr:event-matches:25901', '{not json');
-  const full = { getItem: () => null, setItem() { throw new Error('QuotaExceededError'); } };
-  for (const localStorage of [old, junk, full]) {
-    assert.equal((await resultsPage('25901', { localStorage })).model.fought, 876);
+  // Matches cached by the match-list parser this loader replaced; something that isn't an entry; no extension at all.
+  const old = new Map([['event-matches:25901', { v: 4, at: Date.now(), final: true, matches: [{ id: '1', sides: [] }] }]]);
+  const junk = new Map([['event-matches:25901', '{not json']]);
+  for (const options of [{ kept: old }, { kept: junk }, { refuse: true }]) {
+    assert.equal((await resultsPage('25901', options)).model.fought, 876);
   }
 });
 
-test("whole-event caches never crowd Smoothcomp's own saves out of a full origin", async () => {
-  const at = (age, v = 9, final = true) => JSON.stringify({ matches: ['x'.repeat(1000)], v, at: Date.now() - age, final });
-  const storage = memoryStorage(10_000);
+test("caches live in the extension, and what older versions kept in Smoothcomp's localStorage is cleared", async () => {
+  const storage = memoryStorage();
+  for (const key of ['scwr:event-matches:1', 'scwr:match-details:1', 'scwr:profile:12:5', 'scwr:careers', 'scwr:ranks']) storage.map.set(key, '{}');
+  storage.map.set('scwr:results-prefs', '{"typesOff":[]}');
   storage.map.set('event-33039-registration-filter-v4', '{"search":"","nation":""}');
-  storage.map.set('scwr:careers', '{}');
-  storage.map.set('scwr:event-matches:1', at(13 * 3600e3)); // stale
-  storage.map.set('scwr:match-details:2', at(60e3, 4)); // an older version
-  for (const id of [3, 4, 5, 6, 7, 8]) storage.map.set(`scwr:event-matches:${id}`, at((10 - id) * 60e3));
-  // Loading drops the stale and the old, and keeps the newest four.
-  const { SCWRMatches } = replay('25901', { localStorage: storage });
-  assert.ok(SCWRMatches);
-  assert.deepEqual([...storage.map.keys()].filter((k) => k.startsWith('scwr:event-')).sort(), ['scwr:event-matches:5', 'scwr:event-matches:6', 'scwr:event-matches:7', 'scwr:event-matches:8']);
-  // Then Smoothcomp's own save fits, and a write that doesn't fit makes room from the oldest of ours.
-  storage.setItem('event-33039-registration-filter-v4', JSON.stringify({ search: 'kim', nation: '' }));
-  const page = replay('25901', { localStorage: storage });
-  const filler = { matches: ['y'.repeat(7000)] }; // needs two of ours to go
-  vmStore(page).write('event-matches:9', filler, true);
-  assert.ok(storage.map.has('scwr:event-matches:9'));
-  assert.deepEqual([...storage.map.keys()].filter((k) => k.startsWith('scwr:event-')).sort(), ['scwr:event-matches:7', 'scwr:event-matches:8', 'scwr:event-matches:9']);
-  assert.equal(storage.map.get('event-33039-registration-filter-v4'), '{"search":"kim","nation":""}');
-  assert.ok(storage.map.has('scwr:careers'));
-  // A disk that takes nothing, and can't remove either, still never hangs a write.
-  const stuck = { length: 1, key: () => 'scwr:event-matches:1', getItem: () => at(0), setItem() { throw new Error('QuotaExceededError'); }, removeItem() {} };
-  vmStore(replay('25901', { localStorage: stuck })).write('event-matches:2', filler, true);
+  const page = await resultsPage('25901', { localStorage: storage });
+  assert.deepEqual([...storage.map.keys()].sort(), ['event-33039-registration-filter-v4', 'scwr:results-prefs']);
+  assert.deepEqual([...page.kept.keys()], ['event-matches:25901']);
 });
 
 test('the record sorts by wins minus losses, opening on the worst performer when sorted up', async () => {

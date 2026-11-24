@@ -23,6 +23,7 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000, share
       for (const fn of storageListeners) fn(changes, name);
     },
     remove: async (keys) => { for (const key of keys) delete storage[name][key]; },
+    getKeys: async () => Object.keys(storage[name]),
   });
   const context = vm.createContext({ URL, Response, AbortSignal, fetch, importScripts() {}, crypto: require('node:crypto').webcrypto,
     Date: class extends Date { static now() { return now; } },
@@ -432,4 +433,37 @@ test('only the first page of past events is read, and its rows are shared as the
   assert.deepEqual(shared.athletes['1'].history.map(e => [e.event, e.wins, e.medals]), [['1', 3, [1, 0, 0]]]);
   assert.equal(read.length, 1);
   assert.equal(p.api.careers['1'].events, 6);
+});
+
+// A page's store (site.js) through the real bridge (shared.js) to the real worker: big things live in the
+// extension, one store per site, each kind holding its latest few; careers are read without them.
+test("a page keeps big things in the extension's storage, per site, each kind holding its latest few", async () => {
+  const w = worker();
+  class CustomEvent extends Event { constructor(name, options) { super(name); this.detail = options.detail; } }
+  const tab = (host, id) => {
+    const document = new EventTarget();
+    const bridge = vm.createContext({ document, CustomEvent, URL, Date, AbortSignal, location: { hostname: host }, fetch: async () => { throw new Error('no fetch'); },
+      chrome: { runtime: { sendMessage: message => w.send(message, id, host) }, storage: { onChanged: { addListener() {} } } } });
+    vm.runInContext(fs.readFileSync('shared.js', 'utf8'), bridge);
+    const context = vm.createContext({ document, CustomEvent, setTimeout, clearTimeout, location: { pathname: '/en/event/1/results', hostname: host } });
+    for (const file of ['rules.js', 'site.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+    return vm.runInContext('SCWRSite.store', context);
+  };
+  const smoothcomp = tab('grapplingindustries.smoothcomp.com', 1);
+  const ajp = tab('ajptour.com', 2);
+  smoothcomp.write('event-matches:1', { matches: ['a'] }, true);
+  for (const id of [2, 3, 4, 5, 6, 7, 8, 9, 10]) { w.advance(1000); await smoothcomp.save(`event-matches:${id}`, { v: 9, at: w.now(), final: true, matches: [id] }); }
+  assert.equal((await smoothcomp.load('event-matches:10')).matches[0], 10);
+  // The newest eight stay; the two written first are gone.
+  assert.equal(await smoothcomp.load('event-matches:1'), null);
+  assert.equal(await smoothcomp.load('event-matches:2'), null);
+  assert.deepEqual(Object.keys(w.storage.local).filter(k => k.startsWith('cache:smoothcomp.com:event-matches:')).length, 8);
+  // Another site keeps its own.
+  assert.equal(await ajp.load('event-matches:10'), null);
+  // Only the kinds the worker knows.
+  assert.equal(await smoothcomp.load('passwords:1'), null);
+  // A career beside the caches still reads, and the caches don't come with it.
+  await w.send({ op: 'import', careers: { 7: { at: w.now(), wins: { submission: 1 }, medals: [0, 0, 0] } } });
+  const read = await w.send({ op: 'read' });
+  assert.deepEqual(Object.keys(read.careers), ['7']);
 });

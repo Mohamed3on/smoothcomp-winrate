@@ -26,14 +26,30 @@ function memoryStorage(quota = Infinity) {
   };
 }
 
+// The extension's own storage as a page reaches it (shared.js to background.js's cache ops): `kept` holds
+// what the page saved, by key; `refuse` answers every request with an error, as a broken bridge would.
+function extension(kept = new Map(), { refuse = false } = {}) {
+  const document = new EventTarget();
+  document.addEventListener('scwr:request', (event) => {
+    const asked = JSON.parse(event.detail);
+    const answer = refuse ? { error: 'Extension unavailable' }
+      : asked.op === 'cache-get' ? { entry: kept.has(asked.key) ? structuredClone(kept.get(asked.key)) : null }
+      : asked.op === 'cache-set' ? (kept.set(asked.key, structuredClone(asked.entry)), {})
+      : { error: 'Unsupported page request' };
+    queueMicrotask(() => document.dispatchEvent(new CustomEvent('scwr:response', { detail: JSON.stringify({ id: asked.id, ...answer }) })));
+  });
+  return document;
+}
+
 // Loads the extension's scripts for one recorded event, answering their
 // requests from the recording and noting every one they make.
-function replay(name, { pathname, localStorage = memoryStorage() } = {}) {
+function replay(name, { pathname, localStorage = memoryStorage(), kept = new Map(), refuse = false } = {}) {
   const event = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname, 'fixtures', `${name}.json.gz`))));
   const fetched = [];
   const context = vm.createContext({
     location: { pathname: pathname ?? `/en/event/${event.event}/results` },
     localStorage,
+    document: extension(kept, { refuse }), CustomEvent, setTimeout, clearTimeout,
     fetch: async (url) => {
       fetched.push(url);
       const body = event.responses[url];
@@ -44,7 +60,7 @@ function replay(name, { pathname, localStorage = memoryStorage() } = {}) {
     vm.runInContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), context, { filename: file });
   }
   const read = (expression) => vm.runInContext(expression, context);
-  return { ...event, fetched, localStorage, SCWRSite: read('SCWRSite'), SCWRMatches: read('SCWRMatches'), SCWRModel: read('SCWRModel') };
+  return { ...event, fetched, localStorage, kept, SCWRSite: read('SCWRSite'), SCWRMatches: read('SCWRMatches'), SCWRModel: read('SCWRModel') };
 }
 
 // Values built inside the sandbox carry that realm's prototypes, which strict
