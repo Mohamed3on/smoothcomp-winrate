@@ -281,10 +281,11 @@ async function team(env, params) {
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT p.user, p.name, p.club, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt, p.seen,
         c.wins, c.losses, c.source, c.walkovers, c.submission, c.points, c.types, c.gold, c.silver, c.bronze, c.events
       FROM people p LEFT JOIN careers c ON c.user = p.user WHERE p.site = ?1 AND p.club_id = ?4`).bind(f.site, f.off, Date.now() - KEPT, club),
+    // Grouped by +e.event, or SQLite walks every entry on the site for the order instead of this academy's.
     env.DB.prepare(`SELECT e.event, v.title, v.start, v.city, v.country, count(DISTINCT e.user) AS athletes, max(e.fought) AS fought,
         sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, json_group_array(json_object('wins', json(e.wins), 'losses', json(e.losses))) AS records
       FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.club_id = ?2
-      GROUP BY e.event ORDER BY v.start DESC, e.event DESC`).bind(f.site, club),
+      GROUP BY +e.event ORDER BY v.start DESC, e.event DESC`).bind(f.site, club),
   ]);
   const named = members.results.filter((m) => m.club).sort((a, b) => b.seen.localeCompare(a.seen))[0];
   if (!members.results.length && !events.results.length) return json({ error: 'Not found' }, 404);

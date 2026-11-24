@@ -1,7 +1,9 @@
+import NumberFlow from '@number-flow/react';
 import { Link } from 'wouter';
 import { ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Count, Ledger } from '@/components/ledger';
 import { FilterBar } from '@/components/filter-bar';
@@ -30,6 +32,8 @@ export function AcademyPage({ id }: { id: string }) {
   const unranked = data.members.filter((m) => m.wins == null);
   const sum = (k: 'wins' | 'gold' | 'silver' | 'bronze') => members.reduce((n, m) => n + (Number(m[k]) || 0), 0);
   const podium = (k: 'gold' | 'silver' | 'bronze') => data.events.reduce((n, e) => n + (Number(e[k]) || 0), 0);
+  // Athletes or events, the tab in the address (athletes when it names none).
+  const tab = f.get('tab') === 'events' ? 'events' : 'athletes';
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-2">
@@ -47,10 +51,14 @@ export function AcademyPage({ id }: { id: string }) {
         <Stat label="Events seen">{data.events.length}</Stat>
       </dl></Card>
 
-      <section className="flex flex-col gap-3">
+      <Tabs value={tab} onValueChange={(v) => f.set({ tab: v === 'events' ? 'events' : null })} className="gap-4">
+        <TabsList variant="line">
+          <TabsTrigger value="athletes">Athletes<NumberFlow value={ranked.data?.total ?? members.length} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>
+          <TabsTrigger value="events">Events<NumberFlow value={data.events.length} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>
+        </TabsList>
+      <TabsContent value="athletes" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="flex flex-col gap-1"><h2 className="text-lg font-semibold tracking-tight">Athletes</h2>
-            <p className="text-sm text-muted-foreground">Every athlete here with a career or results, ranked under the filters.</p></div>
+          <p className="text-sm text-muted-foreground">Every athlete here with a career or results, ranked under the filters.</p>
           {ranked.data && <Count n={ranked.data.total} unit={ranked.data.total === 1 ? 'athlete' : 'athletes'} />}
         </div>
         <FilterBar f={f} sorts={ATHLETE_SORTS} />
@@ -62,10 +70,9 @@ export function AcademyPage({ id }: { id: string }) {
             <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">{unranked.map((m) => <Identity key={m.user} a={m} f={f} club={false} />)}</div>
           </Card>
         )}
-      </section>
+      </TabsContent>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">Events</h2>
+      <TabsContent value="events">
         <Card className="gap-0 overflow-hidden py-0">
           <Table><TableHeader><TableRow className="hover:bg-transparent">
             <TableHead className="w-32 pl-5">Date</TableHead><TableHead>Event</TableHead><TableHead className="text-right">Athletes</TableHead><TableHead className="text-right">Podiums</TableHead><TableHead className="pr-5 text-right">Record</TableHead>
@@ -85,7 +92,8 @@ export function AcademyPage({ id }: { id: string }) {
             })}</TableBody>
           </Table>
         </Card>
-      </section>
+      </TabsContent>
+      </Tabs>
     </div>
   );
 }
