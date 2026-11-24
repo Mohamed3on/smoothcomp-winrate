@@ -299,9 +299,10 @@ const COMMON = new Set(['for', 'of', 'bjj', 'jj', 'jiu', 'jitsu', 'jiujitsu', 'b
 const tokens = (s) => String(s ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length > 1);
 export function sameAcademy(ours, theirs, town, every = false) {
   const skip = new Set([...COMMON, ...(every ? [] : tokens(town))]);
-  const named = new Set(tokens(theirs));
+  const named = new Set(tokens(theirs)), joined = tokens(theirs).join('');
   const words = tokens(ours).filter((w) => !skip.has(w));
-  return words.length > 0 && words[every ? 'every' : 'some']((w) => named.has(w));
+  // "GFTeam" is "GF Team" run together: a long word counts inside their name with its spaces dropped.
+  return words.length > 0 && words[every ? 'every' : 'some']((w) => named.has(w) || (w.length >= 4 && joined.includes(w)));
 }
 const between = (a, b, c, d) => 6371 * Math.acos(Math.min(1, Math.sin(a * Math.PI / 180) * Math.sin(c * Math.PI / 180) + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.cos((d - b) * Math.PI / 180)));
 // "(No academy)", "Independent", "No club": nobody to look for.
@@ -313,7 +314,7 @@ export function pickPlace(club, places) {
   const near = (p) => club.lat == null || between(club.lat, club.lng, p.location.latitude, p.location.longitude) <= 150;
   const found = placed.find((p) => near(p) && sameAcademy(club.club, p.displayName?.text, club.city))
     ?? placed.find((p) => club.country && part(p, 'country', 'shortText') === club.country && sameAcademy(club.club, p.displayName?.text, club.city, true));
-  return found ? { lat: found.location.latitude, lng: found.location.longitude, city: part(found, 'locality') ?? part(found, 'postal_town'),
+  return found ? { lat: found.location.latitude, lng: found.location.longitude, city: found.postalAddress?.locality || part(found, 'locality') || part(found, 'postal_town'),
     address: typeof found.formattedAddress === 'string' ? found.formattedAddress.slice(0, 200) : null } : null;
 }
 export async function findClubs(env) {
@@ -327,8 +328,8 @@ export async function findClubs(env) {
   if (!lookable(club.club)) return (await asked(null), 0);
   const answer = await fetch('https://places.googleapis.com/v1/places:searchText', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_MAPS_KEY, 'X-Goog-FieldMask': 'places.displayName,places.location,places.formattedAddress,places.addressComponents' },
-    body: JSON.stringify({ textQuery: club.club, pageSize: 5,
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': env.GOOGLE_MAPS_KEY, 'X-Goog-FieldMask': 'places.displayName,places.location,places.formattedAddress,places.addressComponents,places.postalAddress' },
+    body: JSON.stringify({ textQuery: club.club, pageSize: 5, languageCode: 'en',
       ...(club.lat != null && { locationBias: { circle: { center: { latitude: club.lat, longitude: club.lng }, radius: 50000 } } }) }),
   });
   if (!answer.ok) return 0; // a refused key or a spent quota asks again next time

@@ -149,6 +149,8 @@ test('Google Maps places an academy whose page names no place, only on a matchin
   assert.equal(sameAcademy('POUND FOR POUND TEAM', 'Pound for Pound Team München', 'Berlin'), true);
   assert.equal(sameAcademy('Berlin BJJ', 'Berlin Boxing Club', 'Berlin'), false); // the town and "BJJ" say nothing
   assert.equal(sameAcademy('Fightzone Berlin', 'FIGHTZONE e.V.', 'Berlin'), true);
+  assert.equal(sameAcademy('GFTeam Berlin', 'GF Team Berlin', 'Berlin'), true); // run together
+  assert.equal(sameAcademy('GF Berlin', 'Bergfried Gym', 'Berlin'), false); // too short to look inside
   const at = (name, latitude, longitude, locality, country = 'DE') => ({ displayName: { text: name }, location: { latitude, longitude }, formattedAddress: `${name}, ${locality}`,
     addressComponents: [{ longText: locality, types: ['locality', 'political'] }, { longText: country, shortText: country, types: ['country', 'political'] }] });
   const club = { club: 'Gracie Barra Berlin', city: 'Berlin', lat: 52.52, lng: 13.4, country: 'DE' };
