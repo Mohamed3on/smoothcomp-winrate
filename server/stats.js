@@ -30,8 +30,21 @@ function filters(params) {
     since: whole(params.get('active'), 0, 600) ? new Date(Date.now() - whole(params.get('active'), 0, 600) * 30.44 * 864e5).toISOString().slice(0, 10) : '',
     limit: whole(params.get('limit'), 50, 2000),
     offset: whole(params.get('offset'), 0),
+    // A place, as "lat,lng", and how far from it counts (km; 0 for anywhere).
+    ...place(params),
   };
 }
+function place(params) {
+  const m = (params.get('near') ?? '').match(/^(-?\d{1,2}(?:\.\d{1,7})?),(-?\d{1,3}(?:\.\d{1,7})?)$/);
+  const [lat, lng] = m ? [Number(m[1]), Number(m[2])] : [NaN, NaN];
+  return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng, km: whole(params.get('km'), 0, 20000) } : { lat: null, lng: null, km: 0 };
+}
+
+// Great-circle kilometres from the place bound at `at` (its latitude, then longitude at the next
+// number) to a row's coordinates; null where either is unknown.
+const KM = (lat, lng, at) => `(6371 * acos(min(1, max(-1, sin(radians(?${at})) * sin(radians(${lat})) + cos(radians(?${at})) * cos(radians(${lat})) * cos(radians(${lng} - ?${at + 1}))))))`;
+// The grappling sports' ids on Smoothcomp: Jiu-Jitsu (Gi); Jiu-Jitsu (NoGi), its ADCC and Submission Wrestling rules; Luta Livre.
+const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3', '24'] };
 
 // Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
 // ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:
@@ -106,17 +119,22 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')}
   FROM b`];
 
-// Each academy's latest name (as its athletes' latest events give it) and its podiums and events
-// entered at the events read. ?1 site, ?2 the academies (JSON).
-export const CLUBS = `INSERT OR REPLACE INTO clubs (site, club_id, club, podium_gold, podium_silver, podium_bronze, entered)
+// Each academy's latest name (as its athletes' latest events give it), its podiums and events
+// entered at the events read, and where it competes most: the city of the most events its athletes
+// entered (ties to the latest), at the mean of those events' coordinates. ?1 site, ?2 the academies (JSON).
+export const CLUBS = `INSERT OR REPLACE INTO clubs (site, club_id, club, podium_gold, podium_silver, podium_bronze, entered, lat, lng, city, country)
   WITH ids AS MATERIALIZED (SELECT DISTINCT value AS club_id FROM json_each(?2)),
   -- One pass over each academy's results, read through the academy index (CROSS JOIN keeps ids outer).
   podiums AS (SELECT e.club_id, sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, count(DISTINCT e.event) AS entered
-    FROM ids CROSS JOIN entries e WHERE e.site = ?1 AND e.club_id = ids.club_id AND e.fought = 1 GROUP BY e.club_id)
+    FROM ids CROSS JOIN entries e WHERE e.site = ?1 AND e.club_id = ids.club_id AND e.fought = 1 GROUP BY e.club_id),
+  cities AS (SELECT e.club_id, v.city, v.country, avg(v.lat) AS lat, avg(v.lng) AS lng,
+      row_number() OVER (PARTITION BY e.club_id ORDER BY count(DISTINCT e.event) DESC, max(v.start) DESC) AS rank
+    FROM ids CROSS JOIN entries e JOIN events v ON v.site = e.site AND v.event = e.event
+    WHERE e.site = ?1 AND e.club_id = ids.club_id AND v.lat IS NOT NULL GROUP BY e.club_id, v.city, v.country)
   SELECT ?1, ids.club_id,
     (SELECT club FROM people p WHERE p.site = ?1 AND p.club_id = ids.club_id AND p.club IS NOT NULL ORDER BY p.seen DESC LIMIT 1),
-    podiums.gold, podiums.silver, podiums.bronze, podiums.entered
-  FROM ids LEFT JOIN podiums USING (club_id)`;
+    podiums.gold, podiums.silver, podiums.bronze, podiums.entered, c.lat, c.lng, c.city, c.country
+  FROM ids LEFT JOIN podiums USING (club_id) LEFT JOIN cities c ON c.club_id = ids.club_id AND c.rank = 1`;
 
 // An event's athletes, divisions and academies, kept on it. ?1 site, ?2 event.
 export const EVENT_COUNTS = `UPDATE events SET
@@ -194,17 +212,17 @@ async function teams(env, params) {
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
     members AS (SELECT *, row_number() OVER (PARTITION BY club_id ORDER BY wins DESC, user) AS place FROM careers
       WHERE club_id IS NOT NULL AND wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)),
-    podiums AS (SELECT club_id, club, podium_gold, podium_silver, podium_bronze, entered FROM clubs WHERE site = ?1)
-    SELECT m.club_id, p.club, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
+    podiums AS (SELECT club_id, club, podium_gold, podium_silver, podium_bronze, entered, lat, lng, city, country FROM clubs WHERE site = ?1)
+    SELECT m.club_id, p.club, p.city, p.country AS club_country, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
       sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
       json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born)) FILTER (WHERE m.place <= 3) AS top,
       count(*) OVER () AS total
     FROM members m LEFT JOIN podiums p USING (club_id)
-    WHERE ?7 = '' OR p.club LIKE '%' || ?7 || '%'
+    WHERE (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17)
     GROUP BY m.club_id HAVING count(*) >= ?8
     ORDER BY ${sort}, m.club_id LIMIT ?9 OFFSET ?10`)
-    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since).all();
+    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since, f.lat, f.lng, f.km).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });
 }
 
@@ -273,15 +291,39 @@ async function team(env, params) {
   });
 }
 
+// Grappling events, upcoming (soonest first, from today) or past (latest first), within `days` of today
+// (0 for any), of a sport, with at least `min` athletes, within `km` of a place. The counts are kept on
+// each event (EVENT_COUNTS): an upcoming one nobody opened has none yet and shows unless a minimum is
+// set; a past one shows once read. Sorted by date, distance or size.
 async function events(env, params) {
   const f = filters(params);
-  // The counts are kept on each event (EVENT_COUNTS); one listed but not read yet has no athletes and waits.
-  const { results } = await env.DB.prepare(`SELECT v.event, v.title, v.start, v.city, v.country, v.organiser,
-      coalesce(v.athletes, 0) AS athletes, coalesce(v.divisions, 0) AS divisions, coalesce(v.teams, 0) AS teams, v.fought
+  const upcoming = params.get('when') !== 'past';
+  const today = new Date().toISOString().slice(0, 10);
+  const days = whole(params.get('days'), 0, 3660);
+  const shift = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const [from, to] = upcoming ? [today, days ? shift(days) : '9999'] : [days ? shift(-days) : '', shift(-1)];
+  const order = { distance: 'km IS NULL, km, start', athletes: 'athletes DESC, start' }[params.get('sort')] ?? (upcoming ? 'start, event' : 'start DESC, event DESC');
+  const { results } = await env.DB.prepare(`SELECT * FROM (SELECT v.event, v.title, v.start, v.city, v.country, v.organiser, v.lat, v.lng, v.url,
+      coalesce(v.athletes, 0) AS athletes, coalesce(v.divisions, 0) AS divisions, coalesce(v.teams, 0) AS teams, v.fought, ${KM('v.lat', 'v.lng', 5)} AS km
     FROM events v
-    WHERE v.site = ?1 AND v.athletes > 0 AND (?2 = '' OR v.title LIKE '%' || ?2 || '%' OR v.city LIKE '%' || ?2 || '%')
-    ORDER BY v.start DESC, v.event DESC LIMIT ?3 OFFSET ?4`).bind(f.site, f.q, f.limit, f.offset).all();
+    WHERE v.site = ?1 AND substr(v.start, 1, 10) BETWEEN ?3 AND ?4 AND (?2 = '' OR v.title LIKE '%' || ?2 || '%' OR v.city LIKE '%' || ?2 || '%')
+      AND (v.sports IS NULL OR EXISTS (SELECT 1 FROM json_each(v.sports) s WHERE s.value IN (SELECT value FROM json_each(?8))))
+      AND coalesce(v.athletes, 0) >= max(?9, ?10))
+    WHERE ?7 = 0 OR km <= ?7
+    ORDER BY ${order} LIMIT ?11 OFFSET ?12`)
+    .bind(f.site, f.q, from, to, f.lat, f.lng, f.km, JSON.stringify(SPORTS[params.get('sport')] ?? SPORTS.grappling), whole(params.get('min'), 0), upcoming ? 0 : 1, f.limit, f.offset).all();
   return json({ rows: results });
+}
+
+// Places to search from: the cities events were held in, where they are, best match then most events first.
+async function places(env, params) {
+  const f = filters(params);
+  if (f.q.length < 2) return json({ rows: [] });
+  const c = matcher(f.q, 'events_fts', 'city', 'city', 1);
+  const { results } = await env.DB.prepare(`SELECT city, country, avg(lat) AS lat, avg(lng) AS lng, count(*) AS events, min(${c.tier}) AS tier FROM events
+    WHERE lat IS NOT NULL AND city IS NOT NULL AND ${c.filter} GROUP BY city, country ORDER BY tier, events DESC LIMIT 8`)
+    .bind(...c.tierBinds, ...c.filterBinds).all();
+  return json({ rows: results.map(({ tier, ...r }) => r) });
 }
 
 async function event(env, params) {
@@ -391,4 +433,4 @@ async function summary(env, params) {
   return json(row);
 }
 
-export const API = { athletes, teams, athlete, team, events, event, division, search, summary, countries };
+export const API = { athletes, teams, athlete, team, events, event, division, search, summary, countries, places };

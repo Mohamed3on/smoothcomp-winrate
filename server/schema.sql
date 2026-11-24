@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS events (
   ends INTEGER, -- epoch ms
   -- Kept counts (stats.js EVENT_COUNTS); a database made before them took them by ALTER TABLE ... ADD COLUMN.
   athletes INTEGER, divisions INTEGER, teams INTEGER, fought INTEGER,
+  -- Where it is and which sports it holds (Smoothcomp's sport ids, JSON), as the sites' event lists give them
+  -- (crawl.js listEvents), and its page. Added by ALTER TABLE ... ADD COLUMN on older databases.
+  lat REAL, lng REAL, sports TEXT, url TEXT,
   PRIMARY KEY (site, event)
 );
 -- One row per athlete per division. A results page's rows (fought = 1) replace
@@ -163,6 +166,8 @@ CREATE INDEX IF NOT EXISTS board_club ON board (site, club_id);
 -- Each academy's latest name and its podiums at the events read (stats.js CLUBS), kept as results arrive.
 CREATE TABLE IF NOT EXISTS clubs (
   site TEXT NOT NULL, club_id TEXT NOT NULL, club TEXT, podium_gold INTEGER, podium_silver INTEGER, podium_bronze INTEGER, entered INTEGER,
+  -- Where it competes most (stats.js CLUBS); added by ALTER TABLE ... ADD COLUMN on older databases.
+  lat REAL, lng REAL, city TEXT, country TEXT,
   PRIMARY KEY (site, club_id)
 );
 CREATE INDEX IF NOT EXISTS people_club ON people (site, club_id);

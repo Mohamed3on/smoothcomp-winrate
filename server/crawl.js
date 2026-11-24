@@ -7,6 +7,7 @@
 // final and bronze match, as the extension counts a division not yet published. A results page
 // read later replaces it.
 import '../rules.js';
+import { CLUBS } from './stats.js';
 
 const HOSTS = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36';
@@ -215,23 +216,45 @@ function results(data, start) {
   return { athletes, records };
 }
 
-// Smoothcomp's list of past events (40 a page, newest first, open to a server) names every event of
-// the last year, so the queue holds those nobody opened too. Read daily; what an event page sent stays.
+// An event list page's events (`var events = [...]`, as /en/events/upcoming and /past print it): each
+// one's title, date, city, coordinates, sports (Smoothcomp's ids) and page.
+const coord = (v, max) => { const n = v == null || v === '' ? NaN : Number(v); return Number.isFinite(n) && Math.abs(n) <= max ? n : null; };
+export function listed(html) {
+  let list = [];
+  try { list = JSON.parse(html.match(/var events = (\[.*\])\s*$/m)?.[1] ?? '[]'); } catch { /* a changed page lists nothing */ }
+  return list.filter((e) => Number.isSafeInteger(e?.id) && /^\d{4}-\d{2}-\d{2}$/.test(e.startdate)).map((e) => ({
+    event: String(e.id), title: e.title ?? null, start: e.startdate, city: e.location_city ?? null, country: e.location_country ?? null,
+    lat: coord(e.location_lat, 90), lng: coord(e.location_long, 180),
+    sports: Array.isArray(e.categoryGroups) ? JSON.stringify(e.categoryGroups.map(String).filter((g) => /^\d{1,4}$/.test(g))) : null,
+    url: typeof e.url === 'string' && /^https:\/\/([\w-]+\.)?(smoothcomp\.com|ajptour\.com)\//.test(e.url) ? e.url : null,
+  }));
+}
+
+// Listed events in: a page an install read keeps its title, city and timed start, and the list adds
+// where it is and its sports. An upcoming event's list date wins, so a postponement shows. ?1 site, ?2 now, ?3 events (JSON).
+export const LISTED = `INSERT INTO events (site, event, title, start, city, country, lat, lng, sports, url, at)
+  SELECT ?1, value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'country', value ->> 'lat', value ->> 'lng', value ->> 'sports', value ->> 'url', ?2 FROM json_each(?3) WHERE true
+  ON CONFLICT (site, event) DO UPDATE SET title = coalesce(events.title, excluded.title),
+    start = iif(excluded.start > date('now') AND substr(coalesce(events.start, ''), 1, 10) != excluded.start, excluded.start, coalesce(events.start, excluded.start)),
+    city = coalesce(events.city, excluded.city), country = coalesce(events.country, excluded.country),
+    lat = coalesce(excluded.lat, events.lat), lng = coalesce(excluded.lng, events.lng), sports = coalesce(excluded.sports, events.sports), url = coalesce(excluded.url, events.url)`;
+
+// Read daily, as servers may: every upcoming event on both sites (one page each), so the site can find
+// one near you, and Smoothcomp's past events (40 a page, newest first) of the last year, so the queue
+// holds those nobody opened too. Then a few thousand academies with no place yet look for one.
 export async function listEvents(env) {
   const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
-  const page = async (n) => {
-    const html = await (await fetch(`https://smoothcomp.com/en/events/past?page=${n}`, { headers: { 'User-Agent': UA } })).text();
-    const list = html.match(/var events = (\[.*\])\s*$/m)?.[1];
-    return list ? JSON.parse(list) : [];
-  };
+  const read = async (site, path) => listed(await (await fetch(`${HOSTS[site]}/en/events/${path}`, { headers: { 'User-Agent': UA } })).text());
+  const save = async (site, rows) => { for (let i = 0; i < rows.length; i += 500) await env.DB.prepare(LISTED).bind(site, Date.now(), JSON.stringify(rows.slice(i, i + 500))).run(); };
+  for (const site of Object.keys(HOSTS)) await save(site, await read(site, 'upcoming'));
   for (let n = 1, older = false; !older && n <= 400; n += 4) {
-    const found = (await Promise.all([n, n + 1, n + 2, n + 3].map(page))).flat();
-    older = !found.length || found.some((e) => e.startdate < since);
-    const rows = found.filter((e) => Number.isSafeInteger(e.id) && e.startdate >= since).map((e) => ({ event: String(e.id), title: e.title, start: e.startdate, city: e.location_city, country: e.location_country }));
-    if (rows.length) await env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, at)
-      SELECT 'smoothcomp.com', value ->> 'event', value ->> 'title', value ->> 'start', value ->> 'city', value ->> 'country', ?1 FROM json_each(?2) WHERE true
-      ON CONFLICT (site, event) DO UPDATE SET title = coalesce(events.title, excluded.title), start = coalesce(events.start, excluded.start),
-        city = coalesce(events.city, excluded.city), country = coalesce(events.country, excluded.country)`).bind(Date.now(), JSON.stringify(rows)).run();
+    const found = (await Promise.all([n, n + 1, n + 2, n + 3].map((p) => read('smoothcomp.com', `past?page=${p}`)))).flat();
+    older = !found.length || found.some((e) => e.start < since);
+    await save('smoothcomp.com', found.filter((e) => e.start >= since));
+  }
+  for (const site of Object.keys(HOSTS)) {
+    const ids = (await env.DB.prepare('SELECT club_id FROM clubs WHERE site = ?1 AND lat IS NULL ORDER BY random() LIMIT 2000').bind(site).all()).results.map((r) => r.club_id);
+    if (ids.length) await env.DB.prepare(CLUBS).bind(site, JSON.stringify(ids)).run();
   }
 }
 

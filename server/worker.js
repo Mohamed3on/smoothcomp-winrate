@@ -96,6 +96,7 @@ const tally = (bucket) => {
 // Photos only from the sites' own hosts.
 const photo = (url) => (typeof url === 'string' && /^https:\/\/([\w-]+\.)*(smoothcomp\.com|ajptour\.com)\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
+const coord = (v, max) => { const n = v == null || v === '' ? NaN : Number(v); return Number.isFinite(n) && Math.abs(n) <= max ? n : null; };
 // When the page read what it sends: an upload read before the one kept is dropped, so a
 // late arrival never undoes a newer read. Older installs send none and count as read now.
 const readAt = (read, now = Date.now()) => (Number.isSafeInteger(read) && read > now - 60 * 60 * 1000 ? Math.min(read, now) : now);
@@ -108,7 +109,7 @@ export function upload(event, meta, athletes, now = Date.now()) {
   // A date decides whose academy and photo win, so none from the future.
   const start = typeof meta?.start === 'string' && ISO.test(meta.start) && Date.parse(meta.start) < now + 366 * 24 * 60 * 60 * 1000 ? meta.start : null;
   const ends = typeof meta?.end === 'string' && ISO.test(meta.end) && Date.parse(meta.end) < now + 366 * 24 * 60 * 60 * 1000 ? Date.parse(meta.end) : null;
-  const about = meta && typeof meta === 'object' ? { title: text(meta.title, 200), start, city: text(meta.city, 100), country: text(meta.country, 8), organiser: text(meta.organiser, 200), ends } : null;
+  const about = meta && typeof meta === 'object' ? { title: text(meta.title, 200), start, city: text(meta.city, 100), country: text(meta.country, 8), organiser: text(meta.organiser, 200), ends, lat: coord(meta.lat, 90), lng: coord(meta.lng, 180) } : null;
   const people = [];
   const entries = [];
   const history = {};
@@ -146,10 +147,11 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
   const start = about?.start ?? null;
   const statements = [];
   if (about) {
-    statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at, ends) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+    statements.push(env.DB.prepare(`INSERT INTO events (site, event, title, start, city, country, organiser, at, ends, lat, lng) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
       ON CONFLICT (site, event) DO UPDATE SET title = coalesce(excluded.title, title), start = coalesce(excluded.start, start), city = coalesce(excluded.city, city),
-      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at, ends = coalesce(excluded.ends, ends)`)
-      .bind(site, event, about.title, about.start, about.city, about.country, about.organiser, now, about.ends));
+      country = coalesce(excluded.country, country), organiser = coalesce(excluded.organiser, organiser), at = excluded.at, ends = coalesce(excluded.ends, ends),
+      lat = coalesce(excluded.lat, lat), lng = coalesce(excluded.lng, lng)`)
+      .bind(site, event, about.title, about.start, about.city, about.country, about.organiser, now, about.ends, about.lat, about.lng));
   }
   // A newer event's academy, photo and name replace an older one's; an older event only fills gaps.
   const keep = (column) => `${column} = CASE WHEN excluded.seen >= people.seen THEN coalesce(excluded.${column}, people.${column}) ELSE coalesce(people.${column}, excluded.${column}) END`;
@@ -397,6 +399,12 @@ export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const { pathname, searchParams } = new URL(request.url);
+    // Roughly where the reader is (Cloudflare's guess from their connection, city-level), so the site can
+    // look near them without asking for their location. Theirs alone, so never cached.
+    if (pathname === '/api/here' && request.method === 'GET') {
+      const cf = request.cf ?? {};
+      return Response.json({ lat: coord(cf.latitude, 90), lng: coord(cf.longitude, 180), city: cf.city ?? null, country: cf.country ?? null }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     const read = pathname.startsWith('/api/') && API[pathname.slice(5)];
     if (read) return request.method === 'GET' ? cached(request, ctx, pathname.slice(5), env, (db) => read({ ...env, DB: db }, searchParams)) : json({ error: 'Not found' }, 404);
     if ((request.method === 'GET' || request.method === 'HEAD') && !pathname.startsWith('/api/')) return page(request, env);

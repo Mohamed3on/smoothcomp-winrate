@@ -129,7 +129,7 @@ const SCWRSite = (() => {
   // describes it; the participants page's doesn't, so it reads the results page's, once.
   let known;
   const event = () => (known ??= (async () => {
-    const pick = (e) => (e && String(e.id) === id('event') ? { title: e.title, start: e.event_start, end: e.event_end, city: e.location_city, country: e.location_country, organiser: e.organization?.name } : null);
+    const pick = (e) => (e && String(e.id) === id('event') ? { title: e.title, start: e.event_start, end: e.event_end, city: e.location_city, country: e.location_country, lat: e.location_lat, lng: e.location_long, organiser: e.organization?.name } : null);
     if (window.sc?.event) return pick(window.sc.event);
     try {
       const page = await fetch(url.data(id('event'), 'results'), { credentials: 'same-origin' }).then((r) => r.text());

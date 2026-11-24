@@ -14,7 +14,9 @@ function d1() {
     const run = (how) => {
       const s = db.prepare(sql);
       s.setAllowUnknownNamedParameters?.(true);
-      return s[how](Object.fromEntries(args.map((v, i) => [i + 1, typeof v === 'boolean' ? Number(v) : v ?? null])));
+      const values = args.map((v) => (typeof v === 'boolean' ? Number(v) : v ?? null));
+      // Bare ? (the search's matcher) bind in order; ?N by number, as D1 binds both.
+      return /\?(?!\d)/.test(sql) ? s[how](...values) : s[how](Object.fromEntries(values.map((v, i) => [i + 1, v])));
     };
     return {
       bind: (...values) => statement(sql, values),
@@ -41,12 +43,12 @@ const athletes = {
   12: { name: 'Bo Sun', club: 'Beta', clubId: '502', belt: 'Purple/Brown', entries: [{ division: 'Adult / Blue / -76 kg', place: 2, wins: { points: 1 }, losses: { submission: 2 } }] },
   x: { name: 'Not a user' },
 };
-const meta = { title: 'Berlin Open', start: '2026-10-03T08:00:00Z', end: '2026-10-04T18:00:00Z', city: 'Berlin', country: 'de' };
+const meta = { title: 'Berlin Open', start: '2026-10-03T08:00:00Z', end: '2026-10-04T18:00:00Z', city: 'Berlin', country: 'de', lat: '52.52', lng: '13.4' };
 
 test('an upload keeps only the shapes the tables hold', async () => {
   const { upload } = await import('../server/worker.js');
   const said = upload('900', meta, athletes, Date.parse('2026-11-23'));
-  assert.deepEqual(said.about, { title: 'Berlin Open', start: '2026-10-03T08:00:00Z', city: 'Berlin', country: 'de', organiser: null, ends: Date.parse('2026-10-04T18:00:00Z') });
+  assert.deepEqual(said.about, { title: 'Berlin Open', start: '2026-10-03T08:00:00Z', city: 'Berlin', country: 'de', organiser: null, ends: Date.parse('2026-10-04T18:00:00Z'), lat: 52.52, lng: 13.4 });
   assert.deepEqual(said.people.map((p) => [p.user, p.name, p.country, p.belt, p.born, p.photo, p.hidden]), [['11', 'Kim Lee', 'nl', 'blue', 1996, null, 0], ['12', 'Bo Sun', null, null, null, null, null]]);
   // Finishes go in grouped (a forfeit a walkover), each match with its detail.
   assert.deepEqual(JSON.parse(said.entries[0].wins), { submission: 3, walkover: 1 });
@@ -83,4 +85,37 @@ test("a results page's upload reads back on the stats site", async () => {
   // A participants page's lookup gets each athlete's record by finish, to seed brackets by win rate.
   const looked = await (await post('/lookup', { site: 'smoothcomp.com', users: ['11', '12', '13'] })).json();
   assert.deepEqual(looked.records, { 11: { submission: [3, 0], walkover: [1, 0] }, 12: { points: [1, 0], submission: [0, 2] } });
+});
+
+test('listed events are found by place, date, sport and size, and academies where they compete', async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { API } = await import('../server/stats.js');
+  const { listed, LISTED } = await import('../server/crawl.js');
+  const { DB } = d1();
+  const env = { DB };
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const at = (id, start, city, lat, lng, sports, url) => ({ id, title: `${city} ${id}`, startdate: start, location_city: city, location_country: 'DE', location_lat: lat, location_long: lng, categoryGroups: sports, url });
+  const html = `<script>\nvar events = ${JSON.stringify([
+    at(1, day(10), 'Potsdam', '52.39', '13.06', ['1'], 'https://smoothcomp.com/en/event/1'), at(2, day(20), 'Munich', '48.14', '11.58', ['7'], 'https://evil.example/2'),
+    at(3, day(5), 'Berlin', '52.52', '13.40', ['26']), at(4, day(200), 'Berlin', '52.5', '13.4', ['1']), { id: 'x' }])}\n</script>`;
+  const rows = listed(html);
+  assert.deepEqual(rows.map((r) => [r.event, r.lat, r.sports, r.url]), [['1', 52.39, '["1"]', 'https://smoothcomp.com/en/event/1'], ['2', 48.14, '["7"]', null], ['3', 52.52, '["26"]', null], ['4', 52.5, '["1"]', null]]);
+  await DB.prepare(LISTED).bind('smoothcomp.com', Date.now(), JSON.stringify(rows)).run();
+  const find = async (q) => (await (await API.events(env, new URLSearchParams(`site=smoothcomp.com&${q}`))).json()).rows;
+  // Within 100 km of Berlin and 90 days: Potsdam; not Munich, the judo, or next year's.
+  assert.deepEqual((await find('near=52.52,13.40&km=100&days=90')).map((e) => [e.event, Math.round(e.km)]), [['1', 27]]);
+  assert.deepEqual((await find('near=52.52,13.40&sort=distance')).map((e) => e.event), ['4', '1', '2']);
+  assert.deepEqual((await find('sport=nogi')).map((e) => e.event), ['2']);
+  // A minimum size leaves out events nobody has read; past events show once read.
+  assert.deepEqual(await find('min=1'), []);
+  assert.deepEqual(await find('when=past'), []);
+  // An academy sits where it competes most, and a radius finds it.
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  await post('/record', { site: 'smoothcomp.com', event: '1', records: { 11: [3, 0], 12: [1, 2] }, meta: { title: 'Potsdam Open', start: `${day(10)}T09:00:00Z` }, athletes, read: Date.now() });
+  const near = async (q) => (await (await API.teams(env, new URLSearchParams(`site=smoothcomp.com&athletes=1&${q}`))).json()).rows;
+  assert.deepEqual((await near('near=52.52,13.40&km=50')).map((t) => [t.club_id, t.city, Math.round(t.km)]), [['501', 'Potsdam', 27], ['502', 'Potsdam', 27]]);
+  assert.deepEqual(await near('near=48.14,11.58&km=100'), []);
+  // Places to search from are the cities events are held in.
+  const places = await (await API.places(env, new URLSearchParams('q=pots'))).json();
+  assert.deepEqual(places.rows.map((p) => [p.city, p.events]), [['Potsdam', 1]]);
 });
