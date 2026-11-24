@@ -4,20 +4,48 @@ import { ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Count, Ledger } from '@/components/ledger';
+import { Count, Ledger, type Column } from '@/components/ledger';
 import { FilterBar } from '@/components/filter-bar';
 import { Empty } from '@/components/empty';
-import { Identity, Medals, Record, Stat } from '@/components/stats';
-import { useApi, type Athlete, type Types } from '@/lib/api';
-import { useFilters } from '@/lib/filters';
-import { date, plural, winsOf } from '@/lib/format';
+import { Belt, Identity, Medals, Photo, Place, Record, Stat } from '@/components/stats';
+import { useApi, type Athlete, type EventEntry, type Types } from '@/lib/api';
+import { useFilters, type Filters } from '@/lib/filters';
+import { beltAt, date, plural, rate, winsOf } from '@/lib/format';
+import { DivisionLink } from '@/pages/division';
 import { ATHLETE_SORTS, athleteColumns, resetAction } from '@/pages/athletes';
 
+type Event = { event: string; title: string | null; start: string | null; athletes: number; fought: number; gold: number; silver: number; bronze: number; records: { wins: Types; losses: Types }[] };
 interface Data {
   club: { id: string; name: string | null };
   members: (Athlete & { seen: string })[];
-  events: { event: string; title: string | null; start: string | null; athletes: number; fought: number; gold: number; silver: number; bronze: number; records: { wins: Types; losses: Types }[] }[];
+  events: Event[];
+}
+
+// One event's athletes from this academy, read when its row opens: their divisions and places there, and
+// their record and win rate over the finish types switched on. Medallists first, then the most wins.
+function EventGlance({ event, club, f }: { event: string; club: string; f: Filters }) {
+  const { data } = useApi<{ entries: EventEntry[] }>('event', { site: f.site, off: f.query.off, id: event, club });
+  if (!data) return <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-x-6 gap-y-2 pt-1">{Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-10" />)}</div>;
+  const people = [...Map.groupBy(data.entries, (e) => e.user).values()].map((group) => {
+    const rows = group.toSorted((a, b) => (a.place ?? 999) - (b.place ?? 999));
+    const w = rows.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), l = rows.reduce((n, r) => n + winsOf(r.losses, f.counted), 0);
+    return { ...rows[0], rows, w, l, best: rows[0].place ?? 999, belt: beltAt(rows.map((r) => r.division)) ?? rows[0].belt };
+  }).sort((a, b) => a.best - b.best || b.w - a.w || a.l - b.l || (a.name ?? '').localeCompare(b.name ?? ''));
+  if (!people.length) return <p className="text-sm text-muted-foreground">Nobody from this academy is listed here any more.</p>;
+  return (
+    <ol className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-x-6 gap-y-1 rounded-lg border bg-card p-3">
+      {people.map((p) => (
+        <li key={p.user} className="flex min-w-0 items-start gap-2 py-1 text-sm">
+          <Photo name={p.name} photo={p.photo} className="size-6" />
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex items-center gap-2"><Link href={f.link(`/athlete/${p.user}`)} className="min-w-0 break-words hover:text-primary">{p.name ?? `Athlete ${p.user}`}</Link><Belt belt={p.belt} /></span>
+            {p.rows.map((r) => <span key={r.division} className="flex items-center gap-2 text-xs text-muted-foreground">{p.fought ? <Place p={r.place} /> : null}<DivisionLink event={event} name={r.division} f={f} className="min-w-0 break-words" /></span>)}
+          </span>
+          {p.fought ? <span className="flex shrink-0 flex-col items-end leading-tight" title="Win rate here, counted finishes"><span className="font-semibold">{rate(p.w, p.l) ?? '–'}</span><span className="text-xs"><Record w={p.w} l={p.l} /></span></span> : null}
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 export function AcademyPage({ id }: { id: string }) {
@@ -34,6 +62,15 @@ export function AcademyPage({ id }: { id: string }) {
   const podium = (k: 'gold' | 'silver' | 'bronze') => data.events.reduce((n, e) => n + (Number(e[k]) || 0), 0);
   // Athletes or events, the tab in the address (athletes when it names none).
   const tab = f.get('tab') === 'events' ? 'events' : 'athletes';
+  const tally = (e: Event): [number, number] => [e.records.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), e.records.reduce((n, r) => n + winsOf(r.losses, f.counted), 0)];
+  const eventColumns: Column<Event>[] = [
+    { key: 'date', label: 'Date', width: '8rem', align: 'start', cell: (e) => <span className="text-muted-foreground">{date(e.start)}</span> },
+    { key: 'event', label: 'Event', align: 'start', cell: (e) => <Link href={f.link(`/event/${e.event}`)} className="font-medium hover:text-primary">{e.title ?? `Event ${e.event}`}</Link> },
+    { key: 'athletes', label: 'Athletes', width: '6rem', cell: (e) => e.athletes },
+    { key: 'podiums', label: 'Podiums', width: '10rem', cell: (e) => (e.fought ? <Medals g={e.gold} s={e.silver} b={e.bronze} /> : <span className="text-xs text-muted-foreground">Entrants only</span>) },
+    { key: 'record', label: 'Record', width: '7rem', cell: (e) => (e.fought ? <Record w={tally(e)[0]} l={tally(e)[1]} /> : '') },
+    { key: 'rate', label: 'Win rate', width: '6rem', title: 'Wins over matches here, counted finishes', cell: (e) => (e.fought ? <span className="font-semibold">{rate(...tally(e)) ?? '–'}</span> : '') },
+  ];
   return (
     <div className="flex flex-col gap-8">
       <header className="flex flex-col gap-2">
@@ -73,25 +110,8 @@ export function AcademyPage({ id }: { id: string }) {
       </TabsContent>
 
       <TabsContent value="events">
-        <Card className="gap-0 overflow-hidden py-0">
-          <Table><TableHeader><TableRow className="hover:bg-transparent">
-            <TableHead className="w-32 pl-5">Date</TableHead><TableHead>Event</TableHead><TableHead className="text-right">Athletes</TableHead><TableHead className="text-right">Podiums</TableHead><TableHead className="pr-5 text-right">Record</TableHead>
-          </TableRow></TableHeader>
-            <TableBody>{data.events.map((e) => {
-              const w = e.records.reduce((n, r) => n + winsOf(r.wins, f.counted), 0);
-              const l = e.records.reduce((n, r) => n + winsOf(r.losses, f.counted), 0);
-              return (
-                <TableRow key={e.event}>
-                  <TableCell className="pl-5 text-muted-foreground">{date(e.start)}</TableCell>
-                  <TableCell><Link href={f.link(`/event/${e.event}`)} className="font-medium hover:text-primary">{e.title ?? `Event ${e.event}`}</Link></TableCell>
-                  <TableCell className="text-right">{e.athletes}</TableCell>
-                  <TableCell className="text-right">{e.fought ? <Medals g={e.gold} s={e.silver} b={e.bronze} /> : <span className="text-xs text-muted-foreground">Entrants only</span>}</TableCell>
-                  <TableCell className="pr-5 text-right">{e.fought ? <Record w={w} l={l} /> : ''}</TableCell>
-                </TableRow>
-              );
-            })}</TableBody>
-          </Table>
-        </Card>
+        <Ledger rows={data.events} loading={false} columns={eventColumns} rowKey={(e) => e.event} expand={(e) => <EventGlance event={e.event} club={id} f={f} />}
+          empty={<Empty title="No events read" text="Mat Stats hasn’t read an event with this academy in it yet." />} />
       </TabsContent>
       </Tabs>
     </div>

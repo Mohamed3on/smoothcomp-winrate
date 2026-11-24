@@ -491,13 +491,15 @@ async function event(env, params) {
   const f = filters(params);
   const id = params.get('id') ?? '';
   if (!/^\d{1,9}$/.test(id)) return json({ error: 'Bad event' }, 400);
+  // ?club= narrows the entries to one academy's, for an academy's events opened one at a time.
+  const club = /^\d{1,12}$/.test(params.get('club') ?? '') ? params.get('club') : null;
   const [meta, entries, reads] = await env.DB.batch([
     env.DB.prepare('SELECT * FROM events WHERE site = ?1 AND event = ?2').bind(f.site, id),
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT e.user, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.at,
         p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt,
         c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold, c.silver AS career_silver, c.bronze AS career_bronze
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
-      WHERE e.site = ?1 AND e.event = ?4 AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id),
+      WHERE e.site = ?1 AND e.event = ?4 AND (?5 IS NULL OR +e.club_id = ?5) AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id, club),
     // When its registrations (0) and results (1) were last read: rows only change when what they say does.
     env.DB.prepare('SELECT fought, at FROM reads WHERE site = ?1 AND event = ?2').bind(f.site, id),
   ]);
