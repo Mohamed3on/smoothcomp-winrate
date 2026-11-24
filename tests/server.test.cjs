@@ -106,6 +106,10 @@ test('listed events are found by place, date, sport and size, and academies wher
   assert.deepEqual((await find('near=52.52,13.40&km=100&days=90')).map((e) => [e.event, Math.round(e.km)]), [['1', 27]]);
   assert.deepEqual((await find('near=52.52,13.40&sort=distance')).map((e) => e.event), ['4', '1', '2']);
   assert.deepEqual((await find('sport=nogi')).map((e) => e.event), ['2']);
+  // AJP Tour's events list beside them, ids apart; it files all under Gi, so a No-Gi title counts as NoGi.
+  await DB.prepare(LISTED).bind('ajptour.com', Date.now(), JSON.stringify(listed(`<script>\nvar events = ${JSON.stringify([{ ...at(1, day(15), 'Berlin', '52.5', '13.4', ['1']), title: 'AJP Tour Berlin - Gi & No-Gi' }])}\n</script>`))).run();
+  assert.deepEqual((await find('sport=nogi')).map((e) => [e.site, e.event]), [['ajptour.com', '1'], ['smoothcomp.com', '2']]);
+  assert.deepEqual((await find('near=52.52,13.40&km=100&days=90')).map((e) => [e.site, e.event]), [['smoothcomp.com', '1'], ['ajptour.com', '1']]);
   // A minimum size leaves out events nobody has read; past events show once read.
   assert.deepEqual(await find('min=1'), []);
   assert.deepEqual(await find('when=past'), []);

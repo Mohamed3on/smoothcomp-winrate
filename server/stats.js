@@ -217,7 +217,7 @@ async function teams(env, params) {
         iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, iif(o.lat IS NULL, c.country, o.country) AS country,
         iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
       FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1)
-    SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
+    SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
       sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
       json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born)) FILTER (WHERE m.place <= 3) AS top,
@@ -308,15 +308,18 @@ async function events(env, params) {
   const shift = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
   const [from, to] = upcoming ? [today, days ? shift(days) : '9999'] : [days ? shift(-days) : '', shift(-1)];
   const order = { distance: 'km IS NULL, km, start', athletes: 'athletes DESC, start' }[params.get('sort')] ?? (upcoming ? 'start, event' : 'start DESC, event DESC');
-  const { results } = await env.DB.prepare(`SELECT * FROM (SELECT v.event, v.title, v.start, v.city, v.country, v.organiser, v.lat, v.lng, v.url,
+  // Both sites' events in one list, each with its site. AJP Tour files every event under Gi, so one whose
+  // title says No-Gi counts as NoGi too.
+  const { results } = await env.DB.prepare(`SELECT * FROM (SELECT v.site, v.event, v.title, v.start, v.city, v.country, v.organiser, v.lat, v.lng, v.url,
       coalesce(v.athletes, 0) AS athletes, coalesce(v.divisions, 0) AS divisions, coalesce(v.teams, 0) AS teams, v.fought, ${KM('v.lat', 'v.lng', 5)} AS km
     FROM events v
-    WHERE v.site = ?1 AND substr(v.start, 1, 10) BETWEEN ?3 AND ?4 AND (?2 = '' OR v.title LIKE '%' || ?2 || '%' OR v.city LIKE '%' || ?2 || '%')
-      AND (v.sports IS NULL OR EXISTS (SELECT 1 FROM json_each(v.sports) s WHERE s.value IN (SELECT value FROM json_each(?8))))
+    WHERE substr(v.start, 1, 10) BETWEEN ?3 AND ?4 AND (?2 = '' OR v.title LIKE '%' || ?2 || '%' OR v.city LIKE '%' || ?2 || '%')
+      AND (v.sports IS NULL OR EXISTS (SELECT 1 FROM json_each(v.sports) s WHERE s.value IN (SELECT value FROM json_each(?8)))
+        OR (?1 = 'nogi' AND (v.title LIKE '%no-gi%' OR v.title LIKE '%nogi%' OR v.title LIKE '%no gi%')))
       AND coalesce(v.athletes, 0) >= max(?9, ?10))
     WHERE ?7 = 0 OR km <= ?7
-    ORDER BY ${order} LIMIT ?11 OFFSET ?12`)
-    .bind(f.site, f.q, from, to, f.lat, f.lng, f.km, JSON.stringify(SPORTS[params.get('sport')] ?? SPORTS.grappling), whole(params.get('min'), 0), upcoming ? 0 : 1, f.limit, f.offset).all();
+    ORDER BY ${order}, site LIMIT ?11 OFFSET ?12`)
+    .bind(params.get('sport') ?? '', f.q, from, to, f.lat, f.lng, f.km, JSON.stringify(SPORTS[params.get('sport')] ?? SPORTS.grappling), whole(params.get('min'), 0), upcoming ? 0 : 1, f.limit, f.offset).all();
   return json({ rows: results });
 }
 

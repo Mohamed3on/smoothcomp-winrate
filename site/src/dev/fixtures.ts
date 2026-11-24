@@ -55,11 +55,12 @@ export const STATES = ['worst', 'empty', 'one', 'error'] as const;
 
 // The event finder (/api/events): the longest title Smoothcomp allows over a long city, no place at all,
 // across the antimeridian, the same city twice, a code no flag draws, read and unread, one athlete.
-const event = (e: Partial<EventRow>): EventRow => ({ event: '1', title: null, start: null, city: null, country: null, organiser: null, athletes: 0, divisions: 0, teams: 0, fought: 0, lat: null, lng: null, url: null, km: null, ...e });
+const event = (e: Partial<EventRow>): EventRow => ({ site: 'smoothcomp.com', event: '1', title: null, start: null, city: null, country: null, organiser: null, athletes: 0, divisions: 0, teams: 0, fought: 0, lat: null, lng: null, url: null, km: null, ...e });
 const events: EventRow[] = [
   event({ event: '40001', title: 'IBJJF European Jiu-Jitsu IBJJF Championship 2027 – Adult, Master, Juvenile & Kids (Gi) – Pavilhão Multiusos de Odivelas', start: '2027-01-20', city: 'Odivelas, Lisboa', country: 'PT',
     organiser: 'International Brazilian Jiu-Jitsu Federation (IBJJF) Europe', athletes: 4821, divisions: 812, teams: 1203, km: 2310.44, url: 'https://smoothcomp.com/en/event/40001' }),
   event({ event: '40002', title: 'Copa Unificada', start: '2026-12-06' }),
+  event({ site: 'ajptour.com', event: '40002', title: 'AJP Tour Abu Dhabi International Jiu-Jitsu Championship 2026 - Gi & No-Gi', start: '2026-12-06', city: 'Abu Dhabi', country: 'AE', url: 'https://ajptour.com/en/event/40002' }),
   event({ event: '40003', title: 'Fiji Grappling Open', start: '2026-12-12', city: 'Suva', country: 'FJ', km: 16021.7 }),
   event({ event: '40004', title: 'Berlin Open', start: '2026-12-13', city: 'Berlin', country: 'DE', organiser: 'Grappling Industries Europe', km: 3.2, athletes: 1, divisions: 1, teams: 1 }),
   event({ event: '40005', title: 'Berlin Open', start: '2026-12-13', city: 'Berlin', country: 'DE', organiser: 'AJP Tour', km: 0.4 }),

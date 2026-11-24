@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { Link } from 'wouter';
 import { ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -11,10 +11,11 @@ import { PlaceFilter } from '@/components/place-filter';
 import { Flag, Num } from '@/components/stats';
 import { useApi, type EventRow } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
+import type { Dot } from '@/components/places-map';
 import { date, fmt } from '@/lib/format';
 
 // The map carries Leaflet, so it loads when first opened.
-const EventsMap = lazy(() => import('@/components/events-map'));
+const PlacesMap = lazy(() => import('@/components/places-map'));
 const items = (pairs: string[][]) => pairs.map(([value, label]) => ({ value, label }));
 const WINDOWS = {
   upcoming: items([['30', 'Next 30 days'], ['90', 'Next 3 months'], ['180', 'Next 6 months'], ['365', 'Next 12 months'], ['0', 'Any time']]),
@@ -22,21 +23,26 @@ const WINDOWS = {
 };
 const SPORTS = items([['', 'Gi and NoGi'], ['gi', 'Gi'], ['nogi', 'NoGi']]);
 const distance = (km: number | null) => (km == null ? null : km < 1 ? '<1\u00a0km' : `${fmt(Math.round(km))}\u00a0km`);
+// Where an event's name leads: its page here once read, else its page on its own site, to enter.
+const HOMES = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
+const target = (e: EventRow, f: Filters) => (e.athletes ? f.linkOn(`/event/${e.event}`, e.site) : e.url ?? `${HOMES[e.site]}/en/event/${e.event}`);
+// Who runs it; an AJP Tour event says so when it names no organiser.
+const runBy = (e: EventRow) => e.organiser ?? (e.site === 'ajptour.com' ? 'AJP Tour' : null);
 
 // An event's name, then where (flag, city, how far) and who runs it. One read opens here; one nobody
-// with Mat Stats has opened yet goes to its page on Smoothcomp, where it can be entered.
+// with Mat Stats has opened yet goes to its page on Smoothcomp or AJP Tour, where it can be entered.
 function EventCell({ e, f }: { e: EventRow; f: Filters }) {
-  const title = e.title ?? `Event ${e.event}`;
+  const title = e.title ?? `Event ${e.event}`, by = runBy(e);
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       {e.athletes
-        ? <Link href={f.link(`/event/${e.event}`)} className="font-medium break-words hover:text-primary">{title}</Link>
-        : <a href={e.url ?? `${f.home}/en/event/${e.event}`} rel="noopener" className="font-medium break-words hover:text-primary">{title}<ExternalLink className="ml-1 inline size-3 align-baseline text-muted-foreground" /></a>}
+        ? <Link href={target(e, f)} className="font-medium break-words hover:text-primary">{title}</Link>
+        : <a href={target(e, f)} rel="noopener" className="font-medium break-words hover:text-primary">{title}<ExternalLink className="ml-1 inline size-3 align-baseline text-muted-foreground" /></a>}
       {/* Wide screens give the distance its own column. */}
       {/* Running text, each dot held to the word before it, so a wrapped line never starts with one. */}
       <span className="text-xs text-muted-foreground">
         <Flag code={e.country?.toLowerCase() ?? null} className="mr-1.5 text-sm" />
-        {e.city}{e.km != null && <span className="lg:hidden">{e.city && '\u00a0· '}{distance(e.km)}</span>}{e.organiser && <>{(e.city || e.km != null) && '\u00a0· '}{e.organiser}</>}
+        {e.city}{e.km != null && <span className="lg:hidden">{e.city && '\u00a0· '}{distance(e.km)}</span>}{by && <>{(e.city || e.km != null) && '\u00a0· '}{by}</>}
       </span>
     </div>
   );
@@ -50,8 +56,12 @@ export function EventsPage() {
   const near = f.get('near');
   const sort = f.get('sort') === 'athletes' || (f.get('sort') === 'distance' && near) ? f.get('sort') : 'date';
   const { data, isLoading, isFetching, error, refetch } = useApi<{ rows: EventRow[] }>('events', {
-    site: f.site, when, days, sport: f.get('sport'), min: f.get('min'), q: f.get('q'), near, km: near ? f.get('km') : '', sort, limit: 2000,
+    when, days, sport: f.get('sport'), min: f.get('min'), q: f.get('q'), near, km: near ? f.get('km') : '', sort, limit: 2000,
   });
+  const dots = useMemo(() => (data?.rows ?? []).filter((e) => e.lat != null && e.lng != null).map((e): Dot => ({
+    lat: e.lat!, lng: e.lng!, radius: e.athletes ? 7 : 5, read: !!e.athletes, title: e.title ?? `Event ${e.event}`, href: target(e, f), internal: !!e.athletes,
+    about: [date(e.start), e.city, e.km != null && `${fmt(Math.round(e.km))} km`, runBy(e), e.athletes ? `${fmt(e.athletes)} athletes` : 'Entrants not read yet'].filter(Boolean).join(' · '),
+  })), [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const sorts = items([['date', 'Date'], ...(near ? [['distance', 'Distance']] : []), ['athletes', 'Athletes']]);
   const columns: Column<EventRow>[] = [
     { key: 'date', label: 'Date', width: '9rem', compact: '6rem', align: 'start', sort: 'date', cell: (e) => <span className="text-muted-foreground">{date(e.start)}</span> },
@@ -104,8 +114,8 @@ export function EventsPage() {
           </div>
         </div>
         {view === 'map' && !error ? (
-          <Suspense fallback={<div className="h-[70svh] min-h-80 rounded-xl border bg-card" />}><EventsMap rows={data?.rows ?? []} f={f} /></Suspense>
-        ) : <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(e) => e.event}
+          <Suspense fallback={<div className="h-[70svh] min-h-80 rounded-xl border bg-card" />}><PlacesMap dots={dots} f={f} /></Suspense>
+        ) : <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(e) => `${e.site}:${e.event}`}
           sort={sort} asc={sort === 'distance' || (sort === 'date' && when === 'upcoming')} onSort={(s) => f.set({ sort: s === 'date' ? null : s })}
           empty={error
             ? <Empty title="Couldn’t load the events" text="Mat Stats didn’t answer. Try again in a moment." action={{ label: 'Try again', onClick: () => refetch() }} />

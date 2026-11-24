@@ -40,7 +40,8 @@ export function App() {
           </nav>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <Search f={f} />
-            <Select items={SITES} value={f.site} onValueChange={(v) => {
+            {/* Events list both sites; every other page reads one. */}
+            {location !== '/events' && <Select items={SITES} value={f.site} onValueChange={(v) => {
               // Ids are per site, so a profile page goes back to its list.
               const list = location.match(/^\/(athlete|academy|event)\//)?.[1];
               if (list) navigate({ athlete: '/', academy: '/academies', event: '/events' }[list] + (v === 'ajptour.com' ? '?site=ajptour.com' : ''));
@@ -48,7 +49,7 @@ export function App() {
             }}>
               <SelectTrigger className="w-32" aria-label="Site"><SelectValue /></SelectTrigger>
               <SelectContent>{SITES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
-            </Select>
+            </Select>}
           </div>
         </div>
       </header>

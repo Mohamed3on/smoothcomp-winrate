@@ -8,7 +8,8 @@ export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax'
 const PLACE = ['near', 'place', 'km'];
 // The kept keys each page reads: a link, and the page's own address, carry only those.
 export const usedBy = (path: string): readonly string[] =>
-  path.startsWith('/events') ? ['site', ...PLACE]
+  // Events list both sites at once.
+  path.startsWith('/events') ? PLACE
   : path.startsWith('/athlete/') || /^\/event\/[^/]+\/division/.test(path) ? ['site', 'off']
   : path.startsWith('/event/') ? ['site', 'off', 'belt', 'wins', 'agemin', 'agemax', 'country']
   : path.startsWith('/academies') ? KEPT
@@ -69,6 +70,13 @@ export function useFilters() {
     for (const k of usedBy(base)) if (params.has(k) && (params.get(k) || k === 'off')) keep.set(k, params.get(k)!);
     return base + tidy(keep);
   };
-  return { params, get, set, strip, off, counted: (type: string) => !off.has(type), site, query, link, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };
+  // A path on the given site's data, whatever site the reader is on: an event from the list of both.
+  const linkOn = (path: string, on: string) => {
+    const [base, own] = link(path).split('?');
+    const keep = new URLSearchParams(own);
+    if (on === 'ajptour.com') keep.set('site', on); else keep.delete('site');
+    return base + tidy(keep);
+  };
+  return { params, get, set, strip, off, counted: (type: string) => !off.has(type), site, query, link, linkOn, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };
 }
 export type Filters = ReturnType<typeof useFilters>;

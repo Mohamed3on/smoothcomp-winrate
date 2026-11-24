@@ -1,8 +1,11 @@
+import { lazy, Suspense, useMemo } from 'react';
 import { Link } from 'wouter';
 import { ChevronDown } from 'lucide-react';
 import { Count, Ledger, type Column } from '@/components/ledger';
 import { FilterBar } from '@/components/filter-bar';
 import { Empty, PageHead } from '@/components/empty';
+import type { Dot } from '@/components/places-map';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Medals, Num, Photo } from '@/components/stats';
 import { useApi, type Team } from '@/lib/api';
 import { useFilters } from '@/lib/filters';
@@ -11,12 +14,21 @@ import { Roster, resetAction } from '@/pages/athletes';
 
 // Where an academy's place comes from, said on hover.
 const PLACED = { pin: 'Where its Smoothcomp page pins it', town: 'The town its Smoothcomp page names', google: 'Where Google Maps finds it: its page names no place', events: 'Where its athletes have competed most: its page names no place' };
+// The map carries Leaflet, so it loads when first opened.
+const PlacesMap = lazy(() => import('@/components/places-map'));
 const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
 
 export function AcademiesPage() {
   const f = useFilters();
   const near = f.get('near');
   const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Team[]; total: number }>('teams', { ...f.query, near, km: near ? f.get('km') : '', athletes: f.get('athletes') || 3, limit: 2000 });
+  const view = f.get('view') === 'map' ? 'map' : 'list';
+  // On the map a dot grows with the academy's athletes, and shines where the academy's place is its own (its page or
+  // Google Maps), not the city its athletes compete in most.
+  const dots = useMemo(() => (data?.rows ?? []).filter((t) => t.lat != null && t.lng != null).map((t): Dot => ({
+    lat: t.lat!, lng: t.lng!, radius: Math.min(14, 4 + Math.sqrt(t.athletes)), read: t.placed !== 'events', title: t.club ?? `Academy ${t.club_id}`, href: f.link(`/academy/${t.club_id}`), internal: true,
+    about: [t.city, t.km != null && `${fmt(Math.round(t.km))} km`, plural(t.athletes, 'athlete'), plural(t.wins, 'win'), t.placed === 'events' && 'placed where it competes most'].filter(Boolean).join(' · '),
+  })), [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const columns: Column<Team>[] = [
     { key: 'rank', label: '#', width: '3.5rem', compact: '3rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
     { key: 'club', label: 'Academy', align: 'start', cell: (t) => (
@@ -41,15 +53,20 @@ export function AcademiesPage() {
   ];
   return (
     <>
-      <PageHead title="Academies" aside={data && <Count n={data.total} unit={data.total === 1 ? 'academy' : 'academies'} />}
-        text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists; an academy sits where its Smoothcomp page puts it, or else in the city its athletes have competed in most." />
+      <PageHead title="Academies" aside={<div className="flex items-center gap-4">{data && <Count n={data.total} unit={data.total === 1 ? 'academy' : 'academies'} />}
+          <Tabs value={view} onValueChange={(v) => f.set({ view: v === 'map' ? 'map' : null })}>
+            <TabsList aria-label="Show as"><TabsTrigger value="list">List</TabsTrigger><TabsTrigger value="map">Map</TabsTrigger></TabsList>
+          </Tabs></div>}
+        text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists; an academy sits where its own page puts it, else where Google Maps finds it, else in the city its athletes have competed in most." />
       <div className="flex flex-col gap-3">
         <FilterBar f={f} sorts={SORTS} minimumAthletes place />
-        <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(t) => t.club_id} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
+        {view === 'map' && !error ? (
+          <Suspense fallback={<div className="h-[70svh] min-h-80 rounded-xl border bg-card" />}><PlacesMap dots={dots} f={f} /></Suspense>
+        ) : <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(t) => t.club_id} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
           expand={(t) => <Roster club={t.club_id} f={f} />}
           empty={error
             ? <Empty title="Couldn’t load the academies" text="Mat Stats didn’t answer. Try again in a moment." action={{ label: 'Try again', onClick: () => refetch() }} />
-            : <Empty title="No academies match" text={near ? 'Widen the distance, lower the minimum athletes, or clear the belt and country.' : 'Lower the minimum athletes or the other minimums, or clear the belt and country.'} action={resetAction(f, ['near', 'place', 'km'])} />} />
+            : <Empty title="No academies match" text={near ? 'Widen the distance, lower the minimum athletes, or clear the belt and country.' : 'Lower the minimum athletes or the other minimums, or clear the belt and country.'} action={resetAction(f, ['near', 'place', 'km'])} />} />}
       </div>
     </>
   );
