@@ -357,11 +357,13 @@ export async function listEvents(env) {
 }
 
 // Every known event that has ended with no results, newest first; ids from profiles' event lists too.
+// Those queued already are skipped before their entries are looked through.
 export async function queue(env) {
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at)
     SELECT k.site, k.event, 'queued', max(k.start), max(k.title), max(k.city), 0, ?1 FROM (
       SELECT site, event, start, title, city FROM events UNION ALL SELECT site, event, start, title, city FROM history) k
-    WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
+    WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = k.site AND c.event = k.event)
+      AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
     GROUP BY k.site, k.event`).bind(Date.now()).run();
   // Events a results page sent without matches: read for those alone. Event by event through the
   // event key, skipping those queued already, instead of walking every entry.

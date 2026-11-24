@@ -185,11 +185,13 @@ async function athletes(env, params) {
   const f = filters(params);
   const sort = order(ATHLETE_SORTS, params.get('sort'), params.get('dir'));
   const club = /^\d{1,12}$/.test(params.get('club') ?? '') ? params.get('club') : '';
-  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)}
-    SELECT *, count(*) OVER () AS total FROM careers
+  // Ranked on the sort keys alone, then the page's rows read whole: sorting whole rows took three times as long.
+  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
+    top AS (SELECT user, count(*) OVER () AS total FROM careers
     WHERE wins >= ?4 AND wins > 0 AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?7 = '' OR name LIKE '%' || ?7 || '%' OR club LIKE '%' || ?7 || '%')
       AND (?8 = '' OR club_id = ?8) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)
-    ORDER BY ${sort}, user LIMIT ?9 OFFSET ?10`)
+    ORDER BY ${sort}, user LIMIT ?9 OFFSET ?10)
+    SELECT careers.*, top.total FROM top JOIN careers USING (user) ORDER BY ${sort}, user`)
     .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, club, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
 }
