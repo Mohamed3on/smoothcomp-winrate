@@ -240,7 +240,7 @@ export const LISTED = `INSERT INTO events (site, event, title, start, city, coun
     lat = coalesce(excluded.lat, events.lat), lng = coalesce(excluded.lng, events.lng), sports = coalesce(excluded.sports, events.sports), url = coalesce(excluded.url, events.url)`;
 
 // Read daily, as servers may: every upcoming event on both sites (one page each), so the site can find
-// one near you, and both sites' past events (40 a page, newest first) of the last year, so the queue
+// one near you, and both sites' past events (40 a page, newest first) of the last year (and ARCHIVE pages more), so the queue
 // holds those nobody opened too. Then a few thousand academies with no place yet look for one.
 // An academy's page says where it is when the academy set it (data-profile): its map pin, its town and street.
 const unescape = (s) => s.replace(/&(quot|amp|#0?39|lt|gt);/g, (_, e) => ({ quot: '"', amp: '&', '#039': "'", '#39': "'", lt: '<', gt: '>' })[e]);
@@ -338,17 +338,34 @@ export async function findClubs(env) {
   return found ? 1 : 0;
 }
 
+// Older events, ARCHIVE pages a site a day past the last year's (about 320 events): the crawler reads them
+// after the recent ones, at about 4,000 rows written each, so the whole archive (some 16,000 events) fills
+// over weeks inside D1's 50 million included writes a month. The page reached is kept in meta, and the walk
+// stops once the database passes 9 GB (D1 holds 10).
+const ARCHIVE = 8;
+
 export async function listEvents(env) {
   const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
   const read = async (site, path) => listed(await (await fetch(`${HOSTS[site]}/en/events/${path}`, { headers: { 'User-Agent': UA } })).text());
-  const save = async (site, rows) => { for (let i = 0; i < rows.length; i += 500) await env.DB.prepare(LISTED).bind(site, Date.now(), JSON.stringify(rows.slice(i, i + 500))).run(); };
+  let size = 0;
+  const save = async (site, rows) => {
+    for (let i = 0; i < rows.length; i += 500) size = (await env.DB.prepare(LISTED).bind(site, Date.now(), JSON.stringify(rows.slice(i, i + 500))).run()).meta?.size_after ?? size;
+  };
   for (const site of Object.keys(HOSTS)) await save(site, await read(site, 'upcoming'));
   for (const site of Object.keys(HOSTS)) {
-    for (let n = 1, older = false; !older && n <= 400; n += 4) {
+    let n = 1;
+    for (let older = false; !older && n <= 400; n += 4) {
       const found = (await Promise.all([n, n + 1, n + 2, n + 3].map((p) => read(site, `past?page=${p}`)))).flat();
       older = !found.length || found.some((e) => e.start < since);
       await save(site, found.filter((e) => e.start >= since));
     }
+    if (size > 9e9) continue;
+    // From the year's last pages read (new events push old ones later, so none is skipped), or further on.
+    const key = `archive:${site}`;
+    const from = Math.max(n - 4, (await env.DB.prepare('SELECT v FROM meta WHERE k = ?1').bind(key).first('v')) ?? 0);
+    const pages = await Promise.all(Array.from({ length: ARCHIVE }, (_, i) => read(site, `past?page=${from + i}`)));
+    await save(site, pages.flat());
+    await env.DB.prepare('INSERT OR REPLACE INTO meta (k, v) VALUES (?1, ?2)').bind(key, from + pages.filter((p) => p.length).length).run();
   }
   for (const site of Object.keys(HOSTS)) {
     const ids = (await env.DB.prepare('SELECT club_id FROM clubs WHERE site = ?1 AND lat IS NULL ORDER BY random() LIMIT 2000').bind(site).all()).results.map((r) => r.club_id);

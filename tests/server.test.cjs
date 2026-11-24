@@ -178,6 +178,37 @@ test('listed events are found by place, date, sport and size, and academies wher
   assert.deepEqual(places.rows.map((p) => [p.city, p.events]), [['Potsdam', 1]]);
 });
 
+test('the daily listing walks older events a few pages a day, from where it left off, until the database nears full', async () => {
+  const { listEvents } = await import('../server/crawl.js');
+  const { DB } = d1();
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  // Smoothcomp's past pages: 1–3 this year, 4–20 from 2020, none after; AJP Tour lists nothing.
+  const page = (p) => (p <= 3 ? [day(-p)] : p <= 20 ? ['2020-01-01'] : []).map((start, i) => ({ id: p * 100 + i, title: `E${p}`, startdate: start }));
+  const real = globalThis.fetch;
+  const asked = [];
+  globalThis.fetch = async (url) => {
+    const p = Number(new URL(url).searchParams.get('page'));
+    if (url.includes('smoothcomp') && p) asked.push(p);
+    return new Response(`<script>\nvar events = ${JSON.stringify(url.includes('smoothcomp') && p ? page(p) : [])}\n</script>`);
+  };
+  const listedPages = async () => (await DB.prepare("SELECT DISTINCT event / 100 AS p FROM events WHERE site = 'smoothcomp.com' ORDER BY p").all()).results.map((r) => r.p);
+  try {
+    // The year's pages, then eight more from its last batch.
+    await listEvents({ DB });
+    assert.deepEqual(await listedPages(), [1, 2, 3, 4, 5, 6, 7, 8]);
+    // The next day picks up where it stopped, and the end of the list holds it there.
+    await listEvents({ DB });
+    await listEvents({ DB });
+    assert.deepEqual(await listedPages(), Array.from({ length: 20 }, (_, i) => i + 1));
+    assert.equal(await DB.prepare("SELECT v FROM meta WHERE k = 'archive:smoothcomp.com'").first('v'), 21);
+    // Past 9 GB the walk stops at the year.
+    asked.length = 0;
+    const full = { ...DB, prepare: (sql) => { const s = DB.prepare(sql); return { ...s, bind: (...v) => ({ ...s.bind(...v), run: async () => ({ meta: { size_after: 9.5e9 } }) }) }; } };
+    await listEvents({ DB: full });
+    assert.deepEqual(asked, [1, 2, 3, 4]);
+  } finally { globalThis.fetch = real; }
+});
+
 test("an academy's own page places it, over where it competes most", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
