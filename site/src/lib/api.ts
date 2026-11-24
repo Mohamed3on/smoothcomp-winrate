@@ -13,7 +13,7 @@ export interface Team {
 }
 export interface Entry {
   event: string; user: string; division: string; club: string | null; club_id: string | null; place: number | null; wins: Types; losses: Types; fought: number; at?: number;
-  title?: string | null; start?: string | null; city?: string | null; bouts?: Bout[] | null;
+  title?: string | null; start?: string | null; city?: string | null; bouts?: Bout[] | null; site?: string;
 }
 // One match of a division, as the results read give it: won or lost, its finish, who they met and in which round.
 export interface Bout {
@@ -21,7 +21,7 @@ export interface Bout {
   // Their score and their opponent's, as [points, advantages, penalties]; the clock as [length, left] in seconds.
   us?: [number, number, number]; them?: [number, number, number]; clock?: [number | null, number | null];
 }
-export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number; image?: string | null }
+export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number; image?: string | null; site?: string }
 // What else their Smoothcomp profile shows, as it last sent it.
 export interface Club { id: number | null; name: string; city: string | null; country: string | null; logo: string | null }
 export interface Profile {
@@ -33,7 +33,7 @@ export interface Profile {
 export interface Loss { type: string; how: string; opponent: string | null; club: string | null; division: string | null; image: string | null; reg: number | null; bracket: number | null; stage: string | null; user?: string | null }
 // Everyone met there; a win names its finish, division and round too (from v 2).
 export interface Faced { name: string; club: string | null; image: string | null; reg: number | null; won: boolean; type?: string; how?: string; division?: string | null; bracket?: number | null; stage?: string | null; user?: string | null }
-export interface Outcome { event: string; start: string | null; title: string | null; out: { v?: 2; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean } }
+export interface Outcome { event: string; site?: string; start: string | null; title: string | null; out: { v?: 2; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean } }
 export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null; ends?: number | null }
 export interface EventRow extends EventMeta { site: 'smoothcomp.com' | 'ajptour.com'; athletes: number; divisions: number; teams: number; fought: number; lat: number | null; lng: number | null; url: string | null; km: number | null }
 export interface EventEntry extends Entry {

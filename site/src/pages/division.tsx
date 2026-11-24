@@ -13,8 +13,9 @@ import { Dot, Seed, seeded } from '@/pages/event';
 
 // A division's own page, wherever a division is named. Its name rides in the query: names hold slashes.
 export const divisionHref = (event: string, name: string) => `/event/${event}/division?name=${encodeURIComponent(name.trim())}`;
-export function DivisionLink({ event, name, f, className }: { event: string; name: string; f: Filters; className?: string }) {
-  return <Link href={f.link(divisionHref(event, name))} className={cn('hover:text-primary', className)}>{name.trim()}</Link>;
+// `site` for a division on the other site than the reader's (an athlete's other account).
+export function DivisionLink({ event, name, f, className, site }: { event: string; name: string; f: Filters; className?: string; site?: string }) {
+  return <Link href={site ? f.linkOn(divisionHref(event, name), site) : f.link(divisionHref(event, name))} className={cn('hover:text-primary', className)}>{name.trim()}</Link>;
 }
 
 type Row = EventEntry & { bouts?: Bout[] | null };

@@ -184,6 +184,8 @@ CREATE INDEX IF NOT EXISTS people_club ON people (site, club_id);
 CREATE INDEX IF NOT EXISTS events_start ON events (site, start);
 -- The countries list (stats.js countries), counted from the index alone.
 CREATE INDEX IF NOT EXISTS people_country ON people (site, country, country_name);
+-- One person's accounts on either site (stats.js IDENT): their name as written, birth year and country.
+CREATE INDEX IF NOT EXISTS people_ident ON people (lower(trim(replace(replace(replace(name, '  ', ' '), '  ', ' '), '  ', ' '))), born, country);
 -- Where an academy's own page puts it (crawl.js placeClubs): source 'pin' (its map pin), 'town' (the town
 -- it names, geocoded), 'google' (neither, but Google Maps found it: crawl.js findClubs), or null (it keeps where
 -- it competes most, clubs.lat). checked = last read (ms); google = when Google Maps was asked (ms), added later.

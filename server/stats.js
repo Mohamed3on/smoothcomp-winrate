@@ -267,46 +267,84 @@ async function teams(env, params) {
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });
 }
 
+// One person's accounts are the ones with their name as written (case and runs of spaces aside), birth year and
+// country, on either site: AJP keeps its own accounts, and both sites hold duplicates. people_ident reads them.
+const IDENT = (p) => `lower(trim(replace(replace(replace(${p}name, '  ', ' '), '  ', ' '), '  ', ' ')))`;
+
+// What one account holds, as the athlete page reads it.
+const account = (env, f, site, user) => [
+  env.DB.prepare(`WITH ${careersOf(f.off)} SELECT * FROM careers WHERE user = ?4`).bind(site, f.off, Date.now() - KEPT, user),
+  env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(site, user),
+  env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
+    FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()} ORDER BY v.start DESC, e.event DESC`).bind(site, user),
+  env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
+    FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(site, user),
+  // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
+  env.DB.prepare(`SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(site, user),
+  // When each belt began, as their profile dates them.
+  env.DB.prepare("SELECT worn, starts FROM belts WHERE site = ?1 AND user = ?2").bind(site, user),
+  // Belts in each art, rankings, academy and affiliation, match videos, as their profile shows them.
+  env.DB.prepare('SELECT entry FROM profiles WHERE site = ?1 AND user = ?2').bind(site, user),
+  // Everyone in their divisions, so each opponent the match lists name (by name alone) links to their page.
+  env.DB.prepare(`SELECT DISTINCT e.event, e.user, p.name FROM entries mine CROSS JOIN entries e ON e.site = mine.site AND e.event = mine.event AND e.division = mine.division AND e.user != mine.user
+    JOIN people p ON p.site = e.site AND p.user = e.user WHERE mine.site = ?1 AND mine.user = ?2`).bind(site, user),
+];
+
+// Their careers added up: counts summed, a record known where any account knows it.
+const SUMMED = ['wins', 'losses', 'won', 'lost', 'events', 'gold', 'silver', 'bronze', 'walkovers', 'submission', 'points'];
+function joined(careers) {
+  if (careers.length < 2) return careers[0] ?? null;
+  const add = (key) => careers.reduce((into, c) => { for (const [t, n] of Object.entries(c[key] ?? {})) into[t] = (into[t] ?? 0) + n; return into; }, {});
+  const out = { ...careers[0], types: add('types'), lost_types: careers.some((c) => c.lost_types) ? add('lost_types') : null,
+    source: careers.some((c) => c.source === 'career') ? 'career' : 'results', at: Math.max(0, ...careers.map((c) => c.at ?? 0)) || null,
+    last: careers.map((c) => c.last).filter(Boolean).sort().at(-1) ?? null };
+  for (const key of SUMMED) out[key] = careers.every((c) => c[key] == null) ? null : careers.reduce((n, c) => n + (c[key] ?? 0), 0);
+  return out;
+}
+
 async function athlete(env, params) {
   const f = filters(params);
   const user = params.get('id') ?? '';
   if (!/^\d{1,12}$/.test(user)) return json({ error: 'Bad athlete' }, 400);
-  const [career, person, entries, seen, history, outcomes, belts, extras, rivals] = await env.DB.batch([
-    env.DB.prepare(`WITH ${careersOf(f.off)} SELECT * FROM careers WHERE user = ?4`).bind(f.site, f.off, Date.now() - KEPT, user),
-    env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(f.site, user),
-    env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
-      FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()} ORDER BY v.start DESC, e.event DESC`).bind(f.site, user),
-    env.DB.prepare('SELECT sum(wins) AS wins, sum(losses) AS losses, count(*) AS events FROM records WHERE site = ?1 AND user = ?2').bind(f.site, user),
-    env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
-      FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(f.site, user),
-    // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
-    env.DB.prepare(`SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(f.site, user),
-    // When each belt began, as their profile dates them.
-    env.DB.prepare("SELECT worn, starts FROM belts WHERE site = ?1 AND user = ?2").bind(f.site, user),
-    // Belts in each art, rankings, academy and affiliation, match videos, as their profile shows them.
-    env.DB.prepare('SELECT entry FROM profiles WHERE site = ?1 AND user = ?2').bind(f.site, user),
-    // Everyone in their divisions, so each opponent the match lists name (by name alone) links to their page.
-    env.DB.prepare(`SELECT DISTINCT e.event, e.user, p.name FROM entries mine CROSS JOIN entries e ON e.site = mine.site AND e.event = mine.event AND e.division = mine.division AND e.user != mine.user
-      JOIN people p ON p.site = e.site AND p.user = e.user WHERE mine.site = ?1 AND mine.user = ?2`).bind(f.site, user),
-  ]);
+  const { results: others } = await env.DB.prepare(`WITH me AS (SELECT ${IDENT('')} AS k, born, country FROM people
+      WHERE site = ?1 AND user = ?2 AND trim(name) != '' AND born IS NOT NULL AND country IS NOT NULL)
+    SELECT p.site, p.user, p.name, p.club FROM me CROSS JOIN people p WHERE ${IDENT('p.')} = me.k AND p.born = me.born AND p.country = me.country AND NOT (p.site = ?1 AND p.user = ?2)
+    ORDER BY p.site = ?1 DESC, p.seen DESC LIMIT 10`).bind(f.site, user).all();
+  const accounts = [{ site: f.site, user }, ...others];
+  const read = await env.DB.batch(accounts.flatMap((a) => account(env, f, a.site, a.user)));
   // An opponent links to the one entrant in their divisions there who goes by that name.
   const key = (event, name) => `${event} ${String(name ?? '').trim().toLowerCase().replace(/\s+/g, ' ')}`;
-  const met = new Map();
-  for (const r of rivals.results) { const k = key(r.event, r.name); met.set(k, met.has(k) && met.get(k) !== r.user ? null : r.user); }
-  const link = (event, name, m) => ({ ...m, user: met.get(key(event, name)) ?? null });
-  if (!career.results.length && !person.results.length && !entries.results.length) return json({ error: 'Not found' }, 404);
+  const each = accounts.map(({ site }, i) => {
+    const [career, person, entries, history, outcomes, belts, extras, rivals] = read.slice(i * 8, i * 8 + 8);
+    const met = new Map();
+    for (const r of rivals.results) { const k = key(r.event, r.name); met.set(k, met.has(k) && met.get(k) !== r.user ? null : r.user); }
+    const link = (event, name, m) => ({ ...m, user: met.get(key(event, name)) ?? null });
+    return {
+      career: career.results[0] ? careerRow(career.results[0]) : null,
+      person: person.results[0] ?? null,
+      entries: entries.results.map((e) => ({ ...e, site, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses), bouts: e.bouts ? JSON.parse(e.bouts) : null })),
+      history: history.results.map((h) => ({ ...h, site })),
+      outcomes: outcomes.results.map((o) => {
+        const out = JSON.parse(o.out);
+        return { ...o, site, out: { ...out, faced: (out.faced ?? []).map((m) => link(o.event, m.name, m)), losses: (out.losses ?? []).map((l) => link(o.event, l.opponent, l)) } };
+      }),
+      profile: extras.results[0] ? JSON.parse(extras.results[0].entry) : null,
+      belts: belts.results[0] ? { worn: JSON.parse(belts.results[0].worn), starts: JSON.parse(belts.results[0].starts) } : null,
+    };
+  });
+  const [me] = each;
+  if (!me.career && !me.person && !me.entries.length) return json({ error: 'Not found' }, 404);
+  // Each account's events, newest first; their profile, belts and who they are from this account, else another's.
+  const newest = (a, b) => String(b.start ?? '').localeCompare(String(a.start ?? ''));
   return json({
-    history: history.results,
-    career: career.results[0] ? careerRow(career.results[0]) : null,
-    person: person.results[0] ?? null,
-    entries: entries.results.map((e) => ({ ...e, wins: JSON.parse(e.wins), losses: JSON.parse(e.losses), bouts: e.bouts ? JSON.parse(e.bouts) : null })),
-    seen: seen.results[0]?.events ? seen.results[0] : null,
-    outcomes: outcomes.results.map((o) => {
-      const out = JSON.parse(o.out);
-      return { ...o, out: { ...out, faced: (out.faced ?? []).map((m) => link(o.event, m.name, m)), losses: (out.losses ?? []).map((l) => link(o.event, l.opponent, l)) } };
-    }),
-    profile: extras.results[0] ? JSON.parse(extras.results[0].entry) : null,
-    belts: belts.results[0] ? { worn: JSON.parse(belts.results[0].worn), starts: JSON.parse(belts.results[0].starts) } : null,
+    history: each.flatMap((a) => a.history).sort(newest),
+    career: joined(each.map((a) => a.career).filter(Boolean)),
+    person: me.person,
+    entries: each.flatMap((a) => a.entries).sort(newest),
+    outcomes: each.flatMap((a) => a.outcomes).sort(newest),
+    profile: each.find((a) => a.profile)?.profile ?? null,
+    belts: each.find((a) => a.belts)?.belts ?? null,
+    accounts: others.map(({ site, user: id, name, club }) => ({ site, user: id, name, club })),
   }, 200, 'no-store'); // a profile just opened shows at once
 }
 
