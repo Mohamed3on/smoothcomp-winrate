@@ -17,7 +17,7 @@ const ROUND = 300; // bracket cards asked for at a time
 const AT_ONCE = 6;
 // Smoothcomp answers a placed crawler in about 100 ms. When the median of a lane's last 30 requests
 // passes this, it is straining (crawling at 80 requests a second took it to a second for everyone),
-// so the lane stops until the next minute.
+// so the lane asks one at a time; past twice this even so, it stops until the next minute.
 const SLOW = 300;
 const DAY = 864e5;
 const { finishOf, normalize, placeOf, roundOf, isPool, poolPlaces } = globalThis.SCWRRules;
@@ -34,8 +34,11 @@ function client() {
   const until = started + RUN;
   const left = () => (Date.now() < until ? BUDGET - used : 0);
   const get = async (url) => {
+    const median = () => (recent.length >= 30 ? [...recent].sort((a, b) => a - b)[15] : 0);
+    if (median() > 2 * SLOW) throw new Busy('slow');
+    // Waiting its turn while slow; the turn is taken in the same tick the wait ends, so one goes at a time.
+    while (median() > SLOW && open) await new Promise((r) => setTimeout(r, 20));
     if (!left()) throw new Busy('budget');
-    if (recent.length >= 30 && [...recent].sort((a, b) => a - b)[15] > SLOW) throw new Busy('slow');
     used++;
     const t = Date.now();
     if (!open++) since = t;
