@@ -26,7 +26,7 @@ export function AcademiesPage() {
   // On the map a dot grows with the academy's athletes, and shines where the academy's place is its own (its page or
   // Google Maps), not the city its athletes compete in most.
   const dots = useMemo(() => (data?.rows ?? []).filter((t) => t.lat != null && t.lng != null).map((t): Dot => ({
-    lat: t.lat!, lng: t.lng!, radius: Math.min(14, 4 + Math.sqrt(t.athletes)), read: t.placed !== 'events', title: t.club ?? `Academy ${t.club_id}`, href: f.link(`/academy/${t.club_id}`), internal: true,
+    lat: t.lat!, lng: t.lng!, radius: Math.min(10, 3 + Math.sqrt(t.athletes) / 2), read: t.placed !== 'events', title: t.club ?? `Academy ${t.club_id}`, href: f.link(`/academy/${t.club_id}`), internal: true,
     about: [t.city, t.km != null && `${fmt(Math.round(t.km))} km`, plural(t.athletes, 'athlete'), plural(t.wins, 'win'), t.placed === 'events' && 'placed where it competes most'].filter(Boolean).join(' · '),
   })), [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const columns: Column<Team>[] = [
