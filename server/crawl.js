@@ -240,17 +240,67 @@ export const LISTED = `INSERT INTO events (site, event, title, start, city, coun
     lat = coalesce(excluded.lat, events.lat), lng = coalesce(excluded.lng, events.lng), sports = coalesce(excluded.sports, events.sports), url = coalesce(excluded.url, events.url)`;
 
 // Read daily, as servers may: every upcoming event on both sites (one page each), so the site can find
-// one near you, and Smoothcomp's past events (40 a page, newest first) of the last year, so the queue
+// one near you, and both sites' past events (40 a page, newest first) of the last year, so the queue
 // holds those nobody opened too. Then a few thousand academies with no place yet look for one.
+// An academy's page says where it is when the academy set it (data-profile): its map pin, its town and street.
+const unescape = (s) => s.replace(/&(quot|amp|#0?39|lt|gt);/g, (_, e) => ({ quot: '"', amp: '&', '#039': "'", '#39': "'", lt: '<', gt: '>' })[e]);
+const words = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
+export function clubPlace(html) {
+  let p;
+  try { p = JSON.parse(unescape(html.match(/data-profile="(\{[^"]*\})"/)?.[1] ?? 'null')); } catch { return null; }
+  if (!p || typeof p !== 'object') return null;
+  const lat = coord(p.location_lat, 90), lng = coord(p.location_long, 180);
+  const pinned = lat != null && lng != null && (lat !== 0 || lng !== 0);
+  return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
+}
+
+// Where an academy's page puts it: its pin ('pin'); else its town ('town'), where another academy's page
+// placed that town, else Open-Meteo's geocoder; else nowhere, and it keeps where it competes most (stats.js CLUBS).
+async function locate(env, place) {
+  if (!place) return { source: null };
+  if (place.lat != null) return { ...place, source: 'pin' };
+  if (!place.city) return { ...place, source: null };
+  const known = await env.DB.prepare(`SELECT avg(lat) AS lat, avg(lng) AS lng FROM club_places WHERE lower(city) = lower(?1) AND country IS ?2 AND lat IS NOT NULL`).bind(place.city, place.country).first();
+  if (known?.lat != null) return { ...place, lat: known.lat, lng: known.lng, source: 'town' };
+  const query = new URLSearchParams({ name: place.city, count: '1', language: 'en', format: 'json', ...(place.country && { countryCode: place.country }) });
+  const found = await fetch(`https://geocoding-api.open-meteo.com/v1/search?${query}`, { signal: AbortSignal.timeout(3000) }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  const town = found.results?.[0];
+  return town ? { ...place, lat: town.latitude, lng: town.longitude, source: 'town' } : { ...place, source: null };
+}
+
+// Every minute, the next academies' pages, those never read first, then the busiest, two at a time; each is
+// read again after half a year. A private academy's page (403) has nothing to say; a busy site (429, 5xx)
+// ends the run, to go on next minute.
+export const PLACED = `INSERT OR REPLACE INTO club_places (site, club_id, lat, lng, city, country, address, source, checked)
+  SELECT value ->> 'site', value ->> 'club_id', value ->> 'lat', value ->> 'lng', value ->> 'city', value ->> 'country', value ->> 'address', value ->> 'source', ?1 FROM json_each(?2)`;
+export async function placeClubs(env, take = 30) {
+  const due = (await env.DB.prepare(`SELECT c.site, c.club_id FROM clubs c LEFT JOIN club_places p ON p.site = c.site AND p.club_id = c.club_id
+    WHERE p.checked IS NULL OR p.checked < ?1 ORDER BY p.checked IS NOT NULL, p.checked, coalesce(c.entered, 0) DESC LIMIT ?2`).bind(Date.now() - 182 * DAY, take).all()).results;
+  const rows = [];
+  for (let i = 0; i < due.length; i += 2) {
+    const read = await Promise.all(due.slice(i, i + 2).map(async ({ site, club_id }) => {
+      const page = await fetch(`${HOSTS[site]}/en/club/${club_id}`, { headers: { 'User-Agent': UA } });
+      if (page.status === 429 || page.status >= 500) throw new Busy();
+      return { site, club_id, place: page.ok ? clubPlace(await page.text()) : null };
+    })).catch((e) => { if (e instanceof Busy) return null; throw e; });
+    if (!read) break;
+    for (const { site, club_id, place } of read) rows.push({ site, club_id, ...(await locate(env, place)) });
+  }
+  if (rows.length) await env.DB.prepare(PLACED).bind(Date.now(), JSON.stringify(rows)).run();
+  return rows.length;
+}
+
 export async function listEvents(env) {
   const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
   const read = async (site, path) => listed(await (await fetch(`${HOSTS[site]}/en/events/${path}`, { headers: { 'User-Agent': UA } })).text());
   const save = async (site, rows) => { for (let i = 0; i < rows.length; i += 500) await env.DB.prepare(LISTED).bind(site, Date.now(), JSON.stringify(rows.slice(i, i + 500))).run(); };
   for (const site of Object.keys(HOSTS)) await save(site, await read(site, 'upcoming'));
-  for (let n = 1, older = false; !older && n <= 400; n += 4) {
-    const found = (await Promise.all([n, n + 1, n + 2, n + 3].map((p) => read('smoothcomp.com', `past?page=${p}`)))).flat();
-    older = !found.length || found.some((e) => e.start < since);
-    await save('smoothcomp.com', found.filter((e) => e.start >= since));
+  for (const site of Object.keys(HOSTS)) {
+    for (let n = 1, older = false; !older && n <= 400; n += 4) {
+      const found = (await Promise.all([n, n + 1, n + 2, n + 3].map((p) => read(site, `past?page=${p}`)))).flat();
+      older = !found.length || found.some((e) => e.start < since);
+      await save(site, found.filter((e) => e.start >= since));
+    }
   }
   for (const site of Object.keys(HOSTS)) {
     const ids = (await env.DB.prepare('SELECT club_id FROM clubs WHERE site = ?1 AND lat IS NULL ORDER BY random() LIMIT 2000').bind(site).all()).results.map((r) => r.club_id);

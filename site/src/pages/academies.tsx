@@ -9,6 +9,8 @@ import { useFilters } from '@/lib/filters';
 import { fmt, plural } from '@/lib/format';
 import { Roster, resetAction } from '@/pages/athletes';
 
+// Where an academy's place comes from, said on hover.
+const PLACED = { pin: 'Where its Smoothcomp page pins it', town: 'The town its Smoothcomp page names', events: 'Where its athletes have competed most: its page names no place' };
 const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
 
 export function AcademiesPage() {
@@ -20,7 +22,7 @@ export function AcademiesPage() {
     { key: 'club', label: 'Academy', align: 'start', cell: (t) => (
       <div className="flex flex-col gap-0.5">
         <Link href={f.link(`/academy/${t.club_id}`)} className="font-medium break-words hover:text-primary">{t.club ?? `Academy ${t.club_id}`}</Link>
-        <span className="text-xs text-muted-foreground" title={t.city ? `Where its athletes have competed most` : undefined}>
+        <span className="text-xs text-muted-foreground" title={t.placed ? PLACED[t.placed] : undefined}>
           {[t.city && [t.city, t.km != null && `${fmt(Math.round(t.km))} km`].filter(Boolean).join(' · '), t.entered ? `${plural(t.entered, 'event')} with results` : 'No results read yet'].filter(Boolean).join(' · ')}
         </span>
       </div>) },
@@ -40,7 +42,7 @@ export function AcademiesPage() {
   return (
     <>
       <PageHead title="Academies" aside={data && <Count n={data.total} unit={data.total === 1 ? 'academy' : 'academies'} />}
-        text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists; an academy sits in the city its athletes have competed in most." />
+        text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists; an academy sits where its Smoothcomp page puts it, or else in the city its athletes have competed in most." />
       <div className="flex flex-col gap-3">
         <FilterBar f={f} sorts={SORTS} minimumAthletes place />
         <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(t) => t.club_id} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}

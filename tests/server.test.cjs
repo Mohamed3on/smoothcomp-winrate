@@ -119,3 +119,25 @@ test('listed events are found by place, date, sport and size, and academies wher
   const places = await (await API.places({ ...env, GEOCODER: '' }, new URLSearchParams('q=pots'))).json();
   assert.deepEqual(places.rows.map((p) => [p.city, p.events]), [['Potsdam', 1]]);
 });
+
+test("an academy's own page places it, over where it competes most", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { API } = await import('../server/stats.js');
+  const { clubPlace, PLACED } = await import('../server/crawl.js');
+  const { DB } = d1();
+  const env = { DB };
+  const page = (profile) => `<div data-profile="${JSON.stringify(profile).replaceAll('"', '&quot;')}"></div>`;
+  assert.deepEqual(clubPlace(page({ id: 501, city: 'München', country_code: 'DE', address: 'Boschetsrieder Str. 60', location_lat: 48.1001095, location_long: 11.530871 })),
+    { lat: 48.1001095, lng: 11.530871, city: 'München', country: 'DE', address: 'Boschetsrieder Str. 60' });
+  assert.deepEqual(clubPlace(page({ id: 7, city: null, location_lat: null, location_long: null })), { lat: null, lng: null, city: null, country: null, address: null });
+  assert.equal(clubPlace('<title>403 - not allowed</title>'), null);
+  // Its athletes competed in Berlin, but its page pins it in Munich.
+  const day = new Date(Date.now() - 5 * 864e5).toISOString().slice(0, 10);
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  await post('/record', { site: 'smoothcomp.com', event: '9', records: { 11: [3, 0], 12: [1, 2] }, meta: { title: 'Berlin Open', start: `${day}T09:00:00Z`, city: 'Berlin', country: 'DE', lat: 52.52, lng: 13.4 }, athletes, read: Date.now() });
+  const near = async (q) => (await (await API.teams(env, new URLSearchParams(`site=smoothcomp.com&athletes=1&${q}`))).json()).rows.map((t) => [t.club_id, t.city, t.placed]);
+  assert.deepEqual(await near('near=52.52,13.40&km=50'), [['501', 'Berlin', 'events'], ['502', 'Berlin', 'events']]);
+  await DB.prepare(PLACED).bind(Date.now(), JSON.stringify([{ site: 'smoothcomp.com', club_id: '501', lat: 48.1, lng: 11.53, city: 'München', country: 'DE', source: 'pin' }, { site: 'smoothcomp.com', club_id: '502', source: null }])).run();
+  assert.deepEqual(await near('near=52.52,13.40&km=50'), [['502', 'Berlin', 'events']]);
+  assert.deepEqual(await near('near=48.14,11.58&km=50'), [['501', 'München', 'pin']]);
+});
