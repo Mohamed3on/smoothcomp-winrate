@@ -170,7 +170,7 @@ const PEOPLE = `${MEMBERS('(SELECT ?1 AS site, value AS user FROM json_each(?2))
 export const MERGE = [`DELETE FROM board_own WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))`,
 `INSERT OR IGNORE INTO board_own (${BOARD_COLS}) WITH ${PEOPLE}
   SELECT ${BOARD_COLS.replace(/(\w+)/g, 'b.$1')} FROM shared s CROSS JOIN board b ON b.site = s.site AND b.user = s.user`,
-`INSERT OR REPLACE INTO board (${BOARD_COLS}, dup) WITH ${PEOPLE},
+`INSERT INTO board (${BOARD_COLS}, dup) WITH ${PEOPLE},
   own AS MATERIALIZED (SELECT o.*, s.k, s.kb, s.kc FROM shared s CROSS JOIN board_own o ON o.site = s.site AND o.user = s.user),
   sums AS (SELECT k, kb, kc, max(source = 'career') AS career, max(at) AS at, max(last) AS last, sum(events) AS events, sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
       ${COUNTS.map((c) => `sum(${c}) AS ${c}`).join(', ')}
@@ -180,7 +180,10 @@ export const MERGE = [`DELETE FROM board_own WHERE site = ?1 AND user IN (SELECT
     (SELECT json_group_object(key, value) FROM json_each(json_object(${GROUPS.map((g) => `'${g}', s.w_${g}`).join(', ')})) WHERE value > 0),
     o.name, o.club, o.club_id, o.country, o.country_name, o.photo, o.born, o.hidden, o.belt, s.last, s.events, s.gold, s.silver, s.bronze,
     ${COUNTS.map((c) => `s.${c}`).join(', ')}, r.n > 1
-  FROM own o JOIN sums s ON s.k = o.k AND s.kb = o.kb AND s.kc = o.kc JOIN ranked r ON r.site = o.site AND r.user = o.user`];
+  FROM own o JOIN sums s ON s.k = o.k AND s.kb = o.kb AND s.kc = o.kc JOIN ranked r ON r.site = o.site AND r.user = o.user WHERE true
+  -- An upsert, not a replace: club_board's triggers see the row's change (a replace's delete fires no trigger), and an unchanged row isn't written.
+  ON CONFLICT (site, user) DO UPDATE SET ${BOARD_SET.map((c) => `${c} = excluded.${c}`).join(', ')}, dup = excluded.dup
+  WHERE (${BOARD_SET.map((c) => `board.${c}`).join(', ')}, board.dup) IS NOT (${BOARD_SET.map((c) => `excluded.${c}`).join(', ')}, excluded.dup)`];
 
 // Each academy's latest name (as its athletes' latest events give it), its podiums and events
 // entered at the events read, and where it competes most: the city of the most events its athletes
@@ -315,25 +318,35 @@ async function teams(env, params) {
   // through board_club: the + keeps them off board_record, which walked every athlete once per academy and
   // took D1 past its CPU limit.
   const least = whole(params.get('athletes'), 3, 1000);
+  // ?clubs= these academies alone (the site reads each block of rows' top athletes as it scrolls into view); ?top=0 none.
+  const clubs = (params.get('clubs') ?? '').split(',').filter((id) => /^\d{1,12}$/.test(id)).slice(0, 100);
+  const top = params.get('top') !== '0';
+  // Under the default filters each academy's totals are kept added up (club_board); any other filter adds them up here.
+  const kept = !clubs.length && f.off === '["walkover"]' && !f.wins && !f.events && f.belts === '[]' && !f.country && f.bornFrom === 0 && f.bornTo === 9999 && !f.since;
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off, 'AND +dup = 0')},
     members AS (SELECT * FROM careers
-      WHERE club_id IS NOT NULL AND +wins >= ?4 AND (+wins > 0 OR lost > 0) AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)),
+      WHERE club_id IS NOT NULL AND +wins >= ?4 AND (+wins > 0 OR lost > 0) AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)${clubs.length ? ' AND club_id IN (SELECT value FROM json_each(?18))' : ''}),
     podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
         iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, iif(o.lat IS NULL, c.country, o.country) AS country,
         iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
       FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1),
-    totals AS (SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
+    totals AS ${kept ? `(SELECT k.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, k.athletes, k.wins, k.submission, k.points,
+      k.gold, k.silver, k.bronze,
+      coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
+      count(*) OVER () AS total
+    FROM club_board k LEFT JOIN podiums p USING (club_id)
+    WHERE k.site = ?1 AND k.athletes >= ?8 AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17))` : `(SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
       sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
       count(*) OVER () AS total
     FROM members m LEFT JOIN podiums p USING (club_id)
     WHERE (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17)
-    GROUP BY m.club_id HAVING count(*) >= ?8),
+    GROUP BY m.club_id HAVING count(*) >= ?8)`},
     shown AS (SELECT * FROM totals ORDER BY ${sort}, club_id LIMIT ?9 OFFSET ?10)
-    SELECT *, (SELECT json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born))
-        FROM (SELECT * FROM members t WHERE t.club_id = shown.club_id ORDER BY +wins DESC, user LIMIT 3)) AS top
+    SELECT *, ${top ? `(SELECT json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born))
+        FROM (SELECT * FROM members t WHERE t.club_id = shown.club_id ORDER BY +wins DESC, user LIMIT 3))` : "'[]'"} AS top
     FROM shown ORDER BY ${sort}, club_id`)
-    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since, f.lat, f.lng, f.km).all();
+    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since, f.lat, f.lng, f.km, ...(clubs.length ? [JSON.stringify(clubs)] : [])).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });
 }
 

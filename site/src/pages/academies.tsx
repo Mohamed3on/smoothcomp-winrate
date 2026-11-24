@@ -6,6 +6,7 @@ import { FilterBar } from '@/components/filter-bar';
 import { Empty, PageHead } from '@/components/empty';
 import type { Dot } from '@/components/places-map';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Medals, Num, Photo } from '@/components/stats';
 import { useApi, type Team } from '@/lib/api';
 import { useFilters } from '@/lib/filters';
@@ -16,12 +17,32 @@ import { Roster, resetAction } from '@/pages/athletes';
 const PLACED = { pin: 'Where its Smoothcomp page pins it', town: 'The town its Smoothcomp page names', google: 'Where Google Maps finds it: its page names no place', events: 'Where its athletes have competed most: its page names no place' };
 // The map carries Leaflet, so it loads when first opened.
 const PlacesMap = lazy(() => import('@/components/places-map'));
+// The list comes without each academy's top athletes; a block of rows reads theirs as it is first drawn.
+const BLOCK = 25;
+type Query = Record<string, string | number | null | undefined>;
+function TopAthletes({ rows, i, query, f }: { rows: Team[]; i: number; query: Query; f: ReturnType<typeof useFilters> }) {
+  const t = rows[i];
+  const clubs = rows.slice(i - (i % BLOCK), i - (i % BLOCK) + BLOCK).map((r) => r.club_id).join(',');
+  const top = useApi<{ rows: Team[] }>('teams', { ...query, clubs, athletes: 1, limit: BLOCK }).data?.rows.find((r) => r.club_id === t.club_id)?.top;
+  return (
+    <div className="flex flex-col gap-1">
+      {top ? top.map((a) => (
+        <Link key={a.user} href={f.link(`/athlete/${a.user}`)} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground hover:text-primary">
+          <Photo name={a.name} photo={a.photo} className="size-5" /><span className="min-w-0 break-words">{a.name ?? `Athlete ${a.user}`}</span><b className="ml-auto pl-2 font-semibold text-foreground">{a.wins}</b>
+        </Link>))
+        : Array.from({ length: Math.min(3, t.athletes) }, (_, k) => <Skeleton key={k} className="h-5 w-full" />)}
+      {t.athletes > Math.min(3, t.athletes) && <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">All {t.athletes} athletes <ChevronDown className="size-3" /></span>}
+    </div>
+  );
+}
+
 const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
 
 export function AcademiesPage() {
   const f = useFilters();
   const near = f.get('near');
-  const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Team[]; total: number }>('teams', { ...f.query, near, km: near ? f.get('km') : '', athletes: f.get('athletes') || 3, limit: 2000 });
+  const query = { ...f.query, near, km: near ? f.get('km') : '', athletes: f.get('athletes') || 3 };
+  const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Team[]; total: number }>('teams', { ...query, limit: 2000, top: 0 });
   const view = f.get('view') === 'map' ? 'map' : 'list';
   // On the map a dot grows with the academy's athletes, and shines where the academy's place is its own (its page or
   // Google Maps), not the city its athletes compete in most.
@@ -42,14 +63,7 @@ export function AcademiesPage() {
     { key: 'wins', label: 'Wins', width: '8%', compact: '4.5rem', sort: 'wins', cell: (t) => <Num n={t.wins} /> },
     { key: 'avg', label: 'Per athlete', width: '9%', sort: 'average', narrow: true, cell: (t) => (t.wins / t.athletes).toFixed(1) },
     { key: 'podiums', label: 'Medals', width: '14%', sort: 'podiums', narrow: true, title: 'Medals won for this academy at the events Mat Stats has read results for', cell: (t) => <Medals g={t.podium_gold} s={t.podium_silver} b={t.podium_bronze} /> },
-    { key: 'top', label: 'Top athletes', width: '22%', align: 'start', narrow: true, preview: true, cell: (t) => (
-      <div className="flex flex-col gap-1">
-        {t.top.map((a) => (
-          <Link key={a.user} href={f.link(`/athlete/${a.user}`)} className="flex min-w-0 items-start gap-2 text-xs text-muted-foreground hover:text-primary">
-            <Photo name={a.name} photo={a.photo} className="size-5" /><span className="min-w-0 break-words">{a.name ?? `Athlete ${a.user}`}</span><b className="ml-auto pl-2 font-semibold text-foreground">{a.wins}</b>
-          </Link>))}
-        {t.athletes > t.top.length && <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">All {t.athletes} athletes <ChevronDown className="size-3" /></span>}
-      </div>) },
+    { key: 'top', label: 'Top athletes', width: '22%', align: 'start', narrow: true, preview: true, cell: (_, i) => <TopAthletes rows={data!.rows} i={i} query={query} f={f} /> },
   ];
   return (
     <>

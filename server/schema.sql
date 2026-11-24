@@ -245,3 +245,44 @@ CREATE TRIGGER IF NOT EXISTS events_fts_update AFTER UPDATE OF title, city ON ev
   INSERT INTO events_fts (events_fts, rowid, title, city) VALUES ('delete', old.rowid, old.title, old.city);
   INSERT INTO events_fts (rowid, title, city) VALUES (new.rowid, new.title, new.city);
 END;
+-- Each academy's athletes added up under the default filters (walkovers left out, no other filter), as stats.js teams
+-- adds them up: the academies list reads these instead of walking every athlete (860k rows read). board_counts is
+-- each athlete's share (careersOf's wins and lost for the default); the triggers take a board row's share out before
+-- it changes or goes and put the new one in after, only when a column it counts changes. Fill once with
+-- INSERT INTO club_board SELECT site, club_id, count(*), sum(wins), sum(submission), sum(points), sum(gold), sum(silver), sum(bronze) FROM board_counts GROUP BY site, club_id;
+CREATE TABLE IF NOT EXISTS club_board (
+  site TEXT NOT NULL, club_id TEXT NOT NULL, athletes INTEGER NOT NULL, wins INTEGER NOT NULL, submission INTEGER NOT NULL, points INTEGER NOT NULL,
+  gold INTEGER NOT NULL, silver INTEGER NOT NULL, bronze INTEGER NOT NULL,
+  PRIMARY KEY (site, club_id)
+);
+CREATE VIEW IF NOT EXISTS board_counts AS SELECT * FROM (SELECT site, user, club_id,
+    w_submission + w_stoppage + w_fastest_escape + w_points + w_decision + w_disqualification + w_other AS wins,
+    iif(rw_submission + rw_stoppage + rw_fastest_escape + rw_points + rw_decision + rw_disqualification + rw_other + rl_submission + rl_stoppage + rl_fastest_escape + rl_points + rl_decision + rl_disqualification + rl_other > 0,
+      rl_submission + rl_stoppage + rl_fastest_escape + rl_points + rl_decision + rl_disqualification + rl_other,
+      iif(source = 'results', sl_submission + sl_stoppage + sl_fastest_escape + sl_points + sl_decision + sl_disqualification + sl_other, NULL)) AS lost,
+    w_submission AS submission, w_points AS points, coalesce(gold, 0) AS gold, coalesce(silver, 0) AS silver, coalesce(bronze, 0) AS bronze
+  FROM board WHERE club_id IS NOT NULL AND dup = 0) WHERE wins > 0 OR lost > 0;
+CREATE TRIGGER IF NOT EXISTS club_board_insert AFTER INSERT ON board BEGIN
+  INSERT INTO club_board SELECT site, club_id, 1, wins, submission, points, gold, silver, bronze FROM board_counts WHERE site = new.site AND user = new.user
+    ON CONFLICT (site, club_id) DO UPDATE SET athletes = athletes + 1, wins = wins + excluded.wins, submission = submission + excluded.submission, points = points + excluded.points,
+      gold = gold + excluded.gold, silver = silver + excluded.silver, bronze = bronze + excluded.bronze;
+END;
+CREATE TRIGGER IF NOT EXISTS club_board_delete BEFORE DELETE ON board BEGIN
+  UPDATE club_board SET athletes = athletes - 1, wins = club_board.wins - c.wins, submission = club_board.submission - c.submission, points = club_board.points - c.points,
+    gold = club_board.gold - c.gold, silver = club_board.silver - c.silver, bronze = club_board.bronze - c.bronze
+  FROM board_counts c WHERE c.site = old.site AND c.user = old.user AND club_board.site = c.site AND club_board.club_id = c.club_id;
+END;
+CREATE TRIGGER IF NOT EXISTS club_board_update_out BEFORE UPDATE ON board
+WHEN (old.club_id, old.dup, old.source, old.gold, old.silver, old.bronze, old.w_submission, old.w_stoppage, old.w_fastest_escape, old.w_points, old.w_decision, old.w_disqualification, old.w_other, old.rw_submission, old.rw_stoppage, old.rw_fastest_escape, old.rw_points, old.rw_decision, old.rw_disqualification, old.rw_other, old.rl_submission, old.rl_stoppage, old.rl_fastest_escape, old.rl_points, old.rl_decision, old.rl_disqualification, old.rl_other, old.sl_submission, old.sl_stoppage, old.sl_fastest_escape, old.sl_points, old.sl_decision, old.sl_disqualification, old.sl_other) IS NOT
+  (new.club_id, new.dup, new.source, new.gold, new.silver, new.bronze, new.w_submission, new.w_stoppage, new.w_fastest_escape, new.w_points, new.w_decision, new.w_disqualification, new.w_other, new.rw_submission, new.rw_stoppage, new.rw_fastest_escape, new.rw_points, new.rw_decision, new.rw_disqualification, new.rw_other, new.rl_submission, new.rl_stoppage, new.rl_fastest_escape, new.rl_points, new.rl_decision, new.rl_disqualification, new.rl_other, new.sl_submission, new.sl_stoppage, new.sl_fastest_escape, new.sl_points, new.sl_decision, new.sl_disqualification, new.sl_other) BEGIN
+  UPDATE club_board SET athletes = athletes - 1, wins = club_board.wins - c.wins, submission = club_board.submission - c.submission, points = club_board.points - c.points,
+    gold = club_board.gold - c.gold, silver = club_board.silver - c.silver, bronze = club_board.bronze - c.bronze
+  FROM board_counts c WHERE c.site = old.site AND c.user = old.user AND club_board.site = c.site AND club_board.club_id = c.club_id;
+END;
+CREATE TRIGGER IF NOT EXISTS club_board_update_in AFTER UPDATE ON board
+WHEN (old.club_id, old.dup, old.source, old.gold, old.silver, old.bronze, old.w_submission, old.w_stoppage, old.w_fastest_escape, old.w_points, old.w_decision, old.w_disqualification, old.w_other, old.rw_submission, old.rw_stoppage, old.rw_fastest_escape, old.rw_points, old.rw_decision, old.rw_disqualification, old.rw_other, old.rl_submission, old.rl_stoppage, old.rl_fastest_escape, old.rl_points, old.rl_decision, old.rl_disqualification, old.rl_other, old.sl_submission, old.sl_stoppage, old.sl_fastest_escape, old.sl_points, old.sl_decision, old.sl_disqualification, old.sl_other) IS NOT
+  (new.club_id, new.dup, new.source, new.gold, new.silver, new.bronze, new.w_submission, new.w_stoppage, new.w_fastest_escape, new.w_points, new.w_decision, new.w_disqualification, new.w_other, new.rw_submission, new.rw_stoppage, new.rw_fastest_escape, new.rw_points, new.rw_decision, new.rw_disqualification, new.rw_other, new.rl_submission, new.rl_stoppage, new.rl_fastest_escape, new.rl_points, new.rl_decision, new.rl_disqualification, new.rl_other, new.sl_submission, new.sl_stoppage, new.sl_fastest_escape, new.sl_points, new.sl_decision, new.sl_disqualification, new.sl_other) BEGIN
+  INSERT INTO club_board SELECT site, club_id, 1, wins, submission, points, gold, silver, bronze FROM board_counts WHERE site = new.site AND user = new.user
+    ON CONFLICT (site, club_id) DO UPDATE SET athletes = athletes + 1, wins = wins + excluded.wins, submission = submission + excluded.submission, points = points + excluded.points,
+      gold = gold + excluded.gold, silver = silver + excluded.silver, bronze = bronze + excluded.bronze;
+END;

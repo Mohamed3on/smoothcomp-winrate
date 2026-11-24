@@ -139,6 +139,31 @@ test("an athlete's accounts with their name, birth year and country read as one"
   assert.deepEqual(await ranked('smoothcomp.com'), [['11', 8, 8, 1], ['14', 4, 4, 0], ['12', 1, 1, 2]]);
   const unborn = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=13'))).json();
   assert.deepEqual(unborn.accounts.map((a) => [a.site, a.user]).sort(), [['ajptour.com', '77'], ['ajptour.com', '79'], ['smoothcomp.com', '11']]);
+  // Through every merge and recount, each academy's kept totals (club_board, the default list) are what adding up its
+  // athletes gives (?clubs= adds them up).
+  for (const site of ['smoothcomp.com', 'ajptour.com']) {
+    const list = async (q) => (await (await API.teams(env, new URLSearchParams(`site=${site}&athletes=1&${q}`))).json()).rows.map(({ total, ...t }) => t);
+    const kept = await list('top=0');
+    assert.ok(kept.length);
+    assert.deepEqual(await list(`top=0&clubs=${kept.map((t) => t.club_id)}`), kept);
+  }
+});
+
+test("an academy's kept totals follow its athletes in, changed, moved away and out", () => {
+  const { db } = d1();
+  const counts = ['w', 'rw', 'rl', 'sl'].flatMap((p) => ['submission', 'points', 'walkover', 'decision', 'disqualification', 'stoppage', 'fastest_escape', 'other'].map((g) => `${p}_${g}`));
+  db.prepare(`INSERT INTO board (site, user, source, club_id, gold, silver, bronze, ${counts}) VALUES ('s', '1', 'results', '9', 1, 0, 0, ${counts.map((c) => (c === 'w_submission' ? 2 : 0))})`).run();
+  const kept = () => db.prepare('SELECT club_id, athletes, wins, submission, points, gold FROM club_board WHERE athletes > 0').all().map((r) => Object.values(r));
+  assert.deepEqual(kept(), [['9', 1, 2, 2, 0, 1]]);
+  db.prepare("UPDATE board SET w_points = 3, w_walkover = 4 WHERE user = '1'").run();
+  assert.deepEqual(kept(), [['9', 1, 5, 2, 3, 1]]);
+  db.prepare("UPDATE board SET club_id = '10' WHERE user = '1'").run();
+  assert.deepEqual(kept(), [['10', 1, 5, 2, 3, 1]]);
+  db.prepare("UPDATE board SET dup = 1 WHERE user = '1'").run();
+  assert.deepEqual(kept(), []);
+  db.prepare("UPDATE board SET dup = 0 WHERE user = '1'").run();
+  db.prepare("DELETE FROM board WHERE user = '1'").run();
+  assert.deepEqual(kept(), []);
 });
 
 test('the same results sent again write nothing but when they were read', async () => {
