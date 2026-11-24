@@ -85,6 +85,15 @@ const namedBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each
       WHERE e.site = ?1 AND e.user = ${user} AND replace(lower(e.division), 'gray', 'grey') LIKE '%' || k.value || '%'
         AND (SELECT count(*) FROM json_each(${NAMED}) j WHERE replace(lower(e.division), 'gray', 'grey') LIKE '%' || j.value || '%') = 1
       ORDER BY k.key DESC LIMIT 1)`;
+// The least belt an athlete holds now, as their divisions show it: belts only go up, so every division they entered
+// puts them at its lowest belt or above ("Brown/Black": brown). Only blue and up count: a kids' belt never lifts an adult.
+const names = (belt) => `replace(lower(e.division), 'gray', 'grey') LIKE '%' || ${belt} || '%'`;
+const floorBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each(${NAMED}) k
+      WHERE e.site = ?1 AND e.user = ${user} AND k.key >= ${BELTS.indexOf('blue')} AND ${names('k.value')}
+        AND NOT EXISTS (SELECT 1 FROM json_each(${NAMED}) j WHERE j.key < k.key AND ${names('j.value')})
+      ORDER BY k.key DESC LIMIT 1)`;
+// The higher of two belts; one not a colour gives way.
+const higher = (a, b) => `(SELECT value FROM json_each(${NAMED}) WHERE value = lower(${a}) OR value = ${b} ORDER BY key DESC LIMIT 1)`;
 
 // Every athlete with something to rank, one row each, rebuilt with their tally. A career is
 // Smoothcomp's, the latest read however old; with none readable (a profile not public, or not read yet), an
@@ -99,7 +108,8 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
     SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last,
-      p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt, ${namedBelt('us.user')}) AS belt
+      p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt) AS grade,
+      ${floorBelt('us.user')} AS least_belt
     FROM us
     LEFT JOIN athletes c ON c.site = ?1 AND c.user = us.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL
     LEFT JOIN tallies t ON t.site = ?1 AND t.user = us.user
@@ -111,7 +121,8 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
       iif(entry IS NOT NULL, (SELECT json_group_object(g, n) FROM (SELECT ${finishSql('key')} AS g, sum(value) AS n FROM json_each(entry, '$.wins') GROUP BY g)),
         coalesce((SELECT json_group_object(key, value ->> 0) FROM json_each(rec) WHERE value ->> 0 > 0), '{}')) AS types
     FROM src WHERE entry IS NOT NULL OR te > 0)
-  SELECT ?1, user, source, iif(source = 'career', at, NULL), types, name, club, club_id, country, country_name, photo, born, hidden, belt, last,
+  SELECT ?1, user, source, iif(source = 'career', at, NULL), types, name, club, club_id, country, country_name, photo, born, hidden,
+    coalesce(${higher('b.grade', 'b.least_belt')}, b.grade, ${namedBelt('b.user')}), last,
     iif(source = 'career', nullif(max(coalesce(entry ->> '$.events', 0), coalesce(listed, 0)), 0), max(te, coalesce(listed, 0))),
     iif(source = 'career', coalesce(entry ->> '$.medals[0]', 0), tg), iif(source = 'career', coalesce(entry ->> '$.medals[1]', 0), ts), iif(source = 'career', coalesce(entry ->> '$.medals[2]', 0), tb),
     ${GROUPS.map((g) => `coalesce(types ->> '$.${g}', 0)`).join(', ')},

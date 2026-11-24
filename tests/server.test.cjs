@@ -141,6 +141,25 @@ test("an athlete's accounts with their name, birth year and country read as one"
   assert.deepEqual(unborn.accounts.map((a) => [a.site, a.user]).sort(), [['ajptour.com', '77'], ['ajptour.com', '79'], ['smoothcomp.com', '11']]);
 });
 
+test("an athlete's belt is at least the lowest belt of every division they entered", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { API } = await import('../server/stats.js');
+  const { DB } = d1();
+  const env = { DB };
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  // Purple in 2024; in 2026 a Brown/Black division, which names no one belt. A kids' green belt never lifts an adult white.
+  await post('/record', { site: 'smoothcomp.com', event: '950', records: { 21: [1, 0], 22: [1, 0] }, meta: { ...meta, start: '2024-09-15T07:00:00Z' }, athletes: {
+    21: { name: 'Tam Nja', belt: 'Purple', entries: [{ division: 'Gi Adult / Male / Purple / -170 lbs', place: 1, wins: { points: 1 }, losses: {} }] },
+    22: { name: 'Kid Ko', belt: 'Green', entries: [{ division: 'Kids / Green / -40 kg', place: 1, wins: { points: 1 }, losses: {} }] },
+  }, read: Date.now() });
+  await post('/record', { site: 'smoothcomp.com', event: '951', records: { 21: [2, 0], 22: [1, 0] }, meta: { ...meta, start: '2026-05-23T07:00:00Z' }, athletes: {
+    21: { name: 'Tam Nja', entries: [{ division: 'Male Gi / Brown/Black / Master 1 (30+) / -85,00 kg', place: 1, wins: { submission: 2 }, losses: {} }] },
+    22: { name: 'Kid Ko', belt: 'White', entries: [{ division: 'Adult / White / -70 kg', place: 1, wins: { points: 1 }, losses: {} }] },
+  }, read: Date.now() });
+  const rows = (await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json()).rows;
+  assert.deepEqual(rows.map((r) => [r.user, r.belt]).sort(), [['21', 'brown'], ['22', 'white']]);
+});
+
 test('listed events are found by place, date, sport and size, and academies where they compete', async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
