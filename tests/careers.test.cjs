@@ -18,6 +18,8 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000, share
   const area = (name) => ({
     get: async (keys) => structuredClone(keys === null ? storage[name] : Object.fromEntries(keys.filter(k => k in storage[name]).map(k => [k, storage[name][k]]))),
     set: async (given) => {
+      // Chrome refuses a write past the area's quota (bytes, when the test sets one).
+      if (name === 'local' && storage.quota && JSON.stringify({ ...storage[name], ...given }).length > storage.quota) throw new Error('QUOTA_BYTES quota exceeded');
       const changes = Object.fromEntries(Object.entries(given).map(([key, value]) => [key, { oldValue: structuredClone(storage[name][key]), newValue: structuredClone(value) }]));
       Object.assign(storage[name], structuredClone(given));
       for (const fn of storageListeners) fn(changes, name);
@@ -454,10 +456,10 @@ test("a page keeps big things in the extension's storage, per site, each kind ho
   smoothcomp.write('event-matches:1', { matches: ['a'] }, true);
   for (const id of [2, 3, 4, 5, 6, 7, 8, 9, 10]) { w.advance(1000); await smoothcomp.save(`event-matches:${id}`, { v: 9, at: w.now(), final: true, matches: [id] }); }
   assert.equal((await smoothcomp.load('event-matches:10')).matches[0], 10);
-  // The newest eight stay; the two written first are gone.
+  // The newest four stay; those written first are gone.
   assert.equal(await smoothcomp.load('event-matches:1'), null);
   assert.equal(await smoothcomp.load('event-matches:2'), null);
-  assert.deepEqual(Object.keys(w.storage.local).filter(k => k.startsWith('cache:smoothcomp.com:event-matches:')).length, 8);
+  assert.deepEqual(Object.keys(w.storage.local).filter(k => k.startsWith('cache:smoothcomp.com:event-matches:')).length, 4);
   // Another site keeps its own.
   assert.equal(await ajp.load('event-matches:10'), null);
   // Only the kinds the worker knows.
@@ -466,4 +468,10 @@ test("a page keeps big things in the extension's storage, per site, each kind ho
   await w.send({ op: 'import', careers: { 7: { at: w.now(), wins: { submission: 1 }, medals: [0, 0, 0] } } });
   const read = await w.send({ op: 'read' });
   assert.deepEqual(Object.keys(read.careers), ['7']);
+  // Past the extension's quota, the page caches go to make room, and careers stay.
+  w.storage.quota = JSON.stringify(w.storage.local).length + 200;
+  await ajp.save('profile:12:1', { v: 1, at: w.now(), events: 'x'.repeat(300) });
+  assert.equal((await ajp.load('profile:12:1')).events.length, 300);
+  assert.equal(await smoothcomp.load('event-matches:10'), null);
+  assert.deepEqual(Object.keys((await w.send({ op: 'read' })).careers), ['7']);
 });

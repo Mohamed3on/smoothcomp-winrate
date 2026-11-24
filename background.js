@@ -23,9 +23,11 @@ const keep = (site, kept) => Object.values(kept).some(entries => Object.keys(ent
 // Anything a page keeps that is bigger than a preference (site.js store.load/save): whole events'
 // matches and their details, and athletes' event histories, in the extension's storage rather than the
 // site's small localStorage, under cache:<site>:<key>. Each kind holds its latest few, by an index of
-// when each was written, so the oldest go without reading them.
+// when each was written, so the oldest go without reading them. All of it shares the extension's 10 MB
+// with the careers (an event's matches run to half a megabyte, a long history to 100 KB): a write that
+// doesn't fit clears every page cache and tries once more, as careers matter more and caches refill.
 const CACHE = 'cache:';
-const HOLD = { 'event-matches': 8, 'match-details': 8, profile: 400 };
+const HOLD = { 'event-matches': 4, 'match-details': 4, profile: 40 };
 async function cache(site, { op, key: name, entry }) {
   const kind = /^([a-z-]+):[\w.:-]{1,80}$/.exec(typeof name === 'string' ? name : '')?.[1];
   if (!Object.hasOwn(HOLD, kind)) throw new Error('Unsupported cache');
@@ -36,8 +38,13 @@ async function cache(site, { op, key: name, entry }) {
   const written = { ...(await chrome.storage.local.get([index]))[index], [stored]: Date.now() };
   const gone = Object.keys(written).sort((a, b) => written[a] - written[b]).slice(0, Math.max(0, Object.keys(written).length - HOLD[kind]));
   for (const name of gone) delete written[name];
-  await chrome.storage.local.set({ [stored]: entry, [index]: written });
   if (gone.length) await chrome.storage.local.remove(gone);
+  try {
+    await chrome.storage.local.set({ [stored]: entry, [index]: written });
+  } catch {
+    await chrome.storage.local.remove((await chrome.storage.local.getKeys()).filter((k) => k.startsWith(CACHE)));
+    await chrome.storage.local.set({ [stored]: entry, [index]: { [stored]: Date.now() } }).catch(() => {});
+  }
   return {};
 }
 

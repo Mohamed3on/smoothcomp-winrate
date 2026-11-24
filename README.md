@@ -82,7 +82,7 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
 | `career-cache.js` | Shared cache validation and expiry: three weeks for public records, 30 days for confirmed privacy |
-| `background.js` | Coordinates requests across tabs, saves each completed athlete and the pages' event caches in extension storage (`unlimitedStorage`; each kind keeps its latest few), and trades careers with the shared cache |
+| `background.js` | Coordinates requests across tabs, saves each completed athlete and the pages' event caches in extension storage (each kind keeps its latest few; a full store clears them before careers), and trades careers with the shared cache |
 | `server/` | The shared cache every install reads an event from first: a Cloudflare Worker over D1 (`wrangler deploy` from `server/`); `stats.js` holds the stats site's read API; `crawler.js` (`wrangler deploy -c crawler.toml`) reads results for events nobody opened, lists both sites' events daily, and places academies |
 | `site/` | The stats site: React, shadcn/ui and Vite; `bun run build` in `site/`, then `wrangler deploy` in `server/` serves `site/dist` |
 | `shared.js` | Reads through the signed-in browser session and bridges cache updates to the page |
