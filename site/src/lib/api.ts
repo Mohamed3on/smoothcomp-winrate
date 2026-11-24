@@ -7,7 +7,7 @@ export interface Athlete {
   wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
 }
 export interface Team {
-  club_id: string; club: string | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
+  club_id: string; club: string | null; city: string | null; club_country: string | null; km: number | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
   podium_gold: number; podium_silver: number; podium_bronze: number; entered: number;
   top: { user: string; name: string | null; wins: number; belt: string | null; photo: string | null; born: number | null }[];
 }
@@ -35,7 +35,7 @@ export interface Loss { type: string; how: string; opponent: string | null; club
 export interface Faced { name: string; club: string | null; image: string | null; reg: number | null; won: boolean; type?: string; how?: string; division?: string | null; bracket?: number | null; stage?: string | null; user?: string | null }
 export interface Outcome { event: string; start: string | null; title: string | null; out: { v?: 2; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean } }
 export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null; ends?: number | null }
-export interface EventRow extends EventMeta { athletes: number; divisions: number; teams: number; fought: number }
+export interface EventRow extends EventMeta { athletes: number; divisions: number; teams: number; fought: number; lat: number | null; lng: number | null; url: string | null; km: number | null }
 export interface EventEntry extends Entry {
   name: string | null; country: string | null; country_name: string | null; photo: string | null; hidden: number | null; born: number | null; belt: string | null;
   career_wins: number | null; career_source: 'career' | 'results' | null; career_types: string | null; career_won?: number | null; career_lost?: number | null; career_events?: number | null;

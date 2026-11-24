@@ -6,20 +6,23 @@ import { Empty, PageHead } from '@/components/empty';
 import { Medals, Num, Photo } from '@/components/stats';
 import { useApi, type Team } from '@/lib/api';
 import { useFilters } from '@/lib/filters';
-import { plural } from '@/lib/format';
+import { fmt, plural } from '@/lib/format';
 import { Roster, resetAction } from '@/pages/athletes';
 
 const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
 
 export function AcademiesPage() {
   const f = useFilters();
-  const { data, isFetching, isLoading } = useApi<{ rows: Team[]; total: number }>('teams', { ...f.query, athletes: f.get('athletes') || 3, limit: 2000 });
+  const near = f.get('near');
+  const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Team[]; total: number }>('teams', { ...f.query, near, km: near ? f.get('km') : '', athletes: f.get('athletes') || 3, limit: 2000 });
   const columns: Column<Team>[] = [
     { key: 'rank', label: '#', width: '3.5rem', compact: '3rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
     { key: 'club', label: 'Academy', align: 'start', cell: (t) => (
       <div className="flex flex-col gap-0.5">
         <Link href={f.link(`/academy/${t.club_id}`)} className="font-medium break-words hover:text-primary">{t.club ?? `Academy ${t.club_id}`}</Link>
-        <span className="text-xs text-muted-foreground">{t.entered ? `${plural(t.entered, 'event')} with results` : 'No results read yet'}</span>
+        <span className="text-xs text-muted-foreground" title={t.city ? `Where its athletes have competed most` : undefined}>
+          {[t.city && [t.city, t.km != null && `${fmt(Math.round(t.km))} km`].filter(Boolean).join(' · '), t.entered ? `${plural(t.entered, 'event')} with results` : 'No results read yet'].filter(Boolean).join(' · ')}
+        </span>
       </div>) },
     { key: 'athletes', label: 'Athletes', width: '8%', compact: '5.5rem', sort: 'athletes', title: 'Athletes who pass the filters', cell: (t) => <Num n={t.athletes} /> },
     { key: 'wins', label: 'Wins', width: '8%', compact: '4.5rem', sort: 'wins', cell: (t) => <Num n={t.wins} /> },
@@ -37,12 +40,14 @@ export function AcademiesPage() {
   return (
     <>
       <PageHead title="Academies" aside={data && <Count n={data.total} unit={data.total === 1 ? 'academy' : 'academies'} />}
-        text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists." />
+        text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists; an academy sits in the city its athletes have competed in most." />
       <div className="flex flex-col gap-3">
-        <FilterBar f={f} sorts={SORTS} minimumAthletes />
+        <FilterBar f={f} sorts={SORTS} minimumAthletes place />
         <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(t) => t.club_id} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
           expand={(t) => <Roster club={t.club_id} f={f} />}
-          empty={<Empty title="No academies match" text="Lower the minimum athletes or the other minimums, or clear the belt and country." action={resetAction(f)} />} />
+          empty={error
+            ? <Empty title="Couldn’t load the academies" text="Mat Stats didn’t answer. Try again in a moment." action={{ label: 'Try again', onClick: () => refetch() }} />
+            : <Empty title="No academies match" text={near ? 'Widen the distance, lower the minimum athletes, or clear the belt and country.' : 'Lower the minimum athletes or the other minimums, or clear the belt and country.'} action={resetAction(f, ['near', 'place', 'km'])} />} />
       </div>
     </>
   );

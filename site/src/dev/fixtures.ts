@@ -1,7 +1,7 @@
-// Dev only: what /api/athletes answers under ?data=worst|empty|one|error, so the ranking can be checked
+// Dev only: what /api/athletes and /api/events answer under ?data=worst|empty|one|error, so the ranking can be checked
 // against the data it will meet, not only today's. Each worst-case value is one Smoothcomp could send,
 // within the server's caps (worker.js: name 120, club 160, country name 80, user 12 digits, age 3–99).
-import type { Athlete } from '@/lib/api';
+import type { Athlete, EventRow } from '@/lib/api';
 
 const svg = (w: number, h: number) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#2871b8"/><rect width="${w / 2}" height="${h / 2}" fill="#e7bd28"/></svg>`)}`;
 
@@ -53,10 +53,25 @@ const one = [row({ user: '7', name: 'Jo Ng', club: 'GB', club_id: '9003', countr
 
 export const STATES = ['worst', 'empty', 'one', 'error'] as const;
 
+// The event finder (/api/events): the longest title Smoothcomp allows over a long city, no place at all,
+// across the antimeridian, the same city twice, a code no flag draws, read and unread, one athlete.
+const event = (e: Partial<EventRow>): EventRow => ({ event: '1', title: null, start: null, city: null, country: null, organiser: null, athletes: 0, divisions: 0, teams: 0, fought: 0, lat: null, lng: null, url: null, km: null, ...e });
+const events: EventRow[] = [
+  event({ event: '40001', title: 'IBJJF European Jiu-Jitsu IBJJF Championship 2027 – Adult, Master, Juvenile & Kids (Gi) – Pavilhão Multiusos de Odivelas', start: '2027-01-20', city: 'Odivelas, Lisboa', country: 'PT',
+    organiser: 'International Brazilian Jiu-Jitsu Federation (IBJJF) Europe', athletes: 4821, divisions: 812, teams: 1203, km: 2310.44, url: 'https://smoothcomp.com/en/event/40001' }),
+  event({ event: '40002', title: 'Copa Unificada', start: '2026-12-06' }),
+  event({ event: '40003', title: 'Fiji Grappling Open', start: '2026-12-12', city: 'Suva', country: 'FJ', km: 16021.7 }),
+  event({ event: '40004', title: 'Berlin Open', start: '2026-12-13', city: 'Berlin', country: 'DE', organiser: 'Grappling Industries Europe', km: 3.2, athletes: 1, divisions: 1, teams: 1 }),
+  event({ event: '40005', title: 'Berlin Open', start: '2026-12-13', city: 'Berlin', country: 'DE', organiser: 'AJP Tour', km: 0.4 }),
+  event({ event: '40006', title: 'Kosova Open', start: '2027-03-01', city: 'Prishtinë', country: 'XK', km: 1386 }),
+  event({ event: '40007', title: 'Nordic Open', start: '2026-11-21', city: 'Göteborg', country: 'SE', km: 815.9, athletes: 642, divisions: 233, teams: 150, fought: 1 }),
+];
+
 // undefined: no fixture for this route, so the real API answers.
 export function fixture(route: string, state: string): unknown {
-  if (route !== 'athletes') return undefined;
+  if (route !== 'athletes' && route !== 'events') return undefined;
   if (state === 'error') throw Object.assign(new Error('HTTP 500'), { status: 500 });
+  if (route === 'events') return { rows: state === 'worst' ? events : state === 'one' ? events.slice(3, 4) : state === 'empty' ? [] : undefined };
   const rows = state === 'worst' ? worst : state === 'one' ? one : state === 'empty' ? [] : undefined;
   return rows && { rows, total: rows.length };
 }

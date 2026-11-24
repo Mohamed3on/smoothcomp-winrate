@@ -351,8 +351,8 @@ const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster':
 // opened shows within a minute. Reads go to the nearest read replica (a D1 session). An install's
 // upload stamps the time (meta 'changed'), and any copy stored before it is made again before it is
 // served; the crawler's minute-by-minute results don't, or no list would ever be served from here.
-const FRESH = { athletes: 600, teams: 600, event: 600, division: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60 };
-const STALE_OK = new Set(['athletes', 'teams', 'event', 'division', 'team', 'events', 'search', 'countries', 'summary']);
+const FRESH = { athletes: 600, teams: 600, event: 600, division: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60, places: 86400 };
+const STALE_OK = new Set(['athletes', 'teams', 'event', 'division', 'team', 'events', 'search', 'countries', 'summary', 'places']);
 async function cached(request, ctx, name, env, make) {
   const cache = caches.default;
   // One session for the stamp and the read, so the read sees at least what the stamp saw.

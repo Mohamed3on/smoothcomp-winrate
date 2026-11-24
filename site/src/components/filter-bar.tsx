@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Toggle } from '@/components/ui/toggle';
 import { Belt } from '@/components/stats';
+import { PlaceFilter } from '@/components/place-filter';
 import { useApi } from '@/lib/api';
 import { WIN_TYPES, type Filters } from '@/lib/filters';
 import { BELTS } from '@/lib/rules';
@@ -13,7 +14,7 @@ import { cn } from '@/lib/utils';
 // The chips run from the commonest finish to the rarest, as every career read adds up; walkovers, not contests, last.
 const CHIPS = ['submission', 'points', 'decision', 'disqualification', 'stoppage', 'walkover'];
 
-const Field = ({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) => (
+export const Field = ({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) => (
   <div className={cn('flex flex-col gap-1.5', className)}>
     <span className="text-xs text-muted-foreground">{label}</span>
     {children}
@@ -21,7 +22,7 @@ const Field = ({ label, children, className }: { label: string; children: React.
 );
 
 // A number or text field that writes to the URL a moment after typing stops.
-function Debounced({ f, name, placeholder, className, type = 'number', label }: { f: Filters; name: string; placeholder: string; className?: string; type?: string; label: string }) {
+export function Debounced({ f, name, placeholder, className, type = 'number', label }: { f: Filters; name: string; placeholder: string; className?: string; type?: string; label: string }) {
   const [value, setValue] = useState(f.get(name));
   useEffect(() => setValue(f.get(name)), [f.get(name)]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -34,7 +35,7 @@ function Debounced({ f, name, placeholder, className, type = 'number', label }: 
 
 // On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose,
 // and no chip (hide) for a finish nobody there has.
-export function FilterBar({ f, sorts, minimumAthletes = false, event = false, hide = [] }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; hide?: string[] }) {
+export function FilterBar({ f, sorts, minimumAthletes = false, event = false, hide = [], place = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; hide?: string[]; place?: boolean }) {
   const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
   const belts = new Set(f.get('belt').split(',').filter(Boolean));
   const toggleType = (t: string) => {
@@ -83,6 +84,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, hi
       </Field>
       <Field label="Min. wins"><Debounced f={f} name="wins" label="Minimum wins" placeholder="Any" className="w-20" /></Field>
       {!event && <Field label="Min. events"><Debounced f={f} name="events" label="Minimum events" placeholder="Any" className="w-20" /></Field>}
+      {place && <Field label="Near"><PlaceFilter f={f} /></Field>}
       {minimumAthletes && <Field label="Min. athletes"><Debounced f={f} name="athletes" label="Minimum athletes" placeholder="3" className="w-20" /></Field>}
       {!event && <Field label="Competed">
         <Select items={activeItems} value={f.get('active')} onValueChange={(v) => f.set({ active: (v as string) || null })}>

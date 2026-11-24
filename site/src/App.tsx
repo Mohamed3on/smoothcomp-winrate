@@ -23,7 +23,7 @@ export function App() {
   const [location, navigate] = useLocation();
   useEffect(() => { scrollTo(0, 0); }, [location]);
   // Each page's address keeps only the filters it reads.
-  useEffect(() => f.set(Object.fromEntries(KEPT.filter((k) => !usedBy(location).includes(k)).map((k) => [k, null]))), [location]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => f.strip(KEPT.filter((k) => !usedBy(location).includes(k))), [location]); // eslint-disable-line react-hooks/exhaustive-deps
   const section = location.startsWith('/academ') ? 'academies' : location.startsWith('/event') ? 'events' : 'athletes';
   const nav = [['athletes', '/', 'Athletes'], ['academies', '/academies', 'Academies'], ['events', '/events', 'Events']] as const;
   return (

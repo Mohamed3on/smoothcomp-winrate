@@ -3,13 +3,16 @@ import { useLocation, useSearchParams } from 'wouter';
 
 export const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'] as const;
 // The keys that travel with every link, so following one keeps the ranking's terms.
-export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'athletes', 'active'] as const;
+export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'athletes', 'active', 'near', 'place', 'km'] as const;
+// A place to look around (near: "lat,lng", place: its name) and how far (km), shared by events and academies.
+const PLACE = ['near', 'place', 'km'];
 // The kept keys each page reads: a link, and the page's own address, carry only those.
 export const usedBy = (path: string): readonly string[] =>
-  path.startsWith('/events') ? ['site']
+  path.startsWith('/events') ? ['site', ...PLACE]
   : path.startsWith('/athlete/') || /^\/event\/[^/]+\/division/.test(path) ? ['site', 'off']
   : path.startsWith('/event/') ? ['site', 'off', 'belt', 'wins', 'agemin', 'agemax', 'country']
-  : KEPT;
+  : path.startsWith('/academies') ? KEPT
+  : KEPT.filter((k) => !PLACE.includes(k));
 // A query string with plain commas, and without walkovers alone off, which is the default anyway.
 const tidy = (p: URLSearchParams) => {
   if (p.get('off') === 'walkover') p.delete('off');
@@ -48,6 +51,13 @@ export function useFilters() {
     const to = tidy(next);
     if (to !== window.location.search) navigate(window.location.pathname + to, { replace: true });
   };
+  // Takes keys out of the address alone, leaving the reader's kept settings as they are.
+  const strip = (keys: readonly string[]) => {
+    const next = new URLSearchParams(window.location.search);
+    for (const k of keys) next.delete(k);
+    const to = tidy(next);
+    if (to !== window.location.search) navigate(window.location.pathname + to, { replace: true });
+  };
   const query = {
     site, off: [...off].join(','), belt: get('belt'), wins: get('wins'), events: get('events'), agemin: get('agemin'), agemax: get('agemax'),
     country: get('country'), active: get('active'), sort: get('sort') || 'wins', dir: get('dir'), q: get('q'),
@@ -59,6 +69,6 @@ export function useFilters() {
     for (const k of usedBy(base)) if (params.has(k) && (params.get(k) || k === 'off')) keep.set(k, params.get(k)!);
     return base + tidy(keep);
   };
-  return { params, get, set, off, counted: (type: string) => !off.has(type), site, query, link, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };
+  return { params, get, set, strip, off, counted: (type: string) => !off.has(type), site, query, link, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };
 }
 export type Filters = ReturnType<typeof useFilters>;

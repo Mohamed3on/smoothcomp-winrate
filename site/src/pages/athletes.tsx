@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 export const ATHLETE_SORTS: [string, string][] = [['wins', 'Wins'], ['submission', 'Submissions'], ['points', 'Wins on points'], ['stoppage', 'Stoppages'], ['decision', 'Decisions'],
   ['rate', 'Submission rate'], ['winRate', 'Win rate'], ['medals', 'Medals'], ['events', 'Events entered'], ['perEvent', 'Wins per event'], ['last', 'Last competed']];
 export const RESET = ['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'];
-export const resetAction = (f: Filters) => ({ label: 'Reset filters', onClick: () => f.set(Object.fromEntries(RESET.map((k) => [k, null]))) });
+export const resetAction = (f: Filters, also: string[] = []) => ({ label: 'Reset filters', onClick: () => f.set(Object.fromEntries([...RESET, ...also].map((k) => [k, null]))) });
 const perEvent = (a: Athlete) => (a.events ? (a.wins / a.events).toFixed(1) : '–');
 
 export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => [

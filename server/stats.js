@@ -315,10 +315,21 @@ async function events(env, params) {
   return json({ rows: results });
 }
 
-// Places to search from: the cities events were held in, where they are, best match then most events first.
+// Places to search from: any town by name (Open-Meteo's geocoder, over GeoNames; only the typed name
+// leaves for it, and its answers are cached a day), in English and the reader's language (`lang`), as
+// a local name matches only in its own; biggest first. Else the cities events were held in, best match
+// then most events first. env.GEOCODER '' leaves the geocoder out.
 async function places(env, params) {
   const f = filters(params);
   if (f.q.length < 2) return json({ rows: [] });
+  const geocoder = env.GEOCODER ?? 'https://geocoding-api.open-meteo.com/v1/search';
+  if (geocoder) {
+    const langs = [...new Set(['en', /^[a-z]{2}$/.test(params.get('lang') ?? '') ? params.get('lang') : 'en'])];
+    const ask = (language) => fetch(`${geocoder}?${new URLSearchParams({ name: f.q, count: '8', language, format: 'json' })}`, { signal: AbortSignal.timeout(3000) })
+      .then(async (r) => (r.ok ? (await r.json()).results ?? [] : [])).catch(() => []);
+    const found = [...new Map((await Promise.all(langs.map(ask))).flat().map((p) => [p.id, p])).values()].sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 8);
+    if (found.length) return json({ rows: found.map((p) => ({ city: p.name, region: p.admin1 ?? null, country: p.country_code ?? null, lat: p.latitude, lng: p.longitude })) });
+  }
   const c = matcher(f.q, 'events_fts', 'city', 'city', 1);
   const { results } = await env.DB.prepare(`SELECT city, country, avg(lat) AS lat, avg(lng) AS lng, count(*) AS events, min(${c.tier}) AS tier FROM events
     WHERE lat IS NOT NULL AND city IS NOT NULL AND ${c.filter} GROUP BY city, country ORDER BY tier, events DESC LIMIT 8`)

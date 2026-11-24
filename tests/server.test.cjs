@@ -116,6 +116,6 @@ test('listed events are found by place, date, sport and size, and academies wher
   assert.deepEqual((await near('near=52.52,13.40&km=50')).map((t) => [t.club_id, t.city, Math.round(t.km)]), [['501', 'Potsdam', 27], ['502', 'Potsdam', 27]]);
   assert.deepEqual(await near('near=48.14,11.58&km=100'), []);
   // Places to search from are the cities events are held in.
-  const places = await (await API.places(env, new URLSearchParams('q=pots'))).json();
+  const places = await (await API.places({ ...env, GEOCODER: '' }, new URLSearchParams('q=pots'))).json();
   assert.deepEqual(places.rows.map((p) => [p.city, p.events]), [['Potsdam', 1]]);
 });
