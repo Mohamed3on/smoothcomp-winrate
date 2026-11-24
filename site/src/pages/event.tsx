@@ -236,7 +236,7 @@ export function EventPage({ id }: { id: string }) {
     : [['athletes', 'Athletes', shown.length], ['divisions', 'Brackets', divisions.length], ['academies', 'Academies', academies.length]] as const;
   // The tab, and its ranking where it has a choice, live in the address so every view can be linked.
   const tab = tabs.some(([k]) => k === f.get('tab')) ? f.get('tab') : tabs[0][0];
-  const setTab = (v: string) => f.set({ tab: v === tabs[0][0] ? null : v, sort: null });
+  const setTab = (v: string) => f.set({ tab: v === tabs[0][0] ? null : v, sort: null, open: null });
   const empty = <Empty title="Nothing here" text="Nothing to show for this event yet." />;
   return (
     <div className="flex flex-col gap-6">
@@ -258,7 +258,7 @@ export function EventPage({ id }: { id: string }) {
         <Tabs value={tab} onValueChange={(v) => setTab(v as string)} className="gap-4">
           <TabsList variant="line">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<NumberFlow value={n} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>)}</TabsList>
           <TabsContent value="podiums"><Ledger rows={divisions} loading={false} columns={podiumColumns} rowKey={(d) => d.name} empty={empty} /></TabsContent>
-          <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} empty={empty} sort={fought ? undefined : teamSort} onSort={sortBy('expected')} expand={roster} /></TabsContent>
+          <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} opened={f.get('open') || undefined} empty={empty} sort={fought ? undefined : teamSort} onSort={sortBy('expected')} expand={roster} /></TabsContent>
           <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event hide={stoppages ? [] : ['stoppage']} /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user} sort={athleteSort} onSort={sortBy(fought ? '' : 'expected')}
             empty={<Empty title="No athletes match" text="Widen the age range, lower the minimum wins, or clear the belt, country and search." action={resetAction(f)} />} /></TabsContent>
           <TabsContent value="divisions"><Ledger rows={divisions} loading={false} columns={divisionColumns} rowKey={(d) => d.name} empty={empty} sort={bracketSort} onSort={sortBy('wins')} expand={bracket} /></TabsContent>

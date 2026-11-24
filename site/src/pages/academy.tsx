@@ -65,7 +65,7 @@ export function AcademyPage({ id }: { id: string }) {
   const tally = (e: Event): [number, number] => [e.records.reduce((n, r) => n + winsOf(r.wins, f.counted), 0), e.records.reduce((n, r) => n + winsOf(r.losses, f.counted), 0)];
   const eventColumns: Column<Event>[] = [
     { key: 'date', label: 'Date', width: '8rem', align: 'start', cell: (e) => <span className="text-muted-foreground">{date(e.start)}</span> },
-    { key: 'event', label: 'Event', align: 'start', cell: (e) => <Link href={f.link(`/event/${e.event}`)} className="font-medium hover:text-primary">{e.title ?? `Event ${e.event}`}</Link> },
+    { key: 'event', label: 'Event', align: 'start', cell: (e) => <Link href={f.link(`/event/${e.event}?tab=academies&open=${id}`)} title="This academy at the event" className="font-medium hover:text-primary">{e.title ?? `Event ${e.event}`}</Link> },
     { key: 'athletes', label: 'Athletes', width: '6rem', cell: (e) => e.athletes },
     { key: 'podiums', label: 'Podiums', width: '10rem', cell: (e) => (e.fought ? <Medals g={e.gold} s={e.silver} b={e.bronze} /> : <span className="text-xs text-muted-foreground">Entrants only</span>) },
     { key: 'record', label: 'Record', width: '7rem', cell: (e) => (e.fought ? <Record w={tally(e)[0]} l={tally(e)[1]} /> : '') },

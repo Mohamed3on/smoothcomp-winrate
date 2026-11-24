@@ -1,5 +1,5 @@
-import { forwardRef, useState } from 'react';
-import { TableVirtuoso } from 'react-virtuoso';
+import { forwardRef, useEffect, useRef, useState } from 'react';
+import { TableVirtuoso, type TableVirtuosoHandle } from 'react-virtuoso';
 import NumberFlow from '@number-flow/react';
 import { ChevronDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -16,12 +16,20 @@ export interface Column<T> {
 const cellClass = (c: { align?: string; narrow?: boolean | 'xl' }, sorted: boolean) =>
   cn('px-2 py-2.5 align-middle first:pl-3 last:pr-3 sm:px-3 sm:first:pl-5 sm:last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow === 'xl' ? 'max-xl:hidden' : c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
 
-// A ranked ledger: sortable headers, every row reachable, only the rows on screen drawn.
-export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, loading, empty, expand, openAll }: {
+// A ranked ledger: sortable headers, every row reachable, only the rows on screen drawn. opened: a row
+// that starts open and scrolled to, as a link into it asks.
+export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, loading, empty, expand, openAll, opened }: {
   rows: T[] | undefined; columns: Column<T>[]; sort?: string; asc?: boolean; onSort?: (s: string, asc: boolean) => void; rowKey: (r: T) => string; loading: boolean;
-  empty: React.ReactNode; expand?: (r: T) => React.ReactNode; openAll?: boolean;
+  empty: React.ReactNode; expand?: (r: T) => React.ReactNode; openAll?: boolean; opened?: string;
 }) {
-  const [open, setOpen] = useState<Set<string>>(() => new Set(openAll ? rows?.map(rowKey) : []));
+  const [open, setOpen] = useState<Set<string>>(() => new Set([...(openAll ? rows?.map(rowKey) ?? [] : []), ...(opened ? [opened] : [])]));
+  const list = useRef<TableVirtuosoHandle>(null);
+  // Once, as the page opens: the opened row to the top, below the site's bar and the table's sticky header.
+  useEffect(() => {
+    const at = opened && !openAll ? rows?.findIndex((r) => rowKey(r) === opened) ?? -1 : -1;
+    if (at >= 0) requestAnimationFrame(() => list.current?.scrollToIndex({ index: at, align: 'start', offset: -112 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [fresh, setFresh] = useState<string | null>(null);
   // An expansion spans only the columns shown: spanning hidden ones would add empty columns that take width.
   const lg = useMedia('(width >= 64rem)'), xl = useMedia('(width >= 80rem)');
@@ -61,6 +69,7 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   return (
     <div className={cn('rounded-xl border bg-card transition-opacity', loading && 'opacity-60')} aria-busy={loading}>
       <TableVirtuoso
+        ref={list}
         useWindowScroll
         data={items}
         increaseViewportBy={800}
