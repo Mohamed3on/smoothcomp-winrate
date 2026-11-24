@@ -326,3 +326,57 @@ test('Google Maps places an academy whose page names no place, only on a matchin
   assert.deepEqual({ ...db.prepare("SELECT source, city, google IS NOT NULL AS asked FROM club_places WHERE club_id = '5879'").get() }, { source: 'google', city: 'München', asked: 1 });
   assert.equal(await findClubs({ DB, GOOGLE_MAPS_KEY: 'k' }), 0); // asked once
 });
+
+test('an event asked for on the site is read at once, past the crawler\'s day, while still on, and again later', async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { addBouts, record } = await import('../server/worker.js');
+  const { crawl } = await import('../server/crawl.js');
+  const { DB, db } = d1();
+  const kicks = [];
+  const env = { DB, CRAWL_KEY: 'k', CRAWLER: { fetch: async (url) => (kicks.push(url), new Response(null, { status: 204 })) } };
+  const waits = [];
+  const post = (body) => worker.fetch(new Request('https://matstats.test/read-now', { method: 'POST', body: JSON.stringify(body) }), env, { waitUntil: (p) => waits.push(p) });
+  const today = new Date().toISOString().slice(0, 10);
+  await DB.prepare("INSERT INTO events (site, event, title, start, at) VALUES ('smoothcomp.com', '950', 'Today Open', ?1, 0), ('smoothcomp.com', '951', 'Next Month Open', '2099-01-01', 0)").bind(today).run();
+  // The crawler's day is spent.
+  const now = Date.now();
+  for (let i = 0; i < 300; i++) db.prepare("INSERT INTO crawls (site, event, state, at) VALUES ('smoothcomp.com', ?, 'done', ?)").run(`x${i}`, now);
+  // Not started yet, or unknown: nothing to read.
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '951' })).json(), { events: [] });
+  assert.equal((await post({ site: 'smoothcomp.com', event: 'nope' })).status, 400);
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '950' })).json(), { events: ['950'], found: 1 });
+  assert.equal(kicks.length, 1);
+  assert.match(kicks[0], /\/run\?for=20000$/);
+  // Asked again: it is still waiting, so it stays at the front, but a lane is started at most once a minute.
+  assert.deepEqual((await (await post({ site: 'smoothcomp.com', event: '950' })).json()).events, ['950']);
+  assert.equal(kicks.length, 1);
+  assert.deepEqual({ ...db.prepare("SELECT state, priority, next FROM crawls WHERE event = '950'").get() }, { state: 'queued', priority: 4, next: 0 });
+  // Smoothcomp's schedule: the final done, a semifinal still to fight.
+  const seat = (reg, name, win) => ({ type: 'registration', event_registration_id: reg, name, isWinner: win });
+  const answers = {
+    'matcategories.json': [{ id: 1 }], 'mats.json/1': [{ id: 7, estimated_end: `${today}T18:00:00Z` }],
+    'mat/7/matches.json': [{ id: 70, group: 'Adult / Blue / -76 kg', name: 'Final', state: 'finished', wonBy: 'submission_armbar', seats: [seat(1, 'Kim Lee', true), seat(2, 'Bo Sun', false)] },
+      { id: 71, group: 'Adult / Blue / -82 kg', name: 'Semifinal', state: 'pending', seats: [seat(3, 'Al Ray', false), seat(4, 'Cy Day', false)] }],
+    'getBracketMatchData/70': { left: { id: 11, first_name: 'Kim', last_name: 'Lee' }, right: { id: 12, first_name: 'Bo', last_name: 'Sun' }, matchInfo: {} },
+    'getBracketMatchData/71': { left: { id: 13, first_name: 'Al', last_name: 'Ray' }, right: { id: 14, first_name: 'Cy', last_name: 'Day' }, matchInfo: {} },
+  };
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const key = Object.keys(answers).find((k) => String(url).endsWith(k));
+    return key ? Response.json(answers[key]) : new Response('', { status: 404 });
+  };
+  try { await crawl(env, record, addBouts, 5000); } finally { globalThis.fetch = real; }
+  // Read as it stands, its row kept to read again in six hours, back in line.
+  const entries = db.prepare("SELECT user, place FROM entries WHERE event = '950' AND fought = 1 ORDER BY user").all().map((r) => [r.user, r.place]);
+  assert.deepEqual(entries, [['11', 1], ['12', 2], ['13', null], ['14', null]]);
+  const row = db.prepare("SELECT state, priority, next, wrote FROM crawls WHERE event = '950'").get();
+  assert.equal(row.state, 'queued');
+  assert.equal(row.priority, 3);
+  assert.ok(row.next > now + 5 * 3600e3 && row.wrote);
+  // Just read: asking again within five minutes changes nothing.
+  db.prepare("UPDATE crawls SET state = 'done', next = 0 WHERE event = '950'").run();
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '950' })).json(), { events: [], found: 1 });
+  // An athlete's last events of the month, from what they entered.
+  db.prepare("UPDATE crawls SET at = 0 WHERE event = '950'").run();
+  assert.deepEqual((await (await post({ site: 'smoothcomp.com', user: '11' })).json()).events, ['950']);
+});

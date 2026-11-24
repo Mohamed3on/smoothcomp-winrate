@@ -30,11 +30,11 @@ class Busy extends Error {}
 
 // How a run spent its time, logged when it ends: requests, their average wait, how long at least
 // one was in flight (the rest went to the database and the counting), and events finished.
-function client() {
+function client(run = RUN) {
   let used = 0, waited = 0, open = 0, since = 0, busy = 0;
   const recent = [];
   const started = Date.now();
-  const until = started + RUN;
+  const until = started + Math.min(run, RUN);
   const left = () => (Date.now() < until ? BUDGET - used : 0);
   const get = async (url) => {
     const median = () => (recent.length >= 30 ? [...recent].sort((a, b) => a - b)[15] : 0);
@@ -400,47 +400,54 @@ export async function queue(env) {
     AND wrote < unixepoch(start) * 1000 + 864000000 AND unixepoch('now') > unixepoch(start) + 864000`).run();
 }
 
-export async function crawl(env, record, addBouts) {
-  const { get, left, report } = client();
+// run: how long the lane reads (at most RUN); asked: only events someone on the site asked for.
+export async function crawl(env, record, addBouts, run, asked = false) {
+  const { get, left, report } = client(run);
   let done = 0, why = 'time';
-  try { why = (await lane(env, record, addBouts, get, left, () => done++)) ?? why; } finally { report(done, why); }
+  try { why = (await lane(env, record, addBouts, get, left, () => done++, asked)) ?? why; } finally { report(done, why); }
 }
 
-async function lane(env, record, addBouts, get, left, finished) {
+async function lane(env, record, addBouts, get, left, finished, onlyAsked) {
   const now = Date.now();
   let room = DAILY - await env.DB.prepare("SELECT count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1").bind(now - (now % DAY)).first('n');
   while (left() > 10) {
-    if (room <= 0) return 'daily';
     // Taken and held in one statement, so lanes running side by side never take the same event; through
     // crawls_due, in the order taken, so it stops at the first one due instead of sorting the queue.
-    const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls INDEXED BY crawls_due WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY priority DESC, start DESC LIMIT 1) RETURNING *`)
-      .bind(Date.now(), Date.now() + 10 * 60e3).first();
-    if (!job) return;
+    // Once the day's events are read, only those someone on the site asked for now (priority 4, worker.js readNow).
+    const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls INDEXED BY crawls_due WHERE state IN ('queued', 'reading') AND next <= ?1 AND priority >= ?3 ORDER BY priority DESC, start DESC LIMIT 1) RETURNING *`)
+      .bind(Date.now(), Date.now() + 10 * 60e3, room > 0 && !onlyAsked ? 0 : 4).first();
+    if (!job) return onlyAsked ? 'asked' : room > 0 ? undefined : 'daily';
+    const asked = job.priority >= 4;
     const host = HOSTS[job.site];
-    const save = (state, data, next = 0, tries = job.tries) => env.DB.prepare('UPDATE crawls SET state = ?3, data = ?4, next = ?5, tries = ?6, at = ?7 WHERE site = ?1 AND event = ?2')
+    // Asked-for ones go back in line once read (or given up on); a lane stopping mid-read keeps its place.
+    const save = (state, data, next = 0, tries = job.tries) => env.DB.prepare("UPDATE crawls SET state = ?3, data = ?4, next = ?5, tries = ?6, at = ?7, priority = iif(?3 = 'reading', priority, min(priority, 3)) WHERE site = ?1 AND event = ?2")
       .bind(job.site, job.event, state, data == null ? null : JSON.stringify(data), next, tries, Date.now()).run();
     let data = job.data ? JSON.parse(job.data) : null;
     try {
       if (!data) {
         const read = await schedule(get, `${host}/en/event/${job.event}`);
-        // Matches still to finish at an event under four days old: it may still be on.
-        if (!read.over && Date.parse(job.start) > now - 4 * DAY) { await save('queued', null, now + 6 * 3600e3); continue; }
-        // Kept only if this run ends before the event is done (the catch below).
-        data = { matches: read.matches, ends: read.ends, users: {}, tried: [] };
+        // Matches still to finish at an event under four days old: it may still be on. Asked for, it is read
+        // as it stands, and read again later.
+        if (!read.over && !asked && Date.parse(job.start) > now - 4 * DAY) { await save('queued', null, now + 6 * 3600e3); continue; }
+        // Kept only if this run ends before the event is done (the catch below). Asked for, it is newer than
+        // a results page read before now (one read mid-event), so it replaces it.
+        data = { matches: read.matches, ends: read.ends, users: {}, tried: [], ...(!read.over && { on: true }), ...(asked && { read: now }) };
       }
       try { await name(get, host, Object.assign(data, { left })); } finally { delete data.left; delete data.room; }
       // Results a page sent meanwhile stand.
       // (A crawl reading an event again replaces its own copy: results written by the time it last wrote.)
-      const has = await env.DB.prepare('SELECT 1 FROM reads WHERE site = ?1 AND event = ?2 AND fought = 1 AND at > ?3').bind(job.site, job.event, job.wrote ?? 0).first();
+      const has = await env.DB.prepare('SELECT 1 FROM reads WHERE site = ?1 AND event = ?2 AND fought = 1 AND at > ?3').bind(job.site, job.event, Math.max(job.wrote ?? 0, data.read ?? 0)).first();
       const { athletes, records } = results(data, job.start);
       // Results a page sent stand; the matches are added to them.
       if (has) await addBouts(env, job.site, job.event, athletes);
       else {
         const iso = (t) => (t && !Number.isNaN(Date.parse(t)) ? new Date(t).toISOString() : null);
-        await record(env, { site: job.site, event: job.event, records, athletes, read: Date.now(),
+        await record(env, { site: job.site, event: job.event, records, athletes, read: Date.now(), crawled: true,
           meta: { title: job.title, start: iso(job.start), end: iso(data.ends), city: job.city } });
         await env.DB.prepare('UPDATE crawls SET wrote = ?3 WHERE site = ?1 AND event = ?2').bind(job.site, job.event, Date.now()).run();
       }
+      // An event still on is read again in six hours, as one would be that nobody asked for.
+      if (data.on) { await save('queued', null, now + 6 * 3600e3); continue; }
       finished();
       room--;
       await save('done', { named: Object.keys(data.users).length, missed: data.missed?.length ?? 0, matches: data.matches.length });

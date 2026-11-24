@@ -10,6 +10,7 @@ import { useApi, type EventEntry, type EventMeta, type Types } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, plural, rate, winsOf } from '@/lib/format';
 import { FilterBar } from '@/components/filter-bar';
+import { ReadNow } from '@/components/read-now';
 import { resetAction } from '@/pages/athletes';
 import { cn } from '@/lib/utils';
 import { DivisionLink } from '@/pages/division';
@@ -95,6 +96,9 @@ export function EventPage({ id }: { id: string }) {
   const title = event.title ?? `Event ${id}`;
   document.title = `${title} · Mat Stats`;
   const fought = results.length > 0;
+  // Once it has started, and while its results may still be coming in, anyone can have them read now.
+  const since = event.start ? Date.now() - Date.parse(event.start) : -1;
+  const readable = since >= 0 && (!fought || live || since < 14 * 864e5);
   const stamp = (t: number) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   const divisions: Division[] = [...Map.groupBy(entries, (e) => e.division.trim())].map(([name, list]) => {
     const rows = seeded(name, list, f, !fought || live);
@@ -247,6 +251,7 @@ export function EventPage({ id }: { id: string }) {
             {fought && <>Results as of {stamp(read(results, 1))}</>}{fought && live && ' · '}{(!fought || live) && registered.length > 0 && <>Entrants as of {stamp(read(registered, 0))}</>}
           </span>
           <a href={`${f.home}/en/event/${id}/${fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
+          {readable && <ReadNow site={f.site} event={id} route="event" label={fought ? 'Read results again' : 'Read results now'} />}
         </div>
       </header>
       {entries.length ? (
