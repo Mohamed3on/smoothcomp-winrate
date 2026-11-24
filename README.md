@@ -53,7 +53,10 @@ pages at once the first time anyone opens it).
 
 **Stats site** — [matstats.mohamed3on.com](https://matstats.mohamed3on.com) shows the shared cache outside
 Smoothcomp: athletes pooled into one ranking, academies ranked by their athletes' careers with their top athletes,
-and a page for every athlete, academy and event. An athlete with no readable Smoothcomp career, a profile it marks not public included, ranks on their results at the events read.
+and a page for every athlete, academy and event. An event finder lists Smoothcomp and AJP Tour events together, upcoming or past, by date,
+sport, size and distance from any town or from you, as a list or on a map. Academies sit where their own page pins them, else where Google Maps
+finds them (a crawler reads each academy's page, then asks Google for those that name no place), else in the city their athletes compete in most,
+so they too can be found near a place and shown on a map. An athlete with no readable Smoothcomp career, a profile it marks not public included, ranks on their results at the events read.
 The rankings take the extension's filters: which finish types count (walkovers off to start), belt, an age range, country,
 and minimum wins and events, and the URL keeps them. Every row loads; academy rows open onto every athlete behind them. Results pages
 upload each athlete's name, academy, country, photo, divisions, placements and
@@ -74,13 +77,13 @@ Or, with no build step: clone, or unzip the [latest release](https://github.com/
 | File | What it is |
 | --- | --- |
 | `rules.js` | The rules everything counts by — finishes, belts, grade fields — loaded by the extension's pages, imported by the server and the stats site |
-| `site.js` | Everything that knows what Smoothcomp is: URL shapes, the versioned store, the Vue view-model adapter |
+| `site.js` | Everything that knows what Smoothcomp is: URL shapes, the store (preferences in the page's localStorage; whole events' matches and athletes' histories in extension storage, through the background worker, so they never crowd out Smoothcomp's own saves), the Vue view-model adapter |
 | `matches.js` | Reads every match off the event's schedule, one request per mat |
 | `model.js` | Pure joins — scheduled matches to registrations and published placements, then athlete, academy and bracket leaderboards |
 | `results.js` | The results page panel |
 | `career-cache.js` | Shared cache validation and expiry: three weeks for public records, 30 days for confirmed privacy |
-| `background.js` | Coordinates requests across tabs, saves each completed athlete in extension storage, and trades careers with the shared cache |
-| `server/` | The shared cache every install reads an event from first: a Cloudflare Worker over D1 (`wrangler deploy` from `server/`); `stats.js` holds the stats site's read API |
+| `background.js` | Coordinates requests across tabs, saves each completed athlete and the pages' event caches in extension storage (`unlimitedStorage`; each kind keeps its latest few), and trades careers with the shared cache |
+| `server/` | The shared cache every install reads an event from first: a Cloudflare Worker over D1 (`wrangler deploy` from `server/`); `stats.js` holds the stats site's read API; `crawler.js` (`wrangler deploy -c crawler.toml`) reads results for events nobody opened, lists both sites' events daily, and places academies |
 | `site/` | The stats site: React, shadcn/ui and Vite; `bun run build` in `site/`, then `wrangler deploy` in `server/` serves `site/dist` |
 | `shared.js` | Reads through the signed-in browser session and bridges cache updates to the page |
 | `careers.js` | Reads signed profiles, careers and belts, sharing pending requests and prioritising visible athletes |

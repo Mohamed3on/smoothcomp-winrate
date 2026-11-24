@@ -37,7 +37,8 @@ ENGLISH
 STATS SITE
 • Everything Mat Stats users read, browsable outside Smoothcomp at matstats.mohamed3on.com
 • Athletes pooled into one ranking: by wins, any finish type, submission rate, medals or wins per event, with the finish types that count, belt, age range, country, and minimum wins and events as filters; athletes whose profile isn't public rank on their results
-• Academies ranked by their athletes' careers added up, with their top athletes
+• Academies ranked by their athletes' careers added up, with their top athletes, found near any town and shown on a map
+• An event finder for Smoothcomp and AJP Tour together: upcoming or past, Gi or NoGi, by size and by distance from any town or from you, as a list or on a map
 • A page for every athlete, academy and event: careers, event history, podiums, medal tables and entrants
 
 Works on smoothcomp.com events and on AJP Tour events (ajptour.com).
