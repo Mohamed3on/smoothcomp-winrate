@@ -88,7 +88,7 @@ const recordOf = (user) => {
 const seedOf = (r) => {
   const t = tally(r.user_id);
   const [won, lost] = recordOf(r.user_id) ?? [];
-  return { belt: belt(r.user_id ?? r.id), won, lost, wins: t?.[0], events: eventsOf(r.user_id), submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age };
+  return { belt: belt(r.user_id ?? r.id), won, lost, wins: t?.[0], events: eventsOf(r.user_id), gold: fresh(r.user_id) ? careers[r.user_id].medals?.[0] : undefined, submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age };
 };
 
 // How much of a whole-event read is still to come: the athletes among these

@@ -64,7 +64,7 @@ const tallyOf = (e: EventEntry, f: Filters) => {
   const t: Record<string, number> = JSON.parse(e.career_types ?? '{}');
   return [winsOf(t, f.counted), f.counted('submission') ? Number(t.submission) || 0 : 0, f.counted('points') ? Number(t.points) || 0 : 0];
 };
-const seedOf = (r: Ranked) => ({ belt: beltOf(r.division) ?? r.belt, won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, submission: r.tally?.[1], points: r.tally?.[2], born: r.born });
+const seedOf = (r: Ranked) => ({ belt: beltOf(r.division) ?? r.belt, won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, gold: r.career_gold, submission: r.tally?.[1], points: r.tally?.[2], born: r.born });
 const byCareer = (a: Ranked, b: Ranked) => bySeed(seedOf(a), seedOf(b)) || a.user.localeCompare(b.user);
 // One bracket's athletes in seed order, or by place once decided; while undecided and still to fight
 // (open), the top three carry the medal their seed points to.

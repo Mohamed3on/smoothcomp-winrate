@@ -140,10 +140,14 @@ globalThis.SCWRRules = (() => {
   // The rate is ranked as if they had also won and lost ten more, so a short record leans to 50% (the
   // average, as every match has a winner) and experience counts: 23–4 ranks as 70%, below 229–79 at 73%.
   // At one rate, more matches first. A record holding under half their career wins is a partial read
-  // (match lists from only some of their profile's pages), so it isn't rated.
+  // (match lists from only some of their profile's pages), so it isn't rated: its rate is guessed from
+  // their career wins and 1.4 losses for each event they didn't win (what results show: 518k losses over
+  // 358k non-gold entries on Smoothcomp, round robins losing more than once), so 84 wins over 57 events
+  // doesn't seed below an 0–1; never fewer losses than the partial read shows. A seed's gold is their career golds.
   const rated = ({ won, lost, wins }) => won + lost > 0 && !(wins > 2 * won);
-  const seedKey = ({ belt, won, lost, wins, events, submission, points, born }) => [
-    BELTS.indexOf(belt), ...(rated({ won, lost, wins }) ? [(won + 10) / (won + lost + 20), won + lost] : [-1, -1]), wins != null && events ? wins / events : -1,
+  const rateOf = (won, lost) => [(won + 10) / (won + lost + 20), won + lost];
+  const seedKey = ({ belt, won, lost, wins, events, gold, submission, points, born }) => [
+    BELTS.indexOf(belt), ...(rated({ won, lost, wins }) ? rateOf(won, lost) : wins != null && events ? rateOf(wins, Math.max(lost ?? 0, 1.4 * (events - (gold ?? 0)))) : [-1, -1]), wins != null && events ? wins / events : -1,
     wins ?? -1, submission ?? -1, points ?? -1, born ?? -Infinity,
   ];
   const bySeed = (a, b) => {
