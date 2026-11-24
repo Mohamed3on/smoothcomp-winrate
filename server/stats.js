@@ -120,6 +120,37 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')}
   FROM b`];
 
+// One person's accounts are the ones with their name as written (case and runs of spaces aside), birth year and
+// country, on either site: AJP keeps its own accounts, and both sites hold duplicates. people_ident reads them.
+const IDENT = (p) => `lower(trim(replace(replace(replace(${p}name, '  ', ' '), '  ', ' '), '  ', ' ')))`;
+
+// Each account's board row holds its whole person: every account sharing them, on either site, summed, after BOARD has
+// rebuilt these athletes' own rows. An account that shares its person keeps its own row in board_own, which the sums
+// read; one whose row was never summed still holds its own on the board. Of a person's accounts on one site, the one
+// with the most events ranks; the others are dup. ?1 site, ?2 the athletes (JSON).
+const BOARD_COLS = `site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
+    ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')}`;
+const COUNTS = ['w', 'rw', 'rl', 'sl'].flatMap((p) => GROUPS.map((g) => `${p}_${g}`));
+const PEOPLE = `seeds AS MATERIALIZED (SELECT p.name, p.born, p.country FROM json_each(?2) j CROSS JOIN people p ON p.site = ?1 AND p.user = j.value
+      WHERE trim(p.name) != '' AND p.born IS NOT NULL AND p.country IS NOT NULL),
+  members AS MATERIALIZED (SELECT DISTINCT m.site, m.user, ${IDENT('s.')} AS k, s.born AS kb, s.country AS kc
+    FROM seeds s CROSS JOIN people m ON ${IDENT('m.')} = ${IDENT('s.')} AND m.born = s.born AND m.country = s.country),
+  shared AS MATERIALIZED (SELECT * FROM members WHERE (k, kb, kc) IN (SELECT k, kb, kc FROM members GROUP BY k, kb, kc HAVING count(*) > 1))`;
+export const MERGE = [`DELETE FROM board_own WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))`,
+`INSERT OR IGNORE INTO board_own (${BOARD_COLS}) WITH ${PEOPLE}
+  SELECT ${BOARD_COLS.replace(/(\w+)/g, 'b.$1')} FROM shared s CROSS JOIN board b ON b.site = s.site AND b.user = s.user`,
+`INSERT OR REPLACE INTO board (${BOARD_COLS}, dup) WITH ${PEOPLE},
+  own AS MATERIALIZED (SELECT o.*, s.k, s.kb, s.kc FROM shared s CROSS JOIN board_own o ON o.site = s.site AND o.user = s.user),
+  sums AS (SELECT k, kb, kc, max(source = 'career') AS career, max(at) AS at, max(last) AS last, sum(events) AS events, sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
+      ${COUNTS.map((c) => `sum(${c}) AS ${c}`).join(', ')}
+    FROM own GROUP BY k, kb, kc),
+  ranked AS (SELECT site, user, row_number() OVER (PARTITION BY k, kb, kc, site ORDER BY coalesce(events, 0) DESC, user) AS n FROM own)
+  SELECT o.site, o.user, iif(s.career, 'career', 'results'), iif(s.career, s.at, NULL),
+    (SELECT json_group_object(key, value) FROM json_each(json_object(${GROUPS.map((g) => `'${g}', s.w_${g}`).join(', ')})) WHERE value > 0),
+    o.name, o.club, o.club_id, o.country, o.country_name, o.photo, o.born, o.hidden, o.belt, s.last, s.events, s.gold, s.silver, s.bronze,
+    ${COUNTS.map((c) => `s.${c}`).join(', ')}, r.n > 1
+  FROM own o JOIN sums s ON s.k = o.k AND s.kb = o.kb AND s.kc = o.kc JOIN ranked r ON r.site = o.site AND r.user = o.user`];
+
 // Each academy's latest name (as its athletes' latest events give it), its podiums and events
 // entered at the events read, and where it competes most: the city of the most events its athletes
 // entered (ties to the latest), at the mean of those events' coordinates. ?1 site, ?2 the academies (JSON).
@@ -148,19 +179,20 @@ export const EVENT_COUNTS = `UPDATE events SET
 
 // The rankings over the board under the finishes counted (?2, JSON): each total is the sum of the
 // counted groups' columns. A record (won, lost) is the tally's where it holds a counted finish, else
-// the results' own. ?1 site.
+// the results' own. ?1 site. `only` narrows the board's rows: a list writes "AND dup = 0" to leave a person's other
+// accounts on the site out (+dup where an index other than board_ranked reads it).
 const counted = (off) => { let out = []; try { out = JSON.parse(off); } catch {} return GROUPS.filter((g) => !out.includes(g)); };
-const careersOf = (off) => {
+const careersOf = (off, only = '') => {
   const on = counted(off);
   const sum = (prefix) => (on.length ? on.map((g) => `${prefix}_${g}`).join(' + ') : '0');
-  return `careers AS (SELECT user, at, source, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze, ${cols('w')}, ${cols('rl')},
+  return `careers AS (SELECT user, dup, at, source, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze, ${cols('w')}, ${cols('rl')},
     ${sum('w')} AS wins,
     iif(source = 'results', ${sum('sl')}, NULL) AS losses,
     iif(${sum('rw')} + ${sum('rl')} > 0, ${sum('rw')}, iif(source = 'results', ${sum('w')}, NULL)) AS won,
     iif(${sum('rw')} + ${sum('rl')} > 0, ${sum('rl')}, iif(source = 'results', ${sum('sl')}, NULL)) AS lost,
     iif(${sum('rw')} + ${sum('rl')} > 0 OR source = 'results', json_object(${GROUPS.map((g) => `'${g}', rl_${g}`).join(', ')}), NULL) AS lost_types,
     w_walkover AS walkovers, w_submission AS submission, w_points AS points
-  FROM board WHERE site = ?1)`;
+  FROM board WHERE site = ?1 ${only})`;
 };
 
 // An entry shown: an athlete's results at an event, else their registration there while no results are
@@ -220,7 +252,7 @@ async function athletes(env, params) {
   // athletes with at least that many alone (the finishes left SQLite sorting every athlete: 3 s).
   const floor = !club && sort.startsWith('wins DESC')
     ? ` AND wins >= coalesce((SELECT wins FROM careers WHERE ${matching} ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
-  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
+  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off, club ? 'AND +dup = 0' : 'AND dup = 0')},
     top AS (SELECT user FROM careers WHERE ${matching}${floor} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
     SELECT careers.*, (SELECT count(*) FROM careers WHERE ${matching}) AS total FROM top CROSS JOIN careers USING (user) ORDER BY ${sort}, user`)
     .bind(...args).all();
@@ -245,7 +277,7 @@ async function teams(env, params) {
   // through board_club: the + keeps them off board_record, which walked every athlete once per academy and
   // took D1 past its CPU limit.
   const least = whole(params.get('athletes'), 3, 1000);
-  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
+  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off, 'AND +dup = 0')},
     members AS (SELECT * FROM careers
       WHERE club_id IS NOT NULL AND +wins >= ?4 AND (+wins > 0 OR lost > 0) AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)),
     podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
@@ -267,10 +299,6 @@ async function teams(env, params) {
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });
 }
 
-// One person's accounts are the ones with their name as written (case and runs of spaces aside), birth year and
-// country, on either site: AJP keeps its own accounts, and both sites hold duplicates. people_ident reads them.
-const IDENT = (p) => `lower(trim(replace(replace(replace(${p}name, '  ', ' '), '  ', ' '), '  ', ' ')))`;
-
 // What one account holds, as the athlete page reads it.
 const account = (env, f, site, user) => [
   env.DB.prepare(`WITH ${careersOf(f.off)} SELECT * FROM careers WHERE user = ?4`).bind(site, f.off, Date.now() - KEPT, user),
@@ -289,18 +317,6 @@ const account = (env, f, site, user) => [
   env.DB.prepare(`SELECT DISTINCT e.event, e.user, p.name FROM entries mine CROSS JOIN entries e ON e.site = mine.site AND e.event = mine.event AND e.division = mine.division AND e.user != mine.user
     JOIN people p ON p.site = e.site AND p.user = e.user WHERE mine.site = ?1 AND mine.user = ?2`).bind(site, user),
 ];
-
-// Their careers added up: counts summed, a record known where any account knows it.
-const SUMMED = ['wins', 'losses', 'won', 'lost', 'events', 'gold', 'silver', 'bronze', 'walkovers', 'submission', 'points'];
-function joined(careers) {
-  if (careers.length < 2) return careers[0] ?? null;
-  const add = (key) => careers.reduce((into, c) => { for (const [t, n] of Object.entries(c[key] ?? {})) into[t] = (into[t] ?? 0) + n; return into; }, {});
-  const out = { ...careers[0], types: add('types'), lost_types: careers.some((c) => c.lost_types) ? add('lost_types') : null,
-    source: careers.some((c) => c.source === 'career') ? 'career' : 'results', at: Math.max(0, ...careers.map((c) => c.at ?? 0)) || null,
-    last: careers.map((c) => c.last).filter(Boolean).sort().at(-1) ?? null };
-  for (const key of SUMMED) out[key] = careers.every((c) => c[key] == null) ? null : careers.reduce((n, c) => n + (c[key] ?? 0), 0);
-  return out;
-}
 
 async function athlete(env, params) {
   const f = filters(params);
@@ -338,7 +354,8 @@ async function athlete(env, params) {
   const newest = (a, b) => String(b.start ?? '').localeCompare(String(a.start ?? ''));
   return json({
     history: each.flatMap((a) => a.history).sort(newest),
-    career: joined(each.map((a) => a.career).filter(Boolean)),
+    // The board sums each account's person (MERGE): this account's row, else another's.
+    career: each.find((a) => a.career)?.career ?? null,
     person: me.person,
     entries: each.flatMap((a) => a.entries).sort(newest),
     outcomes: each.flatMap((a) => a.outcomes).sort(newest),
@@ -355,7 +372,7 @@ async function team(env, params) {
   const [members, events] = await env.DB.batch([
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT p.user, p.name, p.club, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt, p.seen,
         c.wins, c.losses, c.source, c.walkovers, c.submission, c.points, c.types, c.gold, c.silver, c.bronze, c.events
-      FROM people p LEFT JOIN careers c ON c.user = p.user WHERE p.site = ?1 AND p.club_id = ?4`).bind(f.site, f.off, Date.now() - KEPT, club),
+      FROM people p LEFT JOIN careers c ON c.user = p.user WHERE p.site = ?1 AND p.club_id = ?4 AND coalesce(c.dup, 0) = 0`).bind(f.site, f.off, Date.now() - KEPT, club),
     // Grouped by +e.event, or SQLite walks every entry on the site for the order instead of this academy's.
     env.DB.prepare(`SELECT e.event, v.title, v.start, v.city, v.country, count(DISTINCT e.user) AS athletes, max(e.fought) AS fought,
         sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, json_group_array(json_object('wins', json(e.wins), 'losses', json(e.losses))) AS records

@@ -115,6 +115,21 @@ test("an athlete's accounts with their name, birth year and country read as one"
   const other = await (await API.athlete(env, new URLSearchParams('site=ajptour.com&id=77'))).json();
   assert.deepEqual(other.accounts.map((a) => [a.site, a.user]), [['smoothcomp.com', '11']]);
   assert.equal(other.entries.length, 2);
+  // Each site's ranking counts the person whole, under its own account.
+  const ranked = async (site) => (await (await API.athletes(env, new URLSearchParams(`site=${site}`))).json()).rows.map((r) => [r.user, r.wins, r.won, r.lost]);
+  assert.deepEqual(await ranked('smoothcomp.com'), [['11', 5, 5, 1], ['12', 1, 1, 2]]);
+  assert.deepEqual(await ranked('ajptour.com'), [['77', 5, 5, 1], ['78', 3, 3, 0]]);
+  // A second AJP account of theirs, at another event, joins them: it adds its win, and the ranking shows them once,
+  // under the account with more events.
+  await post('/record', { site: 'ajptour.com', event: '901', records: { 79: [1, 0] }, meta: { ...meta, title: 'Berlin Open II' },
+    athletes: { 79: { name: 'Kim Lee', club: 'Gamma', clubId: '7', country: 'NL', age: 30, entries: [{ division: 'Adult / Blue / -76 kg', place: 1, wins: { submission: 1 }, losses: {} }] } }, read: Date.now() });
+  assert.deepEqual(await ranked('ajptour.com'), [['77', 6, 6, 1], ['78', 3, 3, 0]]);
+  assert.deepEqual(await ranked('smoothcomp.com'), [['11', 6, 6, 1], ['12', 1, 1, 2]]);
+  const dup = await (await API.athlete(env, new URLSearchParams('site=ajptour.com&id=79'))).json();
+  assert.equal(dup.career.wins, 6);
+  // Its academy counts them once.
+  const teams = (await (await API.teams(env, new URLSearchParams('site=ajptour.com&athletes=1'))).json()).rows.map((t) => [t.club_id, t.athletes, t.wins]);
+  assert.deepEqual(teams.sort(), [['7', 1, 6], ['8', 1, 3]]);
 });
 
 test('listed events are found by place, date, sport and size, and academies where they compete', async () => {

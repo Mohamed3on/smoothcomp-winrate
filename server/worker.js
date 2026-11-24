@@ -2,12 +2,12 @@
 // look up a whole event at once; each one cleans what it gets (career-cache.js),
 // so the worker only bounds what it stores.
 import '../rules.js';
-import { API, BOARD, CLUBS, EVENT_COUNTS, TALLY } from './stats.js';
+import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 
 const { BELTS, LABELS, finishOf, detailOf, beltOf } = globalThis.SCWRRules;
 
-// Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), a few
-// hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
+// Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), each summed with
+// their person's other accounts (MERGE), a few hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
 async function retally(env, site, users) {
   const all = [...new Set(users)].filter(validUser).slice(0, 5000);
   const statements = [];
@@ -16,7 +16,7 @@ async function retally(env, site, users) {
     statements.push(env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some),
-      ...BOARD.map((sql) => env.DB.prepare(sql).bind(site, some, 0)));
+      ...BOARD.map((sql) => env.DB.prepare(sql).bind(site, some, 0)), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some)));
   }
   if (statements.length) await env.DB.batch(statements);
 }

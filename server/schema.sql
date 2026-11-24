@@ -162,14 +162,29 @@ CREATE TABLE IF NOT EXISTS board (
   rw_submission INTEGER, rw_points INTEGER, rw_walkover INTEGER, rw_decision INTEGER, rw_disqualification INTEGER, rw_stoppage INTEGER, rw_fastest_escape INTEGER, rw_other INTEGER,
   rl_submission INTEGER, rl_points INTEGER, rl_walkover INTEGER, rl_decision INTEGER, rl_disqualification INTEGER, rl_stoppage INTEGER, rl_fastest_escape INTEGER, rl_other INTEGER,
   sl_submission INTEGER, sl_points INTEGER, sl_walkover INTEGER, sl_decision INTEGER, sl_disqualification INTEGER, sl_stoppage INTEGER, sl_fastest_escape INTEGER, sl_other INTEGER,
+  -- 1 for a person's other account on the same site (stats.js MERGE): the rankings leave it out. Taken by ALTER TABLE on D1.
+  dup INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (site, user)
 );
 CREATE INDEX IF NOT EXISTS board_club ON board (site, club_id);
+-- A board row of each account that shares its person with another (stats.js MERGE), as that account alone gives it:
+-- the board holds every such account's person, summed from these.
+CREATE TABLE IF NOT EXISTS board_own (
+  site TEXT NOT NULL, user TEXT NOT NULL, source TEXT NOT NULL, at INTEGER, types TEXT,
+  name TEXT, club TEXT, club_id TEXT, country TEXT, country_name TEXT, photo TEXT, born INTEGER, hidden INTEGER, belt TEXT,
+  last TEXT, events INTEGER, gold INTEGER, silver INTEGER, bronze INTEGER,
+  w_submission INTEGER, w_points INTEGER, w_walkover INTEGER, w_decision INTEGER, w_disqualification INTEGER, w_stoppage INTEGER, w_fastest_escape INTEGER, w_other INTEGER,
+  rw_submission INTEGER, rw_points INTEGER, rw_walkover INTEGER, rw_decision INTEGER, rw_disqualification INTEGER, rw_stoppage INTEGER, rw_fastest_escape INTEGER, rw_other INTEGER,
+  rl_submission INTEGER, rl_points INTEGER, rl_walkover INTEGER, rl_decision INTEGER, rl_disqualification INTEGER, rl_stoppage INTEGER, rl_fastest_escape INTEGER, rl_other INTEGER,
+  sl_submission INTEGER, sl_points INTEGER, sl_walkover INTEGER, sl_decision INTEGER, sl_disqualification INTEGER, sl_stoppage INTEGER, sl_fastest_escape INTEGER, sl_other INTEGER,
+  PRIMARY KEY (site, user)
+);
 -- The default ranking's wins and losses (every finish but walkovers, in rules.js FINISHES order, as stats.js careersOf
--- sums them: wins, then lost): the athletes ranking reads its page and its count off it. A query that must not walk it
+-- sums them: wins, then lost), a person's other accounts on a site apart (dup): the athletes ranking reads its page and its count off it. A query that must not walk it
 -- (an academy's athletes) writes +wins; without that the academies list walked it once per academy and reset D1 (2026-11-24).
 DROP INDEX IF EXISTS board_wins;
-CREATE INDEX IF NOT EXISTS board_record ON board (site, (w_submission + w_stoppage + w_fastest_escape + w_points + w_decision + w_disqualification + w_other),
+DROP INDEX IF EXISTS board_record;
+CREATE INDEX IF NOT EXISTS board_ranked ON board (site, dup, (w_submission + w_stoppage + w_fastest_escape + w_points + w_decision + w_disqualification + w_other),
   (iif(rw_submission + rw_stoppage + rw_fastest_escape + rw_points + rw_decision + rw_disqualification + rw_other + rl_submission + rl_stoppage + rl_fastest_escape + rl_points + rl_decision + rl_disqualification + rl_other > 0,
     rl_submission + rl_stoppage + rl_fastest_escape + rl_points + rl_decision + rl_disqualification + rl_other,
     iif(source = 'results', sl_submission + sl_stoppage + sl_fastest_escape + sl_points + sl_decision + sl_disqualification + sl_other, NULL))));
