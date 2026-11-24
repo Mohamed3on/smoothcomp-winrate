@@ -188,6 +188,8 @@ export function EventPage({ id }: { id: string }) {
       { key: 'career', label: 'Career wins', width: '9rem', narrow: true, sort: 'career', title: "Rank by their entrants' career wins added up", cell: (t: Academy) => <Num n={t.career} /> },
     ]),
   ];
+  // Once fought, each athlete's places and their record and win rate here; before, the medal each bracket points to and career wins.
+  // While live, anyone still to fight keeps the before view.
   const roster = (t: Academy) => (
     <ol className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-x-6 gap-y-1 rounded-lg border bg-card p-3">
       {t.people.map((p, i) => (
@@ -196,9 +198,11 @@ export function EventPage({ id }: { id: string }) {
           <Photo name={p.name} photo={p.photo} className="size-6" />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex items-center gap-2"><NameLink e={p} f={f} /><Belt belt={p.belt} /><Age born={p.born} /></span>
-            <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">{p.rows.map((r) => <span key={r.division} className="inline-flex items-center gap-1.5"><Dot call={r.call} /><DivisionLink event={id} name={r.division} f={f} /></span>)}</span>
+            <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">{p.rows.map((r) => <span key={r.division} className="inline-flex items-center gap-1.5">{fought && (r.place != null || !live) ? <Place p={r.place} /> : <Dot call={r.call} />}<DivisionLink event={id} name={r.division} f={f} /></span>)}</span>
           </span>
-          <span className="shrink-0 font-semibold">{p.career ?? '–'}</span>
+          {fought && (!live || p.w + p.l > 0)
+            ? <span className="flex shrink-0 flex-col items-end leading-tight" title="Win rate here, counted finishes"><span className="font-semibold">{rate(p.w, p.l) ?? '–'}</span><span className="text-xs"><Record w={p.w} l={p.l} /></span></span>
+            : <span className="shrink-0 font-semibold" title="Career wins">{p.career ?? '–'}</span>}
         </li>
       ))}
     </ol>
