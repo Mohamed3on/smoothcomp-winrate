@@ -20,6 +20,10 @@ const AT_ONCE = 6;
 // so the lane asks one at a time; past twice this even so, it stops until the next minute.
 const SLOW = 300;
 const DAY = 864e5;
+// Events read a day (UTC) at most: about 4,000–4,500 rows written each, so any month's crawling stays inside
+// the 50 million writes D1 includes (the user pays nothing past the plan). Lanes count at their start, so
+// together they may pass it by a few.
+const DAILY = 300;
 const { finishOf, normalize, placeOf, roundOf, isPool, poolPlaces } = globalThis.SCWRRules;
 
 class Gone extends Error {}
@@ -341,11 +345,10 @@ export async function findClubs(env) {
   return found ? 1 : 0;
 }
 
-// Older events, ARCHIVE pages a site a day past the last year's (about 4,000 events): the crawler reads them
-// after the recent ones, so the whole archive (some 16,000 events) is listed in four days. At about 4,000 rows
-// written each that runs past D1's 50 million included writes a month (the user chose faster: some $30–50
-// once). The page reached is kept in meta, and the walk stops once the database passes 9 GB (D1 holds 10).
-const ARCHIVE = 100;
+// Older events, ARCHIVE pages a site a day past the last year's (about 320 events): the crawler reads them
+// after the recent ones, within its DAILY limit. The page reached is kept in meta, and the walk stops once
+// the database passes 9 GB (D1 holds 10).
+const ARCHIVE = 8;
 
 export async function listEvents(env) {
   const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
@@ -406,7 +409,9 @@ export async function crawl(env, record, addBouts) {
 
 async function lane(env, record, addBouts, get, left, finished) {
   const now = Date.now();
+  let room = DAILY - await env.DB.prepare("SELECT count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1").bind(now - (now % DAY)).first('n');
   while (left() > 10) {
+    if (room <= 0) return 'daily';
     // Taken and held in one statement, so lanes running side by side never take the same event; through
     // crawls_due, in the order taken, so it stops at the first one due instead of sorting the queue.
     const job = await env.DB.prepare(`UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls INDEXED BY crawls_due WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY priority DESC, start DESC LIMIT 1) RETURNING *`)
@@ -438,6 +443,7 @@ async function lane(env, record, addBouts, get, left, finished) {
         await env.DB.prepare('UPDATE crawls SET wrote = ?3 WHERE site = ?1 AND event = ?2').bind(job.site, job.event, Date.now()).run();
       }
       finished();
+      room--;
       await save('done', { named: Object.keys(data.users).length, missed: data.missed?.length ?? 0, matches: data.matches.length });
     } catch (e) {
       // Out of time: the next run goes on from here. Told to slow down (429): this run stops. A site
