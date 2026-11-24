@@ -179,7 +179,9 @@ const ATHLETE_SORTS = {
   medals: 'gold DESC, silver DESC, bronze DESC, wins DESC',
   perEvent: 'wins * 1.0 / events DESC, wins DESC',
   last: 'last DESC, wins DESC',
-  winRate: 'won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, won + lost DESC, wins DESC',
+  // Ties go to the longer record either way (-x ASC, which ?dir=asc leaves as is): at 0%, 0–2 before 0–1.
+  winRate: 'won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, -(won + lost) ASC, wins DESC',
+  losses: 'lost DESC NULLS LAST, -(won + lost) ASC',
 };
 
 async function athletes(env, params) {

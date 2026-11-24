@@ -86,16 +86,17 @@ const colour = (t: string) => `var(--color-win-${(WIN_TYPES as readonly string[]
 const ordered = (types: Types) => Object.entries(types ?? {}).filter(([, n]) => Number(n) > 0)
   .sort(([a], [b]) => ((WIN_TYPES as readonly string[]).indexOf(a) + 1 || 99) - ((WIN_TYPES as readonly string[]).indexOf(b) + 1 || 99));
 
-const SHORT: Record<string, string> = { submission: 'sub', stoppage: 'stop', points: 'pts', decision: 'dec', disqualification: 'DQ', walkover: 'WO' };
+export const SHORT: Record<string, string> = { submission: 'sub', stoppage: 'stop', points: 'pts', decision: 'dec', disqualification: 'DQ', walkover: 'WO' };
 
 // Every counted win, most decisive finish first: the extension's ramp.
 // scale: the bar's length as a share of the column's longest, so totals compare down a table.
-// legend 'short': one line naming the two commonest finishes, in the ramp's order, and counting the rest, so the ramp's blues are never the only key.
-export function Mix({ types, f, large = false, legend = true, scale = 1, note, empty = 'No counted wins' }: { types: Types; f: Filters; large?: boolean; legend?: boolean | 'short'; scale?: number; note?: React.ReactNode; empty?: string }) {
+// legend 'short': one line naming the two commonest finishes (the focus, a ranking's finish, always among them), in the ramp's order,
+// and counting the rest, so the ramp's blues are never the only key.
+export function Mix({ types, f, large = false, legend = true, scale = 1, note, empty = 'No counted wins', focus }: { types: Types; f: Filters; large?: boolean; legend?: boolean | 'short'; scale?: number; note?: React.ReactNode; empty?: string; focus?: string }) {
   const shown = ordered(types).filter(([t]) => f.counted(t));
   if (!shown.length) return <span className="text-xs text-muted-foreground">{empty}</span>;
   const title = shown.map(([t, c]) => `${typeName(t)} ${c}`).join(' · ');
-  const commonest = [...shown].sort(([, a], [, b]) => Number(b) - Number(a));
+  const commonest = [...shown].sort(([a, x], [b, y]) => Number(b === focus) - Number(a === focus) || Number(y) - Number(x));
   const named = new Set(commonest.slice(0, 2).map(([t]) => t));
   const rest = commonest.slice(2).reduce((n, [, c]) => n + Number(c), 0);
   return (
