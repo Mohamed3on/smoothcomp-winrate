@@ -197,7 +197,8 @@ async function people(env, { site, athletes }) {
 // podiums, and its own counts.
 async function settle(env, site, event, users) {
   await retally(env, site, users);
-  const ids = (await env.DB.prepare('SELECT DISTINCT club_id FROM entries WHERE site = ?1 AND event = ?2 AND club_id IS NOT NULL').bind(site, event).all()).results.map((row) => row.club_id);
+  // The + keeps SQLite off the academy index, which reads every entry on the site, onto the event key.
+  const ids = (await env.DB.prepare('SELECT DISTINCT +club_id AS club_id FROM entries WHERE site = ?1 AND event = ?2 AND +club_id IS NOT NULL').bind(site, event).all()).results.map((row) => row.club_id);
   await env.DB.batch([env.DB.prepare(CLUBS).bind(site, JSON.stringify(ids)), env.DB.prepare(EVENT_COUNTS).bind(site, event)]);
 }
 

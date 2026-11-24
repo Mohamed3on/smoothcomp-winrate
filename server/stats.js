@@ -136,11 +136,12 @@ export const CLUBS = `INSERT OR REPLACE INTO clubs (site, club_id, club, podium_
     podiums.gold, podiums.silver, podiums.bronze, podiums.entered, c.lat, c.lng, c.city, c.country
   FROM ids LEFT JOIN podiums USING (club_id) LEFT JOIN cities c ON c.club_id = ids.club_id AND c.rank = 1`;
 
-// An event's athletes, divisions and academies, kept on it. ?1 site, ?2 event.
+// An event's athletes, divisions and academies, kept on it. ?1 site, ?2 event. The + keeps the
+// academy count on the event key, not the academy index, which reads every entry on the site.
 export const EVENT_COUNTS = `UPDATE events SET
   athletes = (SELECT count(DISTINCT user) FROM entries e WHERE e.site = ?1 AND e.event = ?2),
   divisions = (SELECT coalesce(nullif(count(DISTINCT division) FILTER (WHERE fought = 1), 0), count(DISTINCT division)) FROM entries e WHERE e.site = ?1 AND e.event = ?2),
-  teams = (SELECT count(DISTINCT club_id) FROM entries e WHERE e.site = ?1 AND e.event = ?2),
+  teams = (SELECT count(DISTINCT +e.club_id) FROM entries e WHERE e.site = ?1 AND e.event = ?2),
   fought = (SELECT max(fought) FROM entries e WHERE e.site = ?1 AND e.event = ?2)
   WHERE site = ?1 AND event = ?2`;
 
