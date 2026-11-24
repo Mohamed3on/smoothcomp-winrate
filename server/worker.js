@@ -373,18 +373,26 @@ async function cached(request, ctx, name, env, make) {
   };
   const hit = await cache.match(key);
   const stored = Number(hit?.headers.get('X-Stored'));
-  const stamps = hit ? (await db.prepare("SELECT k, v FROM meta WHERE k IN ('changed', 'reset')").all()).results : [];
-  const stamp = (k) => Number(stamps.find((row) => row.k === k)?.v ?? 0);
-  if (hit && stamp('reset') <= stored) {
-    const age = (Date.now() - stored) / 1000;
-    const changed = stamp('changed') > stored;
-    if (age <= fresh && (!changed || (STALE_OK.has(name) && age < 60))) return new Response(hit.body, { headers: headers('HIT') });
-    if (STALE_OK.has(name)) {
-      ctx.waitUntil(build().catch(() => {}));
-      return new Response(hit.body, { headers: headers('STALE') });
+  try {
+    const stamps = hit ? (await db.prepare("SELECT k, v FROM meta WHERE k IN ('changed', 'reset')").all()).results : [];
+    const stamp = (k) => Number(stamps.find((row) => row.k === k)?.v ?? 0);
+    if (hit && stamp('reset') <= stored) {
+      const age = (Date.now() - stored) / 1000;
+      const changed = stamp('changed') > stored;
+      if (age <= fresh && (!changed || (STALE_OK.has(name) && age < 60))) return new Response(hit.body, { headers: headers('HIT') });
+      if (STALE_OK.has(name)) {
+        ctx.waitUntil(build().catch(() => {}));
+        return new Response(hit.body, { headers: headers('STALE') });
+      }
     }
+    return await build();
+  } catch (error) {
+    // D1 turns reads away for a few seconds when it is overloaded: any copy stored, however old, beats an
+    // error, and with none the reader is told to try again (the site retries) instead of getting a 500.
+    console.error(name, String(error));
+    if (hit) return new Response(hit.body, { headers: headers('STALE') });
+    return Response.json({ error: 'Busy, try again' }, { status: 503, headers: { 'Retry-After': '5', 'Cache-Control': 'no-store' } });
   }
-  return build();
 }
 
 // A page of the site, with a CSP nonce made for this response alone. Cloudflare's bot

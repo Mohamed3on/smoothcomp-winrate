@@ -21,3 +21,7 @@ binding = "ASSETS"
 directory = "../site/dist"
 not_found_handling = "single-page-application"
 run_worker_first = ["/*", "!/assets/*", "!/icon.svg"]
+
+# Each request's errors kept a few days (Workers Logs), so a failure can be read after the fact.
+[observability]
+enabled = true
