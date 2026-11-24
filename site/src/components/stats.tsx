@@ -92,7 +92,8 @@ export const SHORT: Record<string, string> = { submission: 'sub', stoppage: 'sto
 // scale: the bar's length as a share of the column's longest, so totals compare down a table.
 // legend 'short': one line naming the two commonest finishes (the focus, a ranking's finish, always among them), in the ramp's order,
 // and counting the rest, so the ramp's blues are never the only key.
-export function Mix({ types, f, large = false, legend = true, scale = 1, note, empty = 'No counted wins', focus }: { types: Types; f: Filters; large?: boolean; legend?: boolean | 'short'; scale?: number; note?: React.ReactNode; empty?: string; focus?: string }) {
+// pick: a finish named in the short legend ranks the list by it when clicked.
+export function Mix({ types, f, large = false, legend = true, scale = 1, note, empty = 'No counted wins', focus, pick }: { types: Types; f: Filters; large?: boolean; legend?: boolean | 'short'; scale?: number; note?: React.ReactNode; empty?: string; focus?: string; pick?: (type: string) => void }) {
   const shown = ordered(types).filter(([t]) => f.counted(t));
   if (!shown.length) return <span className="text-xs text-muted-foreground">{empty}</span>;
   const title = shown.map(([t, c]) => `${typeName(t)} ${c}`).join(' · ');
@@ -106,11 +107,13 @@ export function Mix({ types, f, large = false, legend = true, scale = 1, note, e
       </div>
       {legend === 'short' && (
         <div className="flex items-center gap-2.5 whitespace-nowrap text-xs text-muted-foreground">
-          {shown.filter(([t]) => named.has(t)).map(([t, c]) => (
-            <span key={t} className="inline-flex items-center gap-1">
-              <i className="size-1.5 rounded-full" style={{ background: colour(t) }} /><b className="font-semibold text-foreground/80">{fmt(Number(c))}</b>{SHORT[t] ?? typeName(t).toLowerCase()}
-            </span>
-          ))}
+          {shown.filter(([t]) => named.has(t)).map(([t, c]) => {
+            const chip = <><i className="size-1.5 rounded-full" style={{ background: colour(t) }} /><b className="font-semibold text-foreground/80">{fmt(Number(c))}</b>{SHORT[t] ?? typeName(t).toLowerCase()}</>;
+            return pick
+              ? <button key={t} type="button" onClick={() => pick(t)} title={`Rank by ${typeName(t).toLowerCase()}`}
+                  className={cn('-mx-1 inline-flex items-center gap-1 rounded px-1 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring', t === focus && 'text-primary')}>{chip}</button>
+              : <span key={t} className="inline-flex items-center gap-1">{chip}</span>;
+          })}
           {rest > 0 && <span>+{fmt(rest)}</span>}
           {note}
         </div>

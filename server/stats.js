@@ -152,7 +152,7 @@ const counted = (off) => { let out = []; try { out = JSON.parse(off); } catch {}
 const careersOf = (off) => {
   const on = counted(off);
   const sum = (prefix) => (on.length ? on.map((g) => `${prefix}_${g}`).join(' + ') : '0');
-  return `careers AS (SELECT user, at, source, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze, ${cols('w')},
+  return `careers AS (SELECT user, at, source, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze, ${cols('w')}, ${cols('rl')},
     ${sum('w')} AS wins,
     iif(source = 'results', ${sum('sl')}, NULL) AS losses,
     iif(${sum('rw')} + ${sum('rl')} > 0, ${sum('rw')}, iif(source = 'results', ${sum('w')}, NULL)) AS won,
@@ -166,22 +166,30 @@ const careersOf = (off) => {
 // read (`within` narrows the results that outrank it, as to one division). Entries are aliased e.
 const shown = (within = '') => `(e.fought = 1 OR NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user${within} AND x.fought = 1))`;
 
-const careerRow = (row) => ({ ...Object.fromEntries(Object.entries(row).filter(([k]) => !k.startsWith('w_'))), types: JSON.parse(row.types ?? '{}'), lost_types: row.lost_types ? JSON.parse(row.lost_types) : null });
+const careerRow = (row) => ({ ...Object.fromEntries(Object.entries(row).filter(([k]) => !/^(w|rl)_/.test(k))), types: JSON.parse(row.types ?? '{}'), lost_types: row.lost_types ? JSON.parse(row.lost_types) : null });
 
-// A sort is a fixed expression, or one finish type's count; ?dir=asc reverses it, blanks still last.
+// A sort is a fixed expression, or one finish type's count of wins (the type) or losses (lost_ and the type);
+// ?dir=asc reverses it, blanks still last.
 const flip = (sort, dir) => (dir === 'asc' ? sort.replace(/ DESC( NULLS LAST)?/g, ' ASC NULLS LAST') : sort);
-const order = (sorts, key, dir) => flip(sorts[key] ?? (GROUPS.includes(key) ? `w_${key} DESC, wins DESC` : sorts.wins), dir);
+// Ties go to the more decisive wins (submissions, then stoppages, points, decisions) and the less decisive
+// losses; WORSE_LOSSES ranks the decisive losses first, for a list of losses. -x DESC flips with ?dir=asc as x DESC does.
+const DECISIVE = ['submission', 'stoppage', 'points', 'decision'];
+const BETTER_WINS = DECISIVE.map((g) => `w_${g} DESC`).join(', ');
+const WORSE_LOSSES = DECISIVE.map((g) => `rl_${g} DESC`).join(', ');
+const BETTER_LOSSES = DECISIVE.map((g) => `-rl_${g} DESC`).join(', ');
+const lostBy = (key) => GROUPS.includes(key?.slice(5)) && key.startsWith('lost_') && `iif(lost IS NULL, NULL, rl_${key.slice(5)}) DESC NULLS LAST, lost DESC, ${WORSE_LOSSES}`;
+const order = (sorts, key, dir) => flip(sorts[key] ?? (GROUPS.includes(key) ? `w_${key} DESC, wins DESC, ${BETTER_WINS}` : lostBy(key) || sorts.wins), dir);
 const ATHLETE_SORTS = {
-  wins: 'wins DESC',
+  wins: `wins DESC, ${BETTER_WINS}`,
   events: 'events DESC, wins DESC',
-  submission: 'submission DESC, wins DESC',
+  submission: `submission DESC, wins DESC, ${BETTER_WINS}`,
   rate: 'submission * 1.0 / wins DESC, wins DESC',
   medals: 'gold DESC, silver DESC, bronze DESC, wins DESC',
   perEvent: 'wins * 1.0 / events DESC, wins DESC',
   last: 'last DESC, wins DESC',
-  // Ties go to the longer record either way (-x ASC, which ?dir=asc leaves as is): at 0%, 0–2 before 0–1.
-  winRate: 'won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, -(won + lost) ASC, wins DESC',
-  losses: 'lost DESC NULLS LAST, -(won + lost) ASC',
+  // Ties go to the longer record either way (-x ASC, which ?dir=asc leaves as is): at 0%, 0–2 before 0–1; then to how they came.
+  winRate: `won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, -(won + lost) ASC, ${BETTER_WINS}, ${BETTER_LOSSES}`,
+  losses: `lost DESC NULLS LAST, ${WORSE_LOSSES}, -(won + lost) ASC`,
 };
 
 async function athletes(env, params) {
@@ -206,8 +214,13 @@ async function athletes(env, params) {
   if (f.bornFrom !== 0 || f.bornTo !== 9999) where.push(`born BETWEEN ${arg(f.bornFrom)} + 1 AND ${arg(f.bornTo)}`);
   if (f.since) where.push(`last >= ${arg(f.since)}`);
   const matching = where.join(' AND ');
+  const [limit, offset] = [arg(f.limit), arg(f.offset)];
+  // Ranked by wins, the page's fewest wins are read off board_record first, so ties are sorted by finish among the
+  // athletes with at least that many alone (the finishes left SQLite sorting every athlete: 3 s).
+  const floor = !club && sort.startsWith('wins DESC')
+    ? ` AND wins >= coalesce((SELECT wins FROM careers WHERE ${matching} ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off)},
-    top AS (SELECT user FROM careers WHERE ${matching} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${arg(f.limit)} OFFSET ${arg(f.offset)})
+    top AS (SELECT user FROM careers WHERE ${matching}${floor} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
     SELECT careers.*, (SELECT count(*) FROM careers WHERE ${matching}) AS total FROM top CROSS JOIN careers USING (user) ORDER BY ${sort}, user`)
     .bind(...args).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
