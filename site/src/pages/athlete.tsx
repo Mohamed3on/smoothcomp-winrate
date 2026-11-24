@@ -82,9 +82,11 @@ function scoreOf(m: Meeting): string | null {
 const countedMatch = (m: Meeting, f: Filters) => !m.type || f.counted(finishOf(m.type));
 type Show = 'all' | 'won' | 'lost';
 
+// A walkover is no meeting: it never counts in a head-to-head.
+const walkover = (m: Meeting) => !!m.type && finishOf(m.type) === 'walkover';
 // Everyone who beat them more than once (rules.js rivalsOf), the newest meeting giving the club and photo.
 interface Rival { key: string; name: string; club: string | null; image: string | null; w: number; l: number }
-const rivalsIn = (rows: Row[]): Rival[] => rivalsOf(rows.flatMap(meetingsOfRow).map((m) => ({ name: m.opponent ?? '', won: m.won, club: m.club, image: m.image })));
+const rivalsIn = (rows: Row[]): Rival[] => rivalsOf(rows.flatMap(meetingsOfRow).filter((m) => !walkover(m)).map((m) => ({ name: m.opponent ?? '', won: m.won, club: m.club, image: m.image })));
 
 // One event as the page shows it: what Smoothcomp lists, joined to the divisions Mat Stats read
 // and to the record their profile's match lists gave.
@@ -477,7 +479,7 @@ export function AthletePage({ id }: { id: string }) {
   const met = past.flatMap(meetingsOfRow);
   const losses = met.filter((m) => !m.won).length;
   const pick = (r: Rival | null) => { setAgainst(r); if (r) document.getElementById('events')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
-  const matches = met.filter((m) => (against ? normalize(m.opponent) === against.key : countedMatch(m, f)));
+  const matches = met.filter((m) => (against ? normalize(m.opponent) === against.key && !walkover(m) : countedMatch(m, f)));
   const won = matches.filter((m) => m.won).length;
   // Won or lost alone lists just those matches, event by event; all keeps every event. The lists keep the
   // finish types switched off too: only the counts and records leave them out.
