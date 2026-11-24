@@ -268,26 +268,25 @@ async function locate(env, place) {
   return town ? { ...place, lat: town.latitude, lng: town.longitude, source: 'town' } : { ...place, source: null };
 }
 
-// Every minute, the next academies' pages, those never read first, then the busiest, two at a time; each is
-// read again after half a year. A private academy's page (403) has nothing to say; a busy site (429, 5xx)
-// ends the run, to go on next minute.
+// Every minute, the next academies' pages, those never read first, then the busiest; each is read again
+// after half a year. Smoothcomp answers a burst of five or so with 429, so they go one every 2.5 seconds.
+// A private academy's page (403) has nothing to say; a busy site (429, 5xx) ends the run, to go on next minute.
 export const PLACED = `INSERT OR REPLACE INTO club_places (site, club_id, lat, lng, city, country, address, source, checked)
   SELECT value ->> 'site', value ->> 'club_id', value ->> 'lat', value ->> 'lng', value ->> 'city', value ->> 'country', value ->> 'address', value ->> 'source', ?1 FROM json_each(?2)`;
-export async function placeClubs(env, take = 30) {
+export async function placeClubs(env, take = 20, gap = 2500) {
   const due = (await env.DB.prepare(`SELECT c.site, c.club_id FROM clubs c LEFT JOIN club_places p ON p.site = c.site AND p.club_id = c.club_id
     WHERE p.checked IS NULL OR p.checked < ?1 ORDER BY p.checked IS NOT NULL, p.checked, coalesce(c.entered, 0) DESC LIMIT ?2`).bind(Date.now() - 182 * DAY, take).all()).results;
-  const rows = [];
-  for (let i = 0; i < due.length; i += 2) {
-    const read = await Promise.all(due.slice(i, i + 2).map(async ({ site, club_id }) => {
-      const page = await fetch(`${HOSTS[site]}/en/club/${club_id}`, { headers: { 'User-Agent': UA } });
-      if (page.status === 429 || page.status >= 500) throw new Busy();
-      return { site, club_id, place: page.ok ? clubPlace(await page.text()) : null };
-    })).catch((e) => { if (e instanceof Busy) return null; throw e; });
-    if (!read) break;
-    for (const { site, club_id, place } of read) rows.push({ site, club_id, ...(await locate(env, place)) });
+  // Each is kept as soon as it's read, so a run that overlaps the next minute's never reads it twice.
+  let read = 0;
+  for (const [i, { site, club_id }] of due.entries()) {
+    if (i) await new Promise((wait) => setTimeout(wait, gap));
+    const page = await fetch(`${HOSTS[site]}/en/club/${club_id}`, { headers: { 'User-Agent': UA } });
+    if (page.status === 429 || page.status >= 500) break;
+    const row = { site, club_id, ...(await locate(env, page.ok ? clubPlace(await page.text()) : null)) };
+    await env.DB.prepare(PLACED).bind(Date.now(), JSON.stringify([row])).run();
+    read++;
   }
-  if (rows.length) await env.DB.prepare(PLACED).bind(Date.now(), JSON.stringify(rows)).run();
-  return rows.length;
+  return read;
 }
 
 export async function listEvents(env) {
