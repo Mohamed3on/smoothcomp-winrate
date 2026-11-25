@@ -2,7 +2,7 @@
 // belt began, what a kept copy may hold, and how one visit's reads join what was kept. No DOM, no
 // network, no storage, so tests/profile.test.cjs holds them to the shapes Smoothcomp sends.
 const SCWRProfile = (() => {
-  const { BELTS, beltOf, finishOf, howOf, eventRecords, totals, beltSplit, rivalsOf } = SCWRRules;
+  const { BELTS, beltOf, finishOf, howOf, eventRecords, totals, beltSplit, rivalsOf, usualDivision } = SCWRRules;
   const WEEK = 7 * 864e5;
   const time = (e) => Date.parse(e.event_start ?? e.start_date);
   // A match list's finish, or a kept one's (an older copy says "escape"); walkovers never count here.
@@ -85,7 +85,7 @@ const SCWRProfile = (() => {
     const belts = plan.whole ? null : beltSplit(records, plan.worn, plan.starts).map(b => [b.belt, b]);
     // Everyone who beat them more than once, the newest meeting giving the club, photo and registration to link.
     const rivals = rivalsOf(events.flatMap(e => e.out.faced.map(f => ({ name: f.name, won: f.won, club: f.club, image: f.image, reg: f.reg, event: e.id })))).slice(0, 5);
-    return { types: totals(records), belts, losses, wins, rivals };
+    return { types: totals(records), belts, losses, wins, rivals, usual: usualDivision(records) };
   }
 
   // One event as kept: `listed` the event list's row, `event` its match list. A match list can hold an

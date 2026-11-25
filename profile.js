@@ -207,6 +207,9 @@
     // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
     const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
       : stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';
+    // The age group and weight class they entered most in the year up to their latest event.
+    const usual = [stats.usual?.age, stats.usual?.weight].filter(Boolean).join(' · ');
+    if (usual) html += `<div class="scwr-progress gi-text-xs gi-text-secondary" title="The age group and weight class they entered most in the year up to their latest event">Usually ${esc(usual)}</div>`;
     if (note) html += `<div class="scwr-progress gi-text-xs gi-text-secondary" role="status">${note}</div>`;
     // Each finish the athlete has won or lost by, its record on the chip, the most
     // matches first; pressed ones count.

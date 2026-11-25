@@ -83,3 +83,49 @@ test('a bracket seeds by win rate where a record is known, then wins per event',
   assert.ok(bySeed({ won: 9, lost: 2 }, { won: 2, lost: 0 }) < 0);
   assert.ok(bySeed({ won: 20, lost: 2 }, { won: 9, lost: 2 }) < 0);
 });
+
+// Division names as organisers on both sites write them (read from D1, 2026-11-25).
+const DIVISIONS = {
+  "Men's GI / Blue / Master 2 / 85KG": ['Master 2', '−85 kg'],
+  'Adult Gi / Master 1 (30+) / White / -79kg / Men': ['Master 1', '−79 kg'],
+  'Gi Adult / Male / Blue / Senior (40+) / Over 230 lbs': ['Master', '+230 lbs'],
+  'Masculino / Branca / Master 3 (41+) / 100,50 kg (Super Pesado)': ['Master 3', '−100.5 kg'],
+  'Kids Masculino / Cinza / Junior 1  /  9-10 anos / de 30,3 até 33,2 kg (Pena)': ['Kids', '−33.2 kg'],
+  'Kids Masculino / Branca / Teens /  13-15 anos / acima de 73,0 kg (Pesadíssimo)': ['Teen', '+73 kg'],
+  'Youth Men\'s GI / White Belt / Teen (14-17 yrs) / -66 kg': ['Teen', '−66 kg'],
+  'No Gi Kids / Boys / Pre Teen (10 - 11 yrs) / Gray / Feather II (Up to 75 lbs)': ['Kids', '−75 lbs'],
+  'Gi Juveniles - Adults / Male / Adult (18+) / White / Light Feather (Up to 145 lbs)': ['Adult', '−145 lbs'],
+  'Juvenil Feminino / Branca / 56,50 kg (Leve)': ['Juvenile', '−56.5 kg'],
+  'Infanto Juvenil 1 / MASCULINO / BRANCA+CINZA / Infanto-Juvenil 1 / PESADO': ['Teen', 'Pesado'],
+  'Gi--- Male Divisions / Adult / White / 145.1 - 155 Lbs': ['Adult', '−155 lbs'],
+  'Men Gi / Purple / 190 - 199.9 (Cruiser Weight) / Adult': ['Adult', '−199.9'],
+  'Men No-Gi / Intermediate / 200 & Over (Heavy Weight) / Director (40+)': ['Master', '+200'],
+  'Absolute Gi Men / 18 & above / Blue': ['Adult', 'Open'],
+  'TEEN NO - GI FEMALE / Grey / 68+ kg': ['Teen', '+68 kg'],
+  'Prva borba / Men / Seniori / -70 kg B': ['Adult', '−70 kg'],
+  'BU13 -46': ['Kids', null],
+  'No-Gi Grappling / Male / 10-11 / Beginner / -79lbs': ['Kids', '−79 lbs'],
+  'Pro Grappling / Male / Pro Grappling II (Up to 999 lbs)': [null, 'Open'],
+  'C - Group E - Northern Long Weapon': [null, null],
+};
+
+test("a division's name gives its age group and weight class", () => {
+  const { divisionOf } = context.SCWRRules;
+  for (const [name, [age, weight]] of Object.entries(DIVISIONS)) assert.deepEqual({ ...divisionOf(name) }, { age, weight }, name);
+});
+
+test('the usual division is the most entered over the year to the latest event, open weight aside', () => {
+  const { usualDivision } = context.SCWRRules;
+  const at = (start, ...divisions) => ({ start, divisions });
+  const usual = usualDivision([
+    at('2023-03-01', 'Gi / Adult / -94 kg', 'Gi / Adult / -94 kg'),
+    at('2023-05-01', 'Gi / Adult / -94 kg'),
+    at('2025-01-10', 'Gi / Master 1 (30+) / -85 kg', 'No-Gi / Master 1 (30+) / -85 kg', 'Absolute / Master 1 / Open Weight'),
+    at('2025-06-01', 'Gi / Master 1 (30+) / -77 kg'),
+    at('2025-11-01', 'Gi / Master 1 (30+) / -77 kg'),
+  ]);
+  assert.deepEqual({ ...usual }, { age: 'Master 1', weight: '−77 kg' });
+  // A tie goes to the newer.
+  assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Adult / -85 kg'), at('2025-02-01', 'Master 1 / -77 kg')]) }, { age: 'Master 1', weight: '−77 kg' });
+  assert.deepEqual({ ...usualDivision([]) }, { age: null, weight: null });
+});

@@ -12,7 +12,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, totals } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, totals, usualDivision } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -544,6 +544,7 @@ export function AthletePage({ id }: { id: string }) {
   const arts = artsOf(data.profile);
   // Events by site and number, as rows() keys them.
   const records = eventRecords(outcomes.map((o) => ({ ...o, event: at(o) })), entries.map((e) => ({ ...e, event: at(e) })));
+  const usual = [usualDivision(records)].map((u) => [u.age, u.weight].filter(Boolean).join(' · '))[0];
   const over = !records.length ? '' : outcomes.length ? `across ${plural(records.length, 'event')}` : `at ${plural(records.length, 'event')} read`;
   return (
     <div className="flex flex-col gap-6">
@@ -555,6 +556,7 @@ export function AthletePage({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {(a.country || a.country_name) && <span className="inline-flex items-center gap-1.5"><Flag code={a.country} name={a.country_name} />{a.country_name ?? a.country?.toUpperCase()}</span>}
             {age != null && <span>{age} years old</span>}
+            {usual && <span title="The age group and weight class they entered most in the year up to their latest event">Usually {usual}</span>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
             {arts.size ? [...arts].map(([art, s]) => (
               <span key={art} className="inline-flex items-center gap-1.5" title={`${art}: ${plural(s.events, 'event')} on Smoothcomp`}>

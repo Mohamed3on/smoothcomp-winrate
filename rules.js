@@ -122,6 +122,73 @@ globalThis.SCWRRules = (() => {
     return [...met.values()].filter((r) => r.l > 1).sort((a, b) => b.l - b.w - (a.l - a.w) || b.l - a.l);
   }
 
+  // The age group and weight class a division's name gives, each null where it names none (or, for
+  // age, a part names two, like "Juveniles - Adults"). Organisers split names with "/"; an age in years
+  // decides over words ("Pre Teen (10 - 11 yrs)" is kids), and of the parts the narrowest wins ("Adult
+  // Gi / Master 1 (30+)" is Master 1). Weight is the class's limit as written ("de 40,4 até 44,3 kg" is
+  // −44.3 kg, a bare "88,30 kg" too), "+" a floor, without a unit where it gives none; open weight is
+  // "Open"; a class named but not weighed ("PESADO") reads as its name.
+  const AGES = ['Kids', 'Teen', 'Juvenile', 'Adult', 'Master'];
+  // A weight with no unit: "-71", "+105", "160 - 169.9 (Welter Weight)", "105 to 110", "19.9 & Under".
+  const BARE = /^\s*([-+])?\s*(\d+(?:[.,]\d+)?)(?:\s*(?:-|to)\s*(\d+(?:[.,]\d+)?))?\s*((?:&|and)\s*(?:under|below|over|above))?\s*(?:\([^)]*\))?\s*$/i;
+  const CLASS = /^\s*((super|ultra|light|medium|meio)[- ]?)?(rooster|galo|pluma|feather|pena|light|leve|middle|m[eé]dio|heavy|pesad\p{L}*|welter|cruiser)(\s*weight)?\s*(#?\d|i+)?\s*$/iu;
+  const byAge = (n) => (n <= 12 ? 'Kids' : n <= 17 ? 'Teen' : n < 30 ? 'Adult' : 'Master');
+  function ageIn(part) {
+    if (/\d\s*\+?\s*(kg|lbs?)\b/i.test(part)) return null;
+    const master = /\bmasters?\s*(\d)/i.exec(part);
+    if (master) return `Master ${master[1]}`;
+    if (/\binfanto/i.test(part)) return 'Teen';
+    // Years as a range or an age ("11-12 anos", "Pee Wee I (7yrs)", a bare "10-11"), the oldest deciding;
+    // an under-age ("U15", "BU13", "8U") the one below it; a floor ("18+", "18 & above", "Director (40+)") adult or master.
+    const bare = /^\s*(\d+)\s*(?:-|&)\s*(\d+)\s*$/.exec(part);
+    const years = /(\d+)\s*(?:(?:-|&)\s*(\d+)\s*)?(?:years?|yrs|anos|años|y\.?o)/i.exec(part) ?? (bare && bare[2] - bare[1] <= 3 && +bare[2] <= 17 ? bare : null);
+    if (years && +(years[2] ?? years[1]) < 30) return byAge(+(years[2] ?? years[1]));
+    const under = /(?:\b|[a-z])u ?(\d{1,2})\b|\b(\d+)u\b/i.exec(part);
+    if (under) return byAge(+(under[1] ?? under[2]) - 1);
+    const floor = /(?<![\d.,])(\d+)\s*(?:\+|(?:&|and)\s*(?:above|over|older))|\+\s*(\d+)/i.exec(part);
+    if (floor && (!BARE.test(part) || +(floor[1] ?? floor[2]) <= 40)) return +(floor[1] ?? floor[2]) >= 30 ? 'Master' : 'Adult';
+    const named = new Set([
+      [/\bmaster|\bveteran/i, 'Master'], [/\bjuvenil/i, 'Juvenile'], [/\b(teen|cadet)/i, 'Teen'],
+      [/\b(kid|infant|junior|youth|pee wee|mighty mi|mirim|children)/i, 'Kids'], [/\b(adult|amateur|professional|senior)/i, 'Adult'],
+    ].filter(([re]) => re.test(part)).map(([, age]) => age));
+    if (named.has('Teen') || named.has('Juvenile')) named.delete('Kids');
+    if (named.has('Master') && /senior/i.test(part)) named.delete('Adult');
+    return named.size === 1 ? [...named][0] : null;
+  }
+  const rank = (age) => (age ? AGES.indexOf(age.replace(/ \d$/, '')) + (/\d$/.test(age) ? 1 : 0) : -1);
+  function weightIn(part) {
+    if (/\b(open|absolut)/i.test(part)) return 'Open';
+    const m = /(\d+(?:[.,]\d+)?)\s*\+?\s*(kg|lbs?)\b/i.exec(part);
+    // Unitless, unless it reads as an age ("10-11") or is lighter than anyone over five.
+    const bare = !m && BARE.exec(part);
+    if (!m && !bare) return CLASS.test(part) ? part.trim().replace(/\s+/g, ' ').toLowerCase().replace(/(^|[\s-])\p{L}/gu, (c) => c.toUpperCase()) : null;
+    if (bare && (ageIn(part) || parseFloat(bare[3] ?? bare[2]) < 18)) return null;
+    const n = parseFloat((m ? m[1] : bare[3] ?? bare[2]).replace(',', '.'));
+    const unit = m ? (/kg/i.test(m[2]) ? ' kg' : ' lbs') : '';
+    if (n >= (unit === ' kg' ? 300 : 600)) return 'Open';
+    return `${/\+|acima|above|over|more than|mais de/i.test(part) ? '+' : '−'}${n}${unit}`;
+  }
+  function divisionOf(name) {
+    const parts = String(name ?? '').split('/');
+    const age = parts.map(ageIn).reduce((best, a) => (rank(a) >= rank(best) ? a : best), null);
+    return { age, weight: parts.map(weightIn).find(Boolean) ?? null };
+  }
+  // The age group and weight class an athlete entered most over the year to their latest event, each
+  // counted once an event; a tie goes to the newer. Open weight doesn't count. `records` as eventRecords gives them.
+  function usualDivision(records) {
+    const dated = records.filter((r) => !Number.isNaN(Date.parse(r.start ?? ''))).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
+    const since = dated.length ? Date.parse(dated[0].start) - 365 * 864e5 : 0;
+    const ages = new Map();
+    const weights = new Map();
+    for (const r of dated.filter((x) => Date.parse(x.start) >= since)) {
+      const seen = r.divisions.map(divisionOf);
+      for (const a of new Set(seen.map((d) => d.age).filter(Boolean))) ages.set(a, (ages.get(a) ?? 0) + 1);
+      for (const w of new Set(seen.map((d) => d.weight).filter((x) => x && x !== 'Open'))) weights.set(w, (weights.get(w) ?? 0) + 1);
+    }
+    const most = (counts) => [...counts].reduce((best, x) => (!best || x[1] > best[1] ? x : best), null)?.[0] ?? null;
+    return { age: most(ages), weight: most(weights) };
+  }
+
   // Places in a division whose results aren't published, read off its matches as Smoothcomp's
   // published results give them (checked on 25902). A bracket's final and bronze match give its
   // medals, the bronze-match loser 4th, quarterfinal losers 5th, eighth-final 9th, the round before
@@ -168,5 +235,5 @@ globalThis.SCWRRules = (() => {
     return (k[1] >= 0 || k[3] >= 0) && seeds.every((s, j) => j === i || seedKey(s).slice(0, 4).some((n, m) => n !== k[m]));
   };
 
-  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, placeOf, roundOf, isPool, poolPlaces };
+  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, placeOf, roundOf, isPool, poolPlaces };
 })();
