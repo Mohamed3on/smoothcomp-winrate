@@ -6,6 +6,7 @@ import { Photo } from '@/components/stats';
 import { useApi } from '@/lib/api';
 import type { Filters } from '@/lib/filters';
 import { date, plural } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 interface Found {
   athletes: { user: string; name: string; club: string | null; photo: string | null; wins: number }[];
@@ -29,6 +30,8 @@ export function Search({ f }: { f: Filters }) {
   }, []);
   const searching = debounced.length >= 2;
   const { data, isFetching } = useApi<Found>('search', { site: f.site, off: [...f.off].join(','), q: debounced }, searching);
+  // Waiting on the debounce or the answer: the box spins and the last query's results dim until this one's land.
+  const pending = q.trim().length >= 2 && (q.trim() !== debounced || isFetching);
   const go = (path: string) => { setOpen(false); setQ(''); navigate(f.link(path)); };
   return (
     <>
@@ -43,11 +46,10 @@ export function Search({ f }: { f: Filters }) {
       </button>
       <CommandDialog open={open} onOpenChange={setOpen} title="Search" description="Find an athlete, academy or event." className="sm:max-w-xl">
         <Command shouldFilter={false}>
-          <CommandInput value={q} onValueChange={setQ} placeholder="Search athletes, academies, events" />
-          {/* Results show only for the query they answer, not a shorter one's leftovers. */}
+          <CommandInput value={q} onValueChange={setQ} loading={pending} placeholder="Search athletes, academies, events" />
           {searching && (
-            <CommandList className="max-h-[50vh] overscroll-contain">
-              {!isFetching && <CommandEmpty>Nothing matches “{debounced}”.</CommandEmpty>}
+            <CommandList aria-busy={pending} className={cn('max-h-[50vh] overscroll-contain transition-opacity duration-150 ease-out', pending && 'opacity-60')}>
+              {!pending && <CommandEmpty>Nothing matches “{debounced}”.</CommandEmpty>}
               {!!data?.athletes.length && <CommandGroup heading="Athletes">{data.athletes.map((a) => (
                 <CommandItem key={a.user} value={`a${a.user}`} onSelect={() => go(`/athlete/${a.user}`)}>
                   <Photo name={a.name} photo={a.photo} className="size-6" /><span className="truncate">{a.name}</span><span className="ml-auto truncate text-xs text-muted-foreground">{a.club}</span>
