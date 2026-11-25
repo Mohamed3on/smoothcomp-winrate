@@ -189,14 +189,18 @@ function CareerStats({ career, f, points }: { career: Athlete | null; f: Filters
     ...(career.wins > 0 && f.counted('submission') ? [['By submission', `${Math.round((career.submission / career.wins) * 100)}%`] as [string, React.ReactNode]] : []),
   ] : [];
   return (
-    <div className="flex flex-wrap items-end gap-x-10 gap-y-3 border-t pt-4">
+    <div className="flex flex-wrap items-start gap-x-10 gap-y-4 border-t pt-4">
       {stats.length > 0 && <dl className="flex flex-wrap gap-x-10 gap-y-3" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career?.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
         {stats.map(([label, value]) => <Stat key={label} label={label} value={value} />)}
       </dl>}
-      {points.total > 0 && <dl className="flex flex-wrap items-end gap-x-10 gap-y-3" title="Points on the scoreboard in the matches read, over the finishes counted; walkovers have none">
-        <Stat label="Points for" value={points.for} />
-        <Stat label="Points against" value={points.against} />
-        <span className="pb-1 text-xs text-muted-foreground">{points.scored === points.total ? `in ${plural(points.total, 'match')}` : `in ${points.scored} of ${points.total} matches read`}</span>
+      {points.total > 0 && <dl className="flex items-center gap-x-6 gap-y-3 border-border sm:border-l sm:pl-10" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, over the finishes counted; walkovers have none">
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-xs text-muted-foreground">Points</dt>
+          <dd className="text-lg tabular-nums"><Record w={points.for} l={points.against} /></dd>
+          <dd className="text-xs text-muted-foreground tabular-nums">
+            <span className="font-medium text-foreground/85">{diff(points.for - points.against)}</span> over {points.scored === points.total ? plural(points.total, 'match') : `${fmt(points.scored)} of ${plural(points.total, 'match')}`}
+          </dd>
+        </div>
         {points.unscored.length > 0 && <ReadScores targets={points.unscored} route="athlete" />}
       </dl>}
     </div>
@@ -208,6 +212,8 @@ const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <dt className="order-first text-xs text-muted-foreground">{label}</dt>
   </div>
 );
+// A point differential, signed: +174, −12, ±0.
+const diff = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${fmt(Math.abs(n))}`;
 // Points scored and conceded over the matches whose score was read, and the events with a match still to read.
 interface Points { for: number; against: number; scored: number; total: number; unscored: Target[] }
 
