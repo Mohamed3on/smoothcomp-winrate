@@ -376,6 +376,9 @@ async function profile(env, body) {
       ON CONFLICT (site, user) DO UPDATE SET entry = json_patch(profiles.entry, excluded.entry), at = excluded.at`).bind(site, user, JSON.stringify(entry), Date.now()),
     env.DB.prepare(`UPDATE history SET image = j.value ->> 1 FROM json_each(?3) j WHERE history.site = ?1 AND history.user = ?2 AND history.event = j.value ->> 0`)
       .bind(site, user, JSON.stringify(images)),
+    // A profile someone opens has its unread events read next, as an academy page does (/api/team).
+    env.DB.prepare(`UPDATE crawls SET priority = 3 WHERE site = ?1 AND +state = 'queued' AND +priority < 3 AND event IN (SELECT event FROM history WHERE site = ?1 AND user = ?2)`)
+      .bind(site, user),
   ]);
   return json({});
 }
