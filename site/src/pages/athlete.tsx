@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
 import { ReadNow } from '@/components/read-now';
-import { ReadScores } from '@/components/read-scores';
+import { ReadScores, type Target } from '@/components/read-scores';
 import { useRemember } from '@/lib/recent';
 
 // One person's accounts read as one: entries, history and outcomes carry the site of the account they came from.
@@ -179,29 +179,40 @@ function BeltSplit({ split }: { split: Split[] }) {
 }
 
 // Their career as Smoothcomp lists it (or their results at the events read, where it serves none).
-function CareerStats({ career, f }: { career: Athlete; f: Filters }) {
-  const fromResults = career.source === 'results';
-  const stats: [string, React.ReactNode][] = [
+function CareerStats({ career, f, points }: { career: Athlete | null; f: Filters; points: Points }) {
+  const fromResults = career?.source === 'results';
+  const stats: [string, React.ReactNode][] = career ? [
     ['Medals', <Medals g={career.gold} s={career.silver} b={career.bronze} className="justify-start" />],
     ...(career.events != null ? [[fromResults ? 'Events read' : 'Events', career.events] as [string, React.ReactNode]] : []),
     ['Wins', career.wins],
     ...(career.events ? [['Wins per event', (career.wins / career.events).toFixed(1)] as [string, React.ReactNode]] : []),
     ...(career.wins > 0 && f.counted('submission') ? [['By submission', `${Math.round((career.submission / career.wins) * 100)}%`] as [string, React.ReactNode]] : []),
-  ];
+  ] : [];
   return (
-    <dl className="flex flex-wrap gap-x-10 gap-y-3 border-t pt-4" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
-      {stats.map(([label, value]) => (
-        <div key={label} className="flex flex-col gap-0.5">
-          <dd className="text-lg font-semibold tabular-nums">{value}</dd>
-          <dt className="order-first text-xs text-muted-foreground">{label}</dt>
-        </div>
-      ))}
-    </dl>
+    <div className="flex flex-wrap items-end gap-x-10 gap-y-3 border-t pt-4">
+      {stats.length > 0 && <dl className="flex flex-wrap gap-x-10 gap-y-3" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career?.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
+        {stats.map(([label, value]) => <Stat key={label} label={label} value={value} />)}
+      </dl>}
+      {points.total > 0 && <dl className="flex flex-wrap items-end gap-x-10 gap-y-3" title="Points on the scoreboard in the matches read, over the finishes counted; walkovers have none">
+        <Stat label="Points for" value={points.for} />
+        <Stat label="Points against" value={points.against} />
+        <span className="pb-1 text-xs text-muted-foreground">{points.scored === points.total ? `in ${plural(points.total, 'match')}` : `in ${points.scored} of ${points.total} matches read`}</span>
+        {points.unscored.length > 0 && <ReadScores targets={points.unscored} route="athlete" />}
+      </dl>}
+    </div>
   );
 }
+const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
+  <div className="flex flex-col gap-0.5">
+    <dd className="text-lg font-semibold tabular-nums">{value}</dd>
+    <dt className="order-first text-xs text-muted-foreground">{label}</dt>
+  </div>
+);
+// Points scored and conceded over the matches whose score was read, and the events with a match still to read.
+interface Points { for: number; against: number; scored: number; total: number; unscored: Target[] }
 
 // The headline: the win rate over the finishes switched on, and those switches, each with its W–L.
-function RecordBand({ fins, f, over, split, career }: { fins: Finish[]; f: Filters; over: string; split: Split[] | null; career: Athlete | null }) {
+function RecordBand({ fins, f, over, split, career, points }: { fins: Finish[]; f: Filters; over: string; split: Split[] | null; career: Athlete | null; points: Points }) {
   const on = fins.filter((x) => f.counted(x.key));
   const rated = on.filter((x) => x.l != null);
   const [w, l] = rated.reduce(([a, b], x) => [a + x.w, b + (x.l ?? 0)], [0, 0]);
@@ -240,7 +251,7 @@ function RecordBand({ fins, f, over, split, career }: { fins: Finish[]; f: Filte
       </div>
       {split && <BeltSplit split={split} />}
       </div>
-      {career && <CareerStats career={career} f={f} />}
+      {(career || points.total > 0) && <CareerStats career={career} f={f} points={points} />}
     </Card>
   );
 }
@@ -502,6 +513,9 @@ export function AthletePage({ id }: { id: string }) {
     const open = (r.read ?? []).filter((e) => e.bouts?.some((b) => !b.us && b.type !== 'walkover'));
     return open.length ? [{ site: r.site ?? f.site, event: r.id, entries: open }] : [];
   });
+  const counted = past.flatMap((r) => (r.read ?? []).flatMap((e) => e.bouts ?? [])).filter((b) => b.type !== 'walkover' && f.counted(finishOf(b.type)));
+  const scored = counted.filter((b) => b.us && b.them);
+  const points: Points = { for: scored.reduce((n, b) => n + b.us![0], 0), against: scored.reduce((n, b) => n + b.them![0], 0), scored: scored.length, total: counted.length, unscored };
   const age = ageOf(a.born);
   const rivals = rivalsIn(all.filter((r) => !isUpcoming(r.start) || r.read?.some((e) => e.fought)));
   const met = past.flatMap(meetingsOfRow);
@@ -543,13 +557,12 @@ export function AthletePage({ id }: { id: string }) {
         </div>
         <div className="flex shrink-0 gap-2">
           <ReadNow site={f.site} user={id} route="athlete" label="Read latest events" size="lg" />
-          {unscored.length > 0 && <ReadScores targets={unscored} route="athlete" size="lg" />}
           {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>{plural(data.profile!.videos!, 'match video')}<ExternalLink /></a>}
           <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ size: 'lg' })}>Profile on {SITE_NAME(f.site)}<ExternalLink /></a>
         </div>
       </header>
 
-      {career || outcomes.length ? <RecordBand fins={finishes(career, records)} f={f} over={over} split={splitByBelt(data.belts, records, f)} career={career} />
+      {career || outcomes.length ? <RecordBand fins={finishes(career, records)} f={f} over={over} split={splitByBelt(data.belts, records, f)} career={career} points={points} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
       <Form list={past} f={f} />
