@@ -75,6 +75,8 @@ test("a results page's upload reads back on the stats site", async () => {
   const event = await (await API.event(env, new URLSearchParams('site=smoothcomp.com&id=900'))).json();
   assert.equal(event.event.title, 'Berlin Open');
   assert.deepEqual(event.entries.map((e) => [e.user, e.place, e.wins]).sort(), [['11', 1, { submission: 3, walkover: 1 }], ['12', 2, { points: 1 }]]);
+  // Each result names its matches with no score read, for Read scores; one with none names none.
+  assert.deepEqual(event.entries.map((e) => [e.user, e.open]).sort(), [['11', [{ match: null, stage: 'Final', bracket: null }]], ['12', undefined]]);
   // An academy's page opens one event at a time, reading only its own athletes there.
   const club = await (await API.event(env, new URLSearchParams('site=smoothcomp.com&id=900&club=502'))).json();
   assert.deepEqual(club.entries.map((e) => e.user), ['12']);
@@ -543,19 +545,23 @@ test("an event's scores a browser read fill its stored matches that have none, e
   const row = db.prepare("INSERT INTO entries (site, event, user, division, fought, at, bouts) VALUES ('smoothcomp.com', '960', ?, 'Adult / Blue', 1, 0, ?)");
   row.run('11', bouts([[true, 'submission', '12', 'Match 1/3'], [false, 'walkover', '13', 'Match 3/3'], [true, 'points', '14', 'Final', { us: [2, 0, 0], them: [0, 0, 0] }]]));
   row.run('12', bouts([[false, 'submission', '11', 'Match 1/3']]));
+  // One kept without its round takes the only match the two fought there.
+  row.run('15', bouts([[false, 'points', '11', '']]));
   // The same two met in the same round of another division: that match is its own.
   db.prepare("INSERT INTO entries (site, event, user, division, fought, at, bouts) VALUES ('smoothcomp.com', '960', '11', 'No Gi / Blue', 1, 0, ?)").run(bouts([[true, 'points', '12', 'Match 1/3']]));
   const matches = [
     { stage: 'Match 1/3', group: 'Adult / Blue', users: ['12', '11'], s: [[0, 0, 0], [4, 1, 0]], clock: [148, 151] },
     { stage: 'Match 3/3', users: ['11', '13'], s: [[0, 0, 0], [0, 0, 0]], clock: [0, 300] },
     { stage: 'Final', users: ['11', '14'], s: [[9, 0, 0], [0, 0, 0]], clock: [300, 0] },
+    { stage: 'Semifinals', group: 'Adult / Blue', users: ['11', '15'], s: [[3, 0, 0], [1, 0, 0]], clock: [300, 0] },
   ];
   assert.equal((await post({ site: 'smoothcomp.com', event: '960', matches: [{ stage: 'x', users: ['a', 'b'], s: [] }] })).status, 400);
-  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 2 });
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 3 });
   const read = (user, division = 'Adult / Blue') => JSON.parse(db.prepare("SELECT bouts FROM entries WHERE user = ? AND division = ?").get(user, division).bouts).map((b) => [b.us, b.them, b.clock]);
   // A walkover keeps none, a match already scored keeps its own.
   assert.deepEqual(read('11'), [[[4, 1, 0], [0, 0, 0], [148, 151]], [undefined, undefined, undefined], [[2, 0, 0], [0, 0, 0], undefined]]);
   assert.deepEqual(read('12'), [[[0, 0, 0], [4, 1, 0], [148, 151]]]);
+  assert.deepEqual(read('15'), [[[1, 0, 0], [3, 0, 0], [300, 0]]]);
   assert.deepEqual(read('11', 'No Gi / Blue'), [[undefined, undefined, undefined]]);
   // Sent again, nothing is left to fill.
   assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 0 });

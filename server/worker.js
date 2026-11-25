@@ -441,7 +441,8 @@ async function readNow(env, { site, event, user }, ctx) {
 }
 
 // An event's scores, which a reader's browser read from its match cards (site read-scores.tsx), filled into the
-// stored matches that have none: each by its division, round and the two users who fought it. Only rows that change are written.
+// stored matches that have none: each by its division, round and the two users who fought it (a match kept without its
+// round, by the only one the two fought there). Only rows that change are written.
 async function scores(env, { site, event, matches }) {
   const time = (n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000);
   const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => text(m?.stage, 60) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
@@ -456,7 +457,9 @@ async function scores(env, { site, event, matches }) {
     let filled = false;
     for (const b of bouts) {
       if (b.us || b.type === 'walkover') continue;
-      const m = list.find((x) => x.stage === b.stage && x.users.includes(row.user) && (!b.user || x.users.includes(b.user)) && (!x.group || x.group === normalize(row.division)));
+      // A match kept without its round (an older results read) takes the one match between the two there.
+      const fits = list.filter((x) => x.users.includes(row.user) && (!b.user || x.users.includes(b.user)) && (!x.group || x.group === normalize(row.division)));
+      const m = fits.find((x) => x.stage === b.stage) ?? (!b.stage && b.user && fits.length === 1 ? fits[0] : undefined);
       if (!m) continue;
       const i = m.users.indexOf(row.user);
       Object.assign(b, { us: m.s[i], them: m.s[1 - i] }, m.clock ? { clock: m.clock } : {});

@@ -25,7 +25,7 @@ const seconds = (t?: string) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t!.split(':
 
 interface Side { id?: number; score?: number; advantage?: number; penalty?: number }
 interface Card { left?: Side; right?: Side; matchInfo?: { time?: string; timeRemaining?: number } }
-interface Listed { id: number; name?: string; group?: string; state?: string; wonBy?: string; bracket_id?: number; seats?: { name?: string }[] }
+interface Listed { id: number; name?: string; group?: string; state?: string; wonBy?: string; bracket_id?: number }
 // An event to read: its divisions with a match still unscored, or (none named) every division.
 export interface Target { site: string; event: string; entries?: Entry[] }
 
@@ -52,8 +52,7 @@ async function readEvent({ site, event, entries }: Target, tick: (n: number) => 
   }
 }
 // The finished matches the schedule lists for the divisions asked for, found by every bracket their matches name
-// (pools and the knockout after are two), else by name; none named, every division. Where every match still
-// unscored names its opponent, only the matches with one of them in a seat, not the whole division's.
+// (pools and the knockout after are two), else by name; none named, every division.
 async function listed(base: string, entries?: Entry[]): Promise<Listed[]> {
   // An organiser's event redirects to its own subdomain: the rest go there, not through the redirect again.
   const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`, (to) => { base = to.slice(0, to.indexOf('/schedule/')); });
@@ -61,16 +60,13 @@ async function listed(base: string, entries?: Entry[]): Promise<Listed[]> {
   const lists: Listed[] = (await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`))).flat();
   const brackets = new Set(entries?.flatMap((e) => e.bouts ?? []).map((b) => b.bracket).filter(Boolean));
   const names = new Set(entries?.map((e) => normalize(e.division)));
-  const opponents = entries?.flatMap((e) => e.bouts ?? []).filter((b) => !b.us && b.type !== 'walkover').map((b) => normalize(b.opponent));
-  const against = opponents?.every(Boolean) ? new Set(opponents) : null;
   const seen = new Set<number>();
   return lists.filter((m) => m?.state === 'finished' && m.name && m.wonBy !== 'walkover' && !seen.has(m.id) && seen.add(m.id)
-    && (!entries || brackets.has(Number(m.bracket_id)) || names.has(normalize(m.group ?? '')))
-    && (!against || !!m.seats?.some((s) => against.has(normalize(s.name)))));
+    && (!entries || brackets.has(Number(m.bracket_id)) || names.has(normalize(m.group ?? ''))));
 }
 
 // Reads the events' scores on a click, then the page again, past the browser's copy.
-export function ReadScores({ targets, route, size = 'sm' }: { targets: Target[]; route: string; size?: 'sm' | 'lg' }) {
+export function ReadScores({ targets, route, size = 'sm' }: { targets: Target[]; route: string | string[]; size?: 'sm' | 'lg' }) {
   const client = useQueryClient();
   const [state, setState] = useState<'idle' | 'reading' | 'error'>('idle');
   const [left, setLeft] = useState(0);
@@ -78,9 +74,9 @@ export function ReadScores({ targets, route, size = 'sm' }: { targets: Target[];
     setState('reading');
     setLeft(0);
     const results = await Promise.allSettled(targets.map((t) => readEvent(t, (n) => setLeft((x) => x + n))));
-    await Promise.all(client.getQueryCache().findAll({ queryKey: [route] }).map((q) => {
-      const [, query] = q.queryKey as [string, Record<string, string>];
-      return client.fetchQuery({ queryKey: q.queryKey, queryFn: () => get(route, query, { cache: 'reload' }), staleTime: 0 }).catch(() => {});
+    await Promise.all(client.getQueryCache().findAll({ predicate: (q) => [route].flat().includes(q.queryKey[0] as string) }).map((q) => {
+      const [name, query] = q.queryKey as [string, Record<string, string>];
+      return client.fetchQuery({ queryKey: q.queryKey, queryFn: () => get(name, query, { cache: 'reload' }), staleTime: 0 }).catch(() => {});
     }));
     setState(results.some((r) => r.status === 'rejected') ? 'error' : 'idle');
   };

@@ -100,6 +100,8 @@ export function EventPage({ id }: { id: string }) {
   const title = event.title ?? `Event ${id}`;
   document.title = `${title} · Mat Stats`;
   const fought = results.length > 0;
+  // The results with a match still unscored: Read scores reads only theirs, by each match's id where it was kept.
+  const unscored = results.filter((e) => e.open).map((e) => ({ ...e, bouts: e.open }));
   // Once it has started, and while its results may still be coming in, anyone can have them read now.
   const since = event.start ? Date.now() - Date.parse(event.start) : -1;
   const readable = since >= 0 && (!fought || live || since < 14 * 864e5);
@@ -259,7 +261,7 @@ export function EventPage({ id }: { id: string }) {
           </span>
           <a href={`${f.home}/en/event/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
           {readable && <ReadNow site={f.site} event={id} route="event" label={fought ? 'Read results again' : 'Read results now'} />}
-          {fought && <ReadScores targets={[{ site: f.site, event: id }]} route="division" />}
+          {unscored.length > 0 && <ReadScores targets={[{ site: f.site, event: id, entries: unscored }]} route={['event', 'division']} />}
         </div>
       </header>
       {entries.length ? (
