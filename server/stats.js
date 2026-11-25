@@ -80,7 +80,19 @@ export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, 
 
 // The finishes every count is kept under (rules.js), a column each on the board.
 const GROUPS = FINISHES;
+const counted = (off) => { let out = []; try { out = JSON.parse(off); } catch {} return GROUPS.filter((g) => !out.includes(g)); };
 const cols = (prefix) => GROUPS.map((g) => `${prefix}_${g}`).join(', ');
+// The finish groups an athlete has anything in, a bit each (GROUPS order): a, a win or a rated loss; r, a rated win or loss;
+// s, a loss among their results (an athlete ranked on them). board_count keeps the three (schema.sql, the same text),
+// so the athletes count under any finishes reads that index alone (0.16 s for 290k athletes; the board itself, 2 s).
+const bit = (g) => 2 ** GROUPS.indexOf(g);
+export const MASKS = {
+  a: GROUPS.map((g) => `(w_${g} + rl_${g} > 0) * ${bit(g)}`).join(' + '),
+  r: GROUPS.map((g) => `(rw_${g} + rl_${g} > 0) * ${bit(g)}`).join(' + '),
+  s: `iif(source = 'results', ${GROUPS.map((g) => `(sl_${g} > 0) * ${bit(g)}`).join(' + ')}, 0)`,
+};
+// careersOf's "(wins > 0 OR lost > 0)" in the masks: a counted win or rated loss, or (no counted rated record) a counted loss read.
+const activeIn = (off) => { const on = counted(off).reduce((m, g) => m + bit(g), 0); return `(((${MASKS.a}) & ${on}) != 0 OR (((${MASKS.r}) & ${on}) = 0 AND ((${MASKS.s}) & ${on}) != 0))`; };
 
 // The highest belt an athlete's divisions name, for one with no belt read: a division naming
 // several ("Expert (Brown/Black)") names none.
@@ -217,7 +229,6 @@ export const EVENT_COUNTS = `UPDATE events SET
 // counted groups' columns. A record (won, lost) is the tally's where it holds a counted finish, else
 // the results' own. ?1 site. `only` narrows the board's rows: a list writes "AND dup = 0" to leave a person's other
 // accounts on the site out (+dup where an index other than board_ranked reads it).
-const counted = (off) => { let out = []; try { out = JSON.parse(off); } catch {} return GROUPS.filter((g) => !out.includes(g)); };
 const careersOf = (off, only = '') => {
   const on = counted(off);
   const sum = (prefix) => (on.length ? on.map((g) => `${prefix}_${g}`).join(' + ') : '0');
@@ -284,10 +295,15 @@ async function athletes(env, params) {
   if (f.since) where.push(`last >= ${arg(f.since)}`);
   const matching = where.join(' AND ');
   const careers = careersOf(f.off, club ? 'AND +dup = 0' : 'AND dup = 0');
-  // ?part=total reads the count alone and ?part=rows the page alone, so the site shows the page while the count adds up:
-  // under any finishes but the default it reads every athlete (290k rows, most of the time), the page a slice.
+  // ?part=total reads the count alone and ?part=rows the page alone, so the site shows the page while the count adds up.
+  // Under the filters board_count holds (age, belt, country, events, when last), the count reads that index alone.
   const part = params.get('part');
-  if (part === 'total') return json({ total: (await env.DB.prepare(`WITH ${careers} SELECT count(*) AS total FROM careers WHERE ${matching}`).bind(...args).first())?.total ?? 0 });
+  if (part === 'total') {
+    const indexed = !f.wins && !f.q && !club;
+    const sql = indexed ? `SELECT count(*) AS total FROM board INDEXED BY board_count WHERE site = ?1 AND dup = 0 AND ${[activeIn(f.off), ...where.slice(1)].join(' AND ')}`
+      : `WITH ${careers} SELECT count(*) AS total FROM careers WHERE ${matching}`;
+    return json({ total: (await env.DB.prepare(sql).bind(...args).first())?.total ?? 0 });
+  }
   const [limit, offset] = [arg(f.limit), arg(f.offset)];
   // Ranked by wins, the page's fewest wins are read off board_record first, so ties are sorted by finish among the
   // athletes with at least that many alone (the finishes left SQLite sorting every athlete: 3 s).

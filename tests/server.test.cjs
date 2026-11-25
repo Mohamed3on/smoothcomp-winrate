@@ -91,6 +91,18 @@ test("a results page's upload reads back on the stats site", async () => {
   const figures = (r) => [r.user, r.wins, r.won, r.lost];
   assert.deepEqual([page.rows.map(figures), page.total, count], [whole.rows.map(figures), null, { total: whole.total }]);
   assert.equal(whole.total, 2);
+  // The count read off board_count's masks matches the board's own sums under every finish set: each finish alone, each left out.
+  const { MASKS } = await import('../server/stats.js');
+  const schema = fs.readFileSync('server/schema.sql', 'utf8');
+  for (const mask of Object.values(MASKS)) assert.ok(schema.includes(`(${mask})`), 'board_count holds stats.js MASKS word for word');
+  const finishes = ['submission', 'stoppage', 'fastest_escape', 'points', 'decision', 'disqualification', 'walkover', 'other'];
+  for (const off of [...finishes.map((t) => finishes.filter((u) => u !== t)), ...finishes.map((t) => [t]), []]) {
+    for (const extra of ['', '&agemin=16', '&belt=blue', '&events=1']) {
+      const q = `site=smoothcomp.com&off=${off.join(',')}${extra}`;
+      const read = async (part) => (await (await API.athletes(env, new URLSearchParams(q + part))).json()).total;
+      assert.equal(await read('&part=total'), await read(''), q);
+    }
+  }
   // A loss's finish ranks too (lost_ and the finish), the losses by finish coming with each row.
   const subbed = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=lost_submission'))).json();
   assert.deepEqual(subbed.rows.map((r) => [r.user, r.lost_types?.submission]), [['12', 2], ['11', 0]]);
