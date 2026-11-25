@@ -277,6 +277,12 @@ test('listed events are found by place, date, sport and size, and academies wher
     assert.equal(await sizeEvents(env, 10, 0), 0); // read again a day on
   } finally { globalThis.fetch = real; }
   assert.deepEqual((await find('min=1&sort=athletes')).map((e) => [e.event, e.athletes, e.registered]), [['1', 0, 1204], ['4', 0, 7]]);
+  // An install that opens an event's page sends its count too; nonsense is refused.
+  const send = (body) => worker.fetch(new Request('https://matstats.test/size', { method: 'POST', body: JSON.stringify({ site: 'smoothcomp.com', ...body }) }), env, {});
+  assert.equal((await send({ event: '4', registered: 1500 })).status, 200);
+  assert.equal((await send({ event: '1', registered: null })).status, 200);
+  assert.equal((await send({ event: '2', registered: -3 })).status, 400);
+  assert.deepEqual((await find('min=1&sort=athletes')).map((e) => [e.event, e.registered]), [['4', 1500]]);
   assert.deepEqual(await find('when=past'), []);
   // An academy sits where it competes most, and a radius finds it.
   const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});

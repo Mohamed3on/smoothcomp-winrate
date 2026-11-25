@@ -238,6 +238,14 @@ async function roster(env, { site, event, meta, athletes, read }) {
   return json({});
 }
 
+// How many athletes an event's page counts (crawl.js sizeEvents reads the same), from an install that opened one
+// of its pages; null while the list is hidden. Kept when it changes, for an event the events lists hold.
+async function size(env, { site, event, registered }) {
+  if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || !(registered === null || (Number.isSafeInteger(registered) && registered >= 0 && registered < 1e5))) return json({ error: 'Bad size' }, 400);
+  await env.DB.prepare('UPDATE events SET registered = ?3, sized = ?4 WHERE site = ?1 AND event = ?2 AND registered IS NOT ?3').bind(site, event, registered, Date.now()).run();
+  return json({});
+}
+
 // A results page's records for its event; the latest read of an event replaces the last.
 async function record(env, { site, event, records, meta, athletes, read, crawled }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || typeof records !== 'object' || !records) return json({ error: 'Bad record' }, 400);
@@ -406,7 +414,7 @@ async function readNow(env, { site, event, user }, ctx) {
 }
 
 const READS = new Set(['/lookup', '/outcomes', '/crawled', '/read-now']);
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/read-now': readNow };
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/size': size, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/read-now': readNow };
 
 // The site's reads, kept at Cloudflare's edge so most visits never reach the database. Seconds an
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy
@@ -518,7 +526,8 @@ export default {
     let body;
     try { body = await request.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
     const response = await ROUTES[pathname](env, body ?? {}, ctx);
-    if (response.ok && !READS.has(pathname)) await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('changed', ?1)").bind(Date.now()).run();
+    // A size, sent with every event page opened, waits for the list's own rebuild.
+    if (response.ok && !READS.has(pathname) && pathname !== '/size') await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('changed', ?1)").bind(Date.now()).run();
     return response;
   },
 };
