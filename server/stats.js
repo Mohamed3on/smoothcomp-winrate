@@ -283,6 +283,11 @@ async function athletes(env, params) {
   if (f.bornFrom !== 0 || f.bornTo !== 9999) where.push(`born BETWEEN ${arg(f.bornFrom)} + 1 AND ${arg(f.bornTo)}`);
   if (f.since) where.push(`last >= ${arg(f.since)}`);
   const matching = where.join(' AND ');
+  const careers = careersOf(f.off, club ? 'AND +dup = 0' : 'AND dup = 0');
+  // ?part=total reads the count alone and ?part=rows the page alone, so the site shows the page while the count adds up:
+  // under any finishes but the default it reads every athlete (290k rows, most of the time), the page a slice.
+  const part = params.get('part');
+  if (part === 'total') return json({ total: (await env.DB.prepare(`WITH ${careers} SELECT count(*) AS total FROM careers WHERE ${matching}`).bind(...args).first())?.total ?? 0 });
   const [limit, offset] = [arg(f.limit), arg(f.offset)];
   // Ranked by wins, the page's fewest wins are read off board_record first, so ties are sorted by finish among the
   // athletes with at least that many alone (the finishes left SQLite sorting every athlete: 3 s).
@@ -295,11 +300,11 @@ async function athletes(env, params) {
     ? ` AND ${ranked} >= coalesce((SELECT wins FROM (SELECT wins FROM careers WHERE ${matching} ORDER BY ${ranked} DESC LIMIT 4 * (${limit} + ${offset})) ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
   const floor = !club && sort.startsWith('wins DESC')
     ? ` AND wins >= coalesce((SELECT wins FROM careers WHERE ${matching}${bound} ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
-  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off, club ? 'AND +dup = 0' : 'AND dup = 0')},
+  const { results } = await env.DB.prepare(`WITH ${careers},
     top AS (SELECT user FROM careers WHERE ${matching}${bound}${floor} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
-    SELECT careers.*, (SELECT count(*) FROM careers WHERE ${matching}) AS total FROM top CROSS JOIN careers USING (user) ORDER BY ${sort}, user`)
+    SELECT careers.*, ${part === 'rows' ? 'NULL' : `(SELECT count(*) FROM careers WHERE ${matching})`} AS total FROM top CROSS JOIN careers USING (user) ORDER BY ${sort}, user`)
     .bind(...args).all();
-  return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
+  return json({ total: part === 'rows' ? null : results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
 }
 
 const TEAM_SORTS = {

@@ -84,6 +84,13 @@ test("a results page's upload reads back on the stats site", async () => {
   // An athlete with no win among the finishes counted still ranks on their losses there.
   const lossesOnly = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&off=walkover,points&sort=winRate&dir=asc'))).json();
   assert.deepEqual(lossesOnly.rows.map((r) => [r.user, r.wins, r.won, r.lost]), [['12', 0, 0, 2], ['11', 3, 3, 0]]);
+  // The page and its count read apart (?part=rows, ?part=total) give what one read gives.
+  const page = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&off=walkover,points&part=rows'))).json();
+  const count = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&off=walkover,points&part=total'))).json();
+  const whole = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&off=walkover,points'))).json();
+  const figures = (r) => [r.user, r.wins, r.won, r.lost];
+  assert.deepEqual([page.rows.map(figures), page.total, count], [whole.rows.map(figures), null, { total: whole.total }]);
+  assert.equal(whole.total, 2);
   // A loss's finish ranks too (lost_ and the finish), the losses by finish coming with each row.
   const subbed = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=lost_submission'))).json();
   assert.deepEqual(subbed.rows.map((r) => [r.user, r.lost_types?.submission]), [['12', 2], ['11', 0]]);

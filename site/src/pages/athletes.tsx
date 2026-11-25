@@ -51,10 +51,12 @@ export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => {
 
 export function AthletesPage() {
   const f = useFilters();
-  const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Athlete[]; total: number }>('athletes', { ...f.query, limit: 2000 });
+  const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Athlete[] }>('athletes', { ...f.query, limit: 2000, part: 'rows' });
+  // The count reads every athlete, the page a slice: asked for once the page is in, so the two never queue for the database together.
+  const { data: count } = useApi<{ total: number }>('athletes', { ...f.query, part: 'total' }, !!data && !isFetching);
   return (
     <>
-      <PageHead title="Athletes" aside={data && <Count n={data.total} unit={data.total === 1 ? 'athlete' : 'athletes'} />}
+      <PageHead title="Athletes" aside={count && <Count n={count.total} unit={count.total === 1 ? 'athlete' : 'athletes'} />}
         text="Every athlete Mat Stats has read, in one ranking: their Smoothcomp career, or their results at the events read where Smoothcomp serves no career. Choose which finishes count; walkovers start switched off." />
       <div className="flex flex-col gap-3">
         <FilterBar f={f} sorts={ATHLETE_SORTS} />
