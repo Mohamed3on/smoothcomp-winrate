@@ -128,14 +128,14 @@ const WEIGHT_ITEMS = [{ value: '', label: 'Any weight' }, ...[...WEIGHTS, 101].m
 
 // `bracket` adds whom, age group and weight class, on the lists that rank athletes.
 export function FilterBar({ f, sorts, minimumAthletes = 0, event = false, place = false, bracket = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: number; event?: boolean; place?: boolean; bracket?: boolean }) {
-  const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
+  const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number; academies: number }[] }>('countries', { site: f.site });
   const belts = new Set(f.get('belt').split(',').filter(Boolean));
   const toggleBelt = (b: string) => {
     const next = new Set(belts);
     if (next.has(b)) next.delete(b); else next.add(b);
     f.set({ belt: [...next].join(',') });
   };
-  const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()}${minimumAthletes ? '' : ` (${c.athletes})`}` })).sort((a, b) => a.label.localeCompare(b.label))];
+  const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).filter((c) => !minimumAthletes || c.academies).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()} (${minimumAthletes ? c.academies : c.athletes})` })).sort((a, b) => a.label.localeCompare(b.label))];
   const activeItems = [['0', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
   const set = ['belt', 'sex', 'age', 'weight', 'wins', 'events', 'athletes', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(f.query.active !== f.defaults.active) + Number(!!(f.get('agemin') || f.get('agemax')));

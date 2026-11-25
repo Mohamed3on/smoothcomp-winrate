@@ -403,7 +403,7 @@ async function teams(env, params) {
     members AS (SELECT * FROM careers
       WHERE club_id IS NOT NULL AND (+wins > 0 OR lost > 0) AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)${clubs.length ? ' AND club_id IN (SELECT value FROM json_each(?18))' : ''}),
     podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
-        iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, iif(o.lat IS NULL, c.country, o.country) AS country,
+        iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, coalesce(o.country, c.country) AS country,
         iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
       FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1),
     totals AS ${kept ? `(SELECT k.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, k.athletes, k.wins, k.submission, k.points,
@@ -698,8 +698,14 @@ async function search(env, params) {
 
 async function countries(env, params) {
   const f = filters(params);
-  const { results } = await env.DB.prepare(`SELECT country, max(country_name) AS name, count(*) AS athletes FROM people WHERE site = ?1 AND country IS NOT NULL GROUP BY country ORDER BY athletes DESC`).bind(f.site).all();
-  return json({ rows: results });
+  // With each, the academies there, as the academies list places them (its own country, else where it competes most).
+  const [{ results }, { results: clubs }] = await env.DB.batch([
+    env.DB.prepare(`SELECT country, max(country_name) AS name, count(*) AS athletes FROM people WHERE site = ?1 AND country IS NOT NULL GROUP BY country ORDER BY athletes DESC`).bind(f.site),
+    env.DB.prepare(`SELECT lower(coalesce(o.country, c.country)) AS country, count(*) AS academies FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id
+      WHERE c.site = ?1 GROUP BY 1`).bind(f.site),
+  ]);
+  const academies = new Map(clubs.map((c) => [c.country, c.academies]));
+  return json({ rows: results.map((r) => ({ ...r, academies: academies.get(r.country) ?? 0 })) });
 }
 
 async function summary(env, params) {
