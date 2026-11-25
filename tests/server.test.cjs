@@ -272,6 +272,20 @@ test("an athlete's belt is at least the lowest belt of every division they enter
   }, read: Date.now() });
   const rows = (await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json()).rows;
   assert.deepEqual(rows.map((r) => [r.user, r.belt]).sort(), [['21', 'brown'], ['22', 'white'], ['23', 'brown']]);
+  // Each ranks in the bracket their divisions give over the year to their latest event (rules.js bracketOf).
+  assert.deepEqual(rows.map((r) => [r.user, r.sex, r.age, r.weight]).sort(), [['21', 'm', 'Master', 85], ['22', null, 'Adult', 70], ['23', 'm', 'Adult', 77]]);
+  const list = async (q) => (await (await API.athletes(env, new URLSearchParams(`site=smoothcomp.com&${q}`))).json());
+  assert.deepEqual((await list('weight=77&sex=m')).rows.map((r) => r.user), ['23']);
+  assert.deepEqual((await list('age=Master')).rows.map((r) => r.user), ['21']);
+  assert.equal((await list('part=total&age=Adult')).total, 2);
+  assert.equal((await list('part=total&weight=85&age=Master&sex=m')).total, 1);
+  // An athlete page ranks them in their bracket and belt by wins: a second brown Master at −85 kg with more wins goes first.
+  await post('/record', { site: 'smoothcomp.com', event: '953', records: { 24: [4, 0] }, meta: { ...meta, start: '2026-06-01T07:00:00Z' }, athletes: {
+    24: { name: 'Al Ba', belt: 'Brown', entries: [{ division: 'Male Gi / Brown / Master 2 (36+) / -84,9 kg', place: 1, wins: { submission: 4 }, losses: {} }] },
+  }, read: Date.now() });
+  const page = async (id) => (await (await API.athlete(env, new URLSearchParams(`site=smoothcomp.com&id=${id}`))).json()).bracket;
+  assert.deepEqual(await page('24'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 1, of: 2 });
+  assert.deepEqual(await page('21'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 2, of: 2 });
 });
 
 test('listed events are found by place, date, sport and size, and academies where they compete', async () => {

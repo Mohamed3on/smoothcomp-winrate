@@ -176,6 +176,8 @@ CREATE TABLE IF NOT EXISTS board (
   sl_submission INTEGER, sl_points INTEGER, sl_walkover INTEGER, sl_decision INTEGER, sl_disqualification INTEGER, sl_stoppage INTEGER, sl_fastest_escape INTEGER, sl_other INTEGER,
   -- 1 for a person's other account on the same site (stats.js MERGE): the rankings leave it out. Taken by ALTER TABLE on D1.
   dup INTEGER NOT NULL DEFAULT 0,
+  -- The bracket they rank in (rules.js bracketOf: m/f, age group, weight class), from their divisions (worker.js retally). Taken by ALTER TABLE on D1.
+  sex TEXT, age TEXT, weight INTEGER,
   PRIMARY KEY (site, user)
 );
 CREATE INDEX IF NOT EXISTS board_club ON board (site, club_id);
@@ -189,6 +191,7 @@ CREATE TABLE IF NOT EXISTS board_own (
   rw_submission INTEGER, rw_points INTEGER, rw_walkover INTEGER, rw_decision INTEGER, rw_disqualification INTEGER, rw_stoppage INTEGER, rw_fastest_escape INTEGER, rw_other INTEGER,
   rl_submission INTEGER, rl_points INTEGER, rl_walkover INTEGER, rl_decision INTEGER, rl_disqualification INTEGER, rl_stoppage INTEGER, rl_fastest_escape INTEGER, rl_other INTEGER,
   sl_submission INTEGER, sl_points INTEGER, sl_walkover INTEGER, sl_decision INTEGER, sl_disqualification INTEGER, sl_stoppage INTEGER, sl_fastest_escape INTEGER, sl_other INTEGER,
+  sex TEXT, age TEXT, weight INTEGER,
   PRIMARY KEY (site, user)
 );
 -- The default ranking's wins and losses (every finish but walkovers, in rules.js FINISHES order, as stats.js careersOf
@@ -203,11 +206,15 @@ CREATE INDEX IF NOT EXISTS board_ranked ON board (site, dup, (w_submission + w_s
 -- The athletes count under any finishes (stats.js MASKS: which finish groups each athlete has a win or loss in, a bit each),
 -- with the filters it can take, read from this index alone. The masks lead, so no ranking (site, dup, ...) prefers it;
 -- the count names it (INDEXED BY). The expressions are stats.js MASKS word for word (tests/server.test.cjs checks).
-CREATE INDEX IF NOT EXISTS board_count ON board (site,
+-- board_counted is board_count with the bracket filters too (an index changes only by a new one).
+DROP INDEX IF EXISTS board_count;
+CREATE INDEX IF NOT EXISTS board_counted ON board (site,
   ((w_submission + rl_submission > 0) * 1 + (w_stoppage + rl_stoppage > 0) * 2 + (w_fastest_escape + rl_fastest_escape > 0) * 4 + (w_points + rl_points > 0) * 8 + (w_decision + rl_decision > 0) * 16 + (w_disqualification + rl_disqualification > 0) * 32 + (w_walkover + rl_walkover > 0) * 64 + (w_other + rl_other > 0) * 128),
   ((rw_submission + rl_submission > 0) * 1 + (rw_stoppage + rl_stoppage > 0) * 2 + (rw_fastest_escape + rl_fastest_escape > 0) * 4 + (rw_points + rl_points > 0) * 8 + (rw_decision + rl_decision > 0) * 16 + (rw_disqualification + rl_disqualification > 0) * 32 + (rw_walkover + rl_walkover > 0) * 64 + (rw_other + rl_other > 0) * 128),
   (iif(source = 'results', (sl_submission > 0) * 1 + (sl_stoppage > 0) * 2 + (sl_fastest_escape > 0) * 4 + (sl_points > 0) * 8 + (sl_decision > 0) * 16 + (sl_disqualification > 0) * 32 + (sl_walkover > 0) * 64 + (sl_other > 0) * 128, 0)),
-  dup, born, belt, country, events, last);
+  dup, born, belt, country, events, last, sex, age, weight);
+-- One bracket's athletes (an athlete page's rank in theirs; a ranking narrowed to a weight class): weight leads, the filter set most alone.
+CREATE INDEX IF NOT EXISTS board_bracket ON board (site, weight, age, sex, belt);
 -- Each academy's latest name and its podiums at the events read (stats.js CLUBS), kept as results arrive.
 CREATE TABLE IF NOT EXISTS clubs (
   site TEXT NOT NULL, club_id TEXT NOT NULL, club TEXT, podium_gold INTEGER, podium_silver INTEGER, podium_bronze INTEGER, entered INTEGER,

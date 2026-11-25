@@ -168,10 +168,13 @@ globalThis.SCWRRules = (() => {
     if (n >= (unit === ' kg' ? 300 : 600)) return 'Open';
     return `${/\+|acima|above|over|more than|mais de/i.test(part) ? '+' : '−'}${n}${unit}`;
   }
+  // Whom a division is for: "f" or "m", null for a mixed one or one that doesn't say ("Female" and "Women" hold no word "male" or "men").
+  const SEXES = [['f', /\b(female|women|woman|womens|feminin[oa]|femenin[oa]|femmes?|girls?|ladies|damer?)\b/i], ['m', /\b(male|men|man|mens|masculin[oa]?|hommes?|boys?|herrar|herren)\b|men['‘’]s/i]];
+  const sexOf = (name) => { const named = SEXES.filter(([, re]) => re.test(name)).map(([s]) => s); return named.length === 1 ? named[0] : null; };
   function divisionOf(name) {
     const parts = String(name ?? '').split('/');
     const age = parts.map(ageIn).reduce((best, a) => (rank(a) >= rank(best) ? a : best), null);
-    return { age, weight: parts.map(weightIn).find(Boolean) ?? null };
+    return { age, weight: parts.map(weightIn).find(Boolean) ?? null, sex: sexOf(String(name ?? '')) };
   }
   // The age group and weight class an athlete entered most over the year to their latest event, each
   // counted once an event; a tie goes to the newer. Open weight doesn't count, nor a limit with no unit ("−169.9": kg or lbs?).
@@ -181,10 +184,12 @@ globalThis.SCWRRules = (() => {
     const dated = records.filter((r) => !Number.isNaN(Date.parse(r.start ?? ''))).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
     const since = dated.length ? Date.parse(dated[0].start) - 365 * 864e5 : 0;
     const ages = new Map();
+    const sexes = new Map();
     const weights = [];
     for (const r of dated.filter((x) => Date.parse(x.start) >= since)) {
       const seen = r.divisions.map(divisionOf);
       for (const a of new Set(seen.map((d) => d.age).filter(Boolean))) ages.set(a, (ages.get(a) ?? 0) + 1);
+      for (const s of new Set(seen.map((d) => d.sex).filter(Boolean))) sexes.set(s, (sexes.get(s) ?? 0) + 1);
       weights.push(new Set(seen.map((d) => d.weight).filter((x) => x && x !== 'Open' && !/^[−+][\d.]+$/.test(x))));
     }
     const most = (counts) => [...counts].reduce((best, x) => (!best || x[1] > best[1] ? x : best), null)?.[0] ?? null;
@@ -193,7 +198,20 @@ globalThis.SCWRRules = (() => {
     const score = (w) => [weights.filter((e) => [...e].some((x) => near(x, w))).length, weights.filter((e) => e.has(w)).length];
     const weight = [...new Set(weights.flatMap((e) => [...e]))].map((w) => [w, score(w)])
       .reduce((best, x) => (!best || x[1][0] > best[1][0] || (x[1][0] === best[1][0] && x[1][1] > best[1][1]) ? x : best), null)?.[0] ?? null;
-    return { age: most(ages), weight };
+    return { age: most(ages), weight, sex: most(sexes) };
+  }
+
+  // The bracket an athlete ranks in, from their usual division: whom ('m', 'f'), the age group without its level ("Master 1"
+  // is Master), and the weight class of WEIGHTS nearest their usual limit (101: over 100 kg). One list serves men, women and
+  // kids: 94%, 90% and 91% of athletes with a usual weight (2026-11-25) are within 2 kg of their class. A floor ("+94 kg") takes
+  // the first class above it; a class named but not weighed ("Pesado") gives none.
+  const WEIGHTS = [20, 25, 30, 35, 40, 44, 48, 53, 57, 62, 66, 70, 74, 77, 80, 85, 88, 91, 94, 100];
+  const weightName = (n) => (n > 100 ? '+100 kg' : `−${n} kg`);
+  function bracketOf({ sex = null, age = null, weight = null } = {}) {
+    const m = /^([−+])([\d.]+) (kg|lbs)$/.exec(weight ?? '');
+    const kg = m && m[2] * (m[3] === 'lbs' ? 0.45359237 : 1);
+    const cls = !m ? null : m[1] === '+' ? WEIGHTS.find((n) => n > kg) ?? 101 : kg > 100.6 ? 101 : WEIGHTS.reduce((best, n) => (Math.abs(n - kg) < Math.abs(best - kg) ? n : best));
+    return { sex, age: age?.replace(/ \d$/, '') ?? null, weight: cls };
   }
 
   // Places in a division whose results aren't published, read off its matches as Smoothcomp's
@@ -242,5 +260,5 @@ globalThis.SCWRRules = (() => {
     return (k[1] >= 0 || k[3] >= 0) && seeds.every((s, j) => j === i || seedKey(s).slice(0, 4).some((n, m) => n !== k[m]));
   };
 
-  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, placeOf, roundOf, isPool, poolPlaces };
+  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces };
 })();

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 export type Types = Record<string, number>;
 export interface Athlete {
   user: string; name: string | null; club: string | null; club_id: string | null; country: string | null; country_name: string | null;
-  photo: string | null; born: number | null; hidden: number | null; belt: string | null; affiliation?: string | null; source?: 'career' | 'results';
+  photo: string | null; born: number | null; hidden: number | null; belt: string | null; sex?: string | null; age?: string | null; weight?: number | null; affiliation?: string | null; source?: 'career' | 'results';
   wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; lost_types?: Types | null; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
 }
 export interface Team {

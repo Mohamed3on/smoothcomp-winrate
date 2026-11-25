@@ -2,7 +2,9 @@
 // the finish types counted, a belt, a country, and the fewest wins and events that count.
 import '../rules.js';
 
-const { BELTS, FINISHES, finishSql, playedSql } = globalThis.SCWRRules;
+const { BELTS, FINISHES, WEIGHTS, finishSql, playedSql } = globalThis.SCWRRules;
+// The age groups a bracket names (rules.js bracketOf).
+const AGES = ['Kids', 'Teen', 'Juvenile', 'Adult', 'Master'];
 const SITES = ['smoothcomp.com', 'ajptour.com'];
 const KEPT = 30 * 24 * 60 * 60 * 1000;
 const json = (body, status = 200, cache = 'public, max-age=60') => Response.json(body, { status, headers: { 'Cache-Control': cache } });
@@ -21,6 +23,10 @@ function filters(params) {
     country: /^[a-z-]{2,8}$/.test(params.get('country') ?? '') ? params.get('country') : '',
     belts: JSON.stringify((params.get('belt') ?? '').split(',').filter((b) => BELTS.includes(b))),
     wins: whole(params.get('wins'), 0),
+    // A bracket: whom (m, f), the age group, the weight class (rules.js WEIGHTS; 101 over 100 kg).
+    sex: ['m', 'f'].includes(params.get('sex')) ? params.get('sex') : '',
+    age: AGES.includes(params.get('age')) ? params.get('age') : '',
+    weight: [...WEIGHTS, 101].includes(Number(params.get('weight'))) ? Number(params.get('weight')) : 0,
     events: whole(params.get('events'), 0),
     q: (params.get('q') ?? '').trim().slice(0, 80),
     // An age range, open at either end, as birth years.
@@ -83,7 +89,7 @@ const GROUPS = FINISHES;
 const counted = (off) => { let out = []; try { out = JSON.parse(off); } catch {} return GROUPS.filter((g) => !out.includes(g)); };
 const cols = (prefix) => GROUPS.map((g) => `${prefix}_${g}`).join(', ');
 // The finish groups an athlete has anything in, a bit each (GROUPS order): a, a win or a rated loss; r, a rated win or loss;
-// s, a loss among their results (an athlete ranked on them). board_count keeps the three (schema.sql, the same text),
+// s, a loss among their results (an athlete ranked on them). board_counted keeps the three (schema.sql, the same text),
 // so the athletes count under any finishes reads that index alone (0.16 s for 290k athletes; the board itself, 2 s).
 const bit = (g) => 2 ** GROUPS.indexOf(g);
 export const MASKS = {
@@ -116,7 +122,7 @@ const floorBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each
 const higher = (a, b) => `(SELECT value FROM json_each(${NAMED}) WHERE value = lower(${a}) OR value = ${b} ORDER BY key DESC LIMIT 1)`;
 
 const BOARD_COLS = `site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
-    ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')}`;
+    ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')}, sex, age, weight`;
 const BOARD_SET = BOARD_COLS.split(',').map((c) => c.trim()).filter((c) => c !== 'site' && c !== 'user');
 
 // Every athlete with something to rank, one row each, rebuilt with their tally. A career is
@@ -124,8 +130,8 @@ const BOARD_SET = BOARD_COLS.split(',').map((c) => c.trim()).filter((c) => c !==
 // athlete's record stands in: wins by finish and losses from their profile's match lists where it was
 // opened, else the results read; placements from the events read; events the more of those read and
 // those their profile lists. Per finish group: w_ the wins (career or record), rw_/rl_ the record
-// their tally gives, sl_ the record's losses. ?1 site, ?2 the athletes (JSON),
-// ?3 the oldest career read that counts (0: all).
+// their tally gives, sl_ the record's losses; the bracket each ranks in. ?1 site, ?2 the athletes (JSON),
+// ?3 the oldest career read that counts (0: all), ?4 each athlete's bracket by user, [sex, age, weight] (worker.js retally).
 export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
   AND NOT EXISTS (SELECT 1 FROM athletes c WHERE c.site = ?1 AND c.user = board.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL)
   AND NOT EXISTS (SELECT 1 FROM tallies t WHERE t.site = ?1 AND t.user = board.user AND t.events > 0)`,
@@ -133,14 +139,15 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
     SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last,
-      p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt) AS grade,
+      bk.value AS bracket, p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt) AS grade,
       ${floorBelt('us.user')} AS least_belt
     FROM us
     LEFT JOIN athletes c ON c.site = ?1 AND c.user = us.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL
     LEFT JOIN tallies t ON t.site = ?1 AND t.user = us.user
     LEFT JOIN people p ON p.site = ?1 AND p.user = us.user
     LEFT JOIN athletes r ON r.site = ?1 AND r.user = us.user AND r.kind = 'ranks'
-    LEFT JOIN belts bl ON bl.site = ?1 AND bl.user = us.user),
+    LEFT JOIN belts bl ON bl.site = ?1 AND bl.user = us.user
+    LEFT JOIN json_each(?4) bk ON bk.key = us.user),
   b AS (
     SELECT *, iif(entry IS NOT NULL, 'career', 'results') AS source,
       iif(entry IS NOT NULL, (SELECT json_group_object(g, n) FROM (SELECT ${finishSql('key')} AS g, sum(value) AS n FROM json_each(entry, '$.wins') GROUP BY g)),
@@ -153,7 +160,8 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
     ${GROUPS.map((g) => `coalesce(types ->> '$.${g}', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[0]', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')},
-    ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')}
+    ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')},
+    bracket ->> 0, bracket ->> 1, bracket ->> 2
   FROM b WHERE true
   ON CONFLICT (site, user) DO UPDATE SET ${BOARD_SET.map((c) => `${c} = excluded.${c}`).join(', ')}, dup = 0
   WHERE (${BOARD_SET.map((c) => `board.${c}`).join(', ')}, board.dup) IS NOT (${BOARD_SET.map((c) => `excluded.${c}`).join(', ')}, 0)`];
@@ -193,7 +201,7 @@ export const MERGE = [`DELETE FROM board_own WHERE site = ?1 AND user IN (SELECT
   SELECT o.site, o.user, iif(s.career, 'career', 'results'), iif(s.career, s.at, NULL),
     (SELECT json_group_object(key, value) FROM json_each(json_object(${GROUPS.map((g) => `'${g}', s.w_${g}`).join(', ')})) WHERE value > 0),
     o.name, o.club, o.club_id, o.country, o.country_name, o.photo, o.born, o.hidden, coalesce(json_extract(${NAMED}, '$[' || s.belt || ']'), o.belt), s.last, s.events, s.gold, s.silver, s.bronze,
-    ${COUNTS.map((c) => `s.${c}`).join(', ')}, r.n > 1
+    ${COUNTS.map((c) => `s.${c}`).join(', ')}, o.sex, o.age, o.weight, r.n > 1
   FROM own o JOIN sums s ON s.k = o.k AND s.kb = o.kb AND s.kc = o.kc JOIN ranked r ON r.site = o.site AND r.user = o.user WHERE true
   -- An upsert, not a replace: club_board's triggers see the row's change (a replace's delete fires no trigger), and an unchanged row isn't written.
   ON CONFLICT (site, user) DO UPDATE SET ${BOARD_SET.map((c) => `${c} = excluded.${c}`).join(', ')}, dup = excluded.dup
@@ -232,7 +240,7 @@ export const EVENT_COUNTS = `UPDATE events SET
 const careersOf = (off, only = '') => {
   const on = counted(off);
   const sum = (prefix) => (on.length ? on.map((g) => `${prefix}_${g}`).join(' + ') : '0');
-  return `careers AS (SELECT user, dup, at, source, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze, ${cols('w')}, ${cols('rl')},
+  return `careers AS (SELECT user, dup, at, source, types, name, club, club_id, country, country_name, photo, born, hidden, belt, sex, age, weight, last, events, gold, silver, bronze, ${cols('w')}, ${cols('rl')},
     ${sum('w')} AS wins,
     iif(source = 'results', ${sum('sl')}, NULL) AS losses,
     iif(${sum('rw')} + ${sum('rl')} > 0, ${sum('rw')}, iif(source = 'results', ${sum('w')}, NULL)) AS won,
@@ -281,8 +289,10 @@ async function athletes(env, params) {
   // SQLite walks the whole board in board_record's order to find the page's rows).
   const args = [f.site];
   const arg = (value) => `?${args.push(value)}`;
-  // One academy's are read through board_club (the + keeps board_record out of the filter and the order).
-  const wins = club ? '+wins' : 'wins';
+  // One academy's are read through board_club, one weight class's through board_bracket (the + keeps board_ranked out of the
+  // filter and the order): walking every athlete in wins order to find a small bracket's page read the whole board.
+  const narrow = club || f.weight;
+  const wins = narrow ? '+wins' : 'wins';
   // Everyone with a counted win or loss: an athlete who only lost under the finishes counted ranks too.
   const where = [`(${wins} > 0 OR lost > 0)`];
   if (f.wins) where.push(`${wins} >= ${arg(f.wins)}`);
@@ -291,16 +301,19 @@ async function athletes(env, params) {
   if (f.q) { const q = arg(f.q); where.push(`(name LIKE '%' || ${q} || '%' OR club LIKE '%' || ${q} || '%')`); }
   if (club) where.push(`club_id = ${arg(club)}`);
   if (f.country) where.push(`country = ${arg(f.country)}`);
+  if (f.sex) where.push(`sex = ${arg(f.sex)}`);
+  if (f.age) where.push(`age = ${arg(f.age)}`);
+  if (f.weight) where.push(`weight = ${arg(f.weight)}`);
   if (f.bornFrom !== 0 || f.bornTo !== 9999) where.push(`born BETWEEN ${arg(f.bornFrom)} + 1 AND ${arg(f.bornTo)}`);
   if (f.since) where.push(`last >= ${arg(f.since)}`);
   const matching = where.join(' AND ');
-  const careers = careersOf(f.off, club ? 'AND +dup = 0' : 'AND dup = 0');
+  const careers = careersOf(f.off, narrow ? 'AND +dup = 0' : 'AND dup = 0');
   // ?part=total reads the count alone and ?part=rows the page alone, so the site shows the page while the count adds up.
-  // Under the filters board_count holds (age, belt, country, events, when last), the count reads that index alone.
+  // Under the filters board_counted holds (age, belt, country, events, when last, bracket), the count reads that index alone.
   const part = params.get('part');
   if (part === 'total') {
     const indexed = !f.wins && !f.q && !club;
-    const sql = indexed ? `SELECT count(*) AS total FROM board INDEXED BY board_count WHERE site = ?1 AND dup = 0 AND ${[activeIn(f.off), ...where.slice(1)].join(' AND ')}`
+    const sql = indexed ? `SELECT count(*) AS total FROM board INDEXED BY board_counted WHERE site = ?1 AND dup = 0 AND ${[activeIn(f.off), ...where.slice(1)].join(' AND ')}`
       : `WITH ${careers} SELECT count(*) AS total FROM careers WHERE ${matching}`;
     return json({ total: (await env.DB.prepare(sql).bind(...args).first())?.total ?? 0 });
   }
@@ -312,12 +325,12 @@ async function athletes(env, params) {
   // every athlete (1M rows read, 2.3 s). It starts at the page's fewest wins among the athletes the default ranks
   // highest (four pages of them), which is never more than the floor itself.
   const ranked = counted('["walkover"]').map((g) => `w_${g}`).join(' + ');
-  const bound = !club && sort.startsWith('wins DESC') && JSON.parse(f.off).includes('walkover') && f.off !== '["walkover"]'
+  const bound = !narrow && sort.startsWith('wins DESC') && JSON.parse(f.off).includes('walkover') && f.off !== '["walkover"]'
     ? ` AND ${ranked} >= coalesce((SELECT wins FROM (SELECT wins FROM careers WHERE ${matching} ORDER BY ${ranked} DESC LIMIT 4 * (${limit} + ${offset})) ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
-  const floor = !club && sort.startsWith('wins DESC')
+  const floor = !narrow && sort.startsWith('wins DESC')
     ? ` AND wins >= coalesce((SELECT wins FROM careers WHERE ${matching}${bound} ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
   const { results } = await env.DB.prepare(`WITH ${careers},
-    top AS (SELECT user FROM careers WHERE ${matching}${bound}${floor} ORDER BY ${club ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
+    top AS (SELECT user FROM careers WHERE ${matching}${bound}${floor} ORDER BY ${narrow ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
     SELECT careers.*, ${part === 'rows' ? 'NULL' : `(SELECT count(*) FROM careers WHERE ${matching})`} AS total FROM top CROSS JOIN careers USING (user) ORDER BY ${sort}, user`)
     .bind(...args).all();
   return json({ total: part === 'rows' ? null : results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
@@ -425,10 +438,19 @@ async function athlete(env, params) {
   if (!me.career && !me.person && !me.entries.length) return json({ error: 'Not found' }, 404);
   // Each account's events, newest first; their profile, belts and who they are from this account, else another's.
   const newest = (a, b) => String(b.start ?? '').localeCompare(String(a.start ?? ''));
+  // Where they rank in their bracket (whom, age group, weight class, belt) by wins under the finishes counted, as the rankings
+  // narrowed to it order them; ties share a place. Read through board_bracket: that bracket's rows alone.
+  const held = each.findIndex((a) => a.career);
+  const career = held < 0 ? null : each[held].career;
+  const bracket = career?.weight && career.age && (career.wins > 0 || career.lost > 0)
+    ? await env.DB.prepare(`WITH ${careersOf(f.off, 'AND weight = ?2 AND age = ?3 AND sex IS ?4 AND belt IS ?5 AND dup = 0')}
+        SELECT count(*) AS of, count(*) FILTER (WHERE wins > ?6) + 1 AS rank FROM careers WHERE wins > 0 OR lost > 0`)
+      .bind(accounts[held].site, career.weight, career.age, career.sex, career.belt, career.wins).first() : null;
   return json({
+    bracket: bracket && { sex: career.sex, age: career.age, weight: career.weight, belt: career.belt, rank: bracket.rank, of: bracket.of },
     history: each.flatMap((a) => a.history).sort(newest),
     // The board sums each account's person (MERGE): this account's row, else another's.
-    career: each.find((a) => a.career)?.career ?? null,
+    career,
     person: me.person,
     entries: each.flatMap((a) => a.entries).sort(newest),
     outcomes: each.flatMap((a) => a.outcomes).sort(newest),

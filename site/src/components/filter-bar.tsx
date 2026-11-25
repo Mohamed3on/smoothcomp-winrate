@@ -10,7 +10,7 @@ import { Belt } from '@/components/stats';
 import { PlaceFilter } from '@/components/place-filter';
 import { useApi } from '@/lib/api';
 import { WIN_TYPES, type Filters } from '@/lib/filters';
-import { BELTS } from '@/lib/rules';
+import { BELTS, WEIGHTS, weightName } from '@/lib/rules';
 import { typeName } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
@@ -119,7 +119,13 @@ export function Settings({ f, pick }: { f: Filters; pick: (site: string) => void
 
 // On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose,
 // and the finishes counted are the header's (Counting), not the bar's. On phones the fields open in a sheet, behind a button naming how many are set.
-export function FilterBar({ f, sorts, minimumAthletes = false, event = false, place = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; place?: boolean }) {
+// A bracket: whom, the age group and the weight class an athlete usually enters (rules.js bracketOf).
+const SEXES = [['', 'Anyone'], ['m', 'Men'], ['f', 'Women']].map(([value, label]) => ({ value, label }));
+const AGES = [['', 'Any age group'], ...['Adult', 'Master', 'Juvenile', 'Teen', 'Kids'].map((a) => [a, a])].map(([value, label]) => ({ value, label }));
+const WEIGHT_ITEMS = [{ value: '', label: 'Any weight' }, ...[...WEIGHTS, 101].map((n) => ({ value: String(n), label: weightName(n) }))];
+
+// `bracket` adds whom, age group and weight class, on the lists that rank athletes.
+export function FilterBar({ f, sorts, minimumAthletes = false, event = false, place = false, bracket = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; place?: boolean; bracket?: boolean }) {
   const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
   const belts = new Set(f.get('belt').split(',').filter(Boolean));
   const toggleBelt = (b: string) => {
@@ -130,8 +136,8 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
   const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()} (${c.athletes})` })).sort((a, b) => a.label.localeCompare(b.label))];
   const activeItems = [['', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
-  const set = ['belt', 'wins', 'events', 'athletes', 'active', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(!!(f.get('agemin') || f.get('agemax')));
-  const reset = () => f.set(Object.fromEntries(['belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])));
+  const set = ['belt', 'sex', 'age', 'weight', 'wins', 'events', 'athletes', 'active', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(!!(f.get('agemin') || f.get('agemax')));
+  const reset = () => f.set(Object.fromEntries(['belt', 'sex', 'age', 'weight', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])));
   const fields = <>
       <Field label="Belt">
         <div className="flex flex-wrap gap-1" role="group" aria-label="Belt">
@@ -143,6 +149,16 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
           ))}
         </div>
       </Field>
+      {bracket && <Field label="Division">
+        <div className="flex gap-1.5" role="group" aria-label="Division">
+          {([['sex', SEXES, 'w-28', 'Men or women'], ['age', AGES, 'w-36', 'Age group'], ['weight', WEIGHT_ITEMS, 'w-32', 'Weight class']] as const).map(([key, items, width, label]) => (
+            <Select key={key} items={items} value={f.get(key)} onValueChange={(v) => f.set({ [key]: (v as string) || null })}>
+              <SelectTrigger aria-label={label} className={cn(width, f.get(key) && 'border-primary/60 bg-primary/8')}><SelectValue /></SelectTrigger>
+              <SelectContent>{items.map((x) => <SelectItem key={x.value} value={x.value}>{x.label}</SelectItem>)}</SelectContent>
+            </Select>
+          ))}
+        </div>
+      </Field>}
       <Field label="Age">
         <div className={cn('flex h-8 items-center rounded-lg border border-input transition-colors has-focus-visible:border-ring has-focus-visible:ring-3 has-focus-visible:ring-ring/50 dark:bg-input/30', (f.get('agemin') || f.get('agemax')) && 'border-primary/60 bg-primary/8 dark:bg-primary/8')}>
           <Debounced f={f} name="agemin" label="Youngest age" placeholder="Any" className="h-full w-16 border-0 bg-transparent text-center shadow-none focus-visible:ring-0 dark:bg-transparent" />

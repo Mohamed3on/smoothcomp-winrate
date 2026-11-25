@@ -29,7 +29,10 @@ declare global {
     totals(records: EventRecord[]): Types;
     beltSplit(records: EventRecord[], worn: string[], starts: (number | null)[]): { belt: string; types: Types; events: number }[];
     divisionOf(name: unknown): { age: string | null; weight: string | null };
-    usualDivision(records: EventRecord[]): { age: string | null; weight: string | null };
+    usualDivision(records: EventRecord[]): { age: string | null; weight: string | null; sex: string | null };
+    WEIGHTS: readonly number[];
+    weightName(weight: number): string;
+    bracketOf(usual?: { sex?: string | null; age?: string | null; weight?: string | null }): { sex: string | null; age: string | null; weight: number | null };
     placeOf(stage: string | null | undefined, won: boolean, bronze: boolean): number | null;
     roundOf(stage: string | null | undefined): number;
     isPool(stages: (string | null | undefined)[]): boolean;

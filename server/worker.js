@@ -5,21 +5,41 @@ import '../rules.js';
 import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
 
-const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize } = globalThis.SCWRRules;
+const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize, noShow, eventRecords, usualDivision, bracketOf } = globalThis.SCWRRules;
 
 // Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), each summed with
 // their person's other accounts (MERGE), a few hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
 async function retally(env, site, users) {
   const all = [...new Set(users)].filter(validUser).slice(0, 5000);
+  const chunks = [];
+  for (let i = 0; i < all.length; i += 400) chunks.push(JSON.stringify(all.slice(i, i + 400)));
+  const brackets = chunks.length ? await bracketsOf(env, site, chunks) : [];
   const statements = [];
-  for (let i = 0; i < all.length; i += 400) {
-    const some = JSON.stringify(all.slice(i, i + 400));
+  chunks.forEach((some, i) => {
     statements.push(env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some),
-      ...BOARD.map((sql) => env.DB.prepare(sql).bind(site, some, 0)), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some)));
-  }
+      env.DB.prepare(BOARD[0]).bind(site, some, 0), env.DB.prepare(BOARD[1]).bind(site, some, 0, brackets[i]), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some)));
+  });
   if (statements.length) await env.DB.batch(statements);
+}
+
+// Each chunk's athletes' brackets (rules.js bracketOf), as stats.js BOARD takes them: { user: [sex, age, weight] }, from the
+// divisions of the events they fought (rules.js eventRecords: their profile's match lists, else the results read).
+async function bracketsOf(env, site, chunks) {
+  const read = await env.DB.batch(chunks.flatMap((some) => [
+    env.DB.prepare(`SELECT e.user, e.event, e.division, e.wins, e.losses, v.start FROM json_each(?2) us CROSS JOIN entries e ON e.site = ?1 AND e.user = us.value
+      LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.fought = 1`).bind(site, some),
+    env.DB.prepare('SELECT o.user, o.event, o.start, o.out FROM json_each(?2) us CROSS JOIN outcomes o ON o.site = ?1 AND o.user = us.value').bind(site, some),
+  ]));
+  return chunks.map((some, i) => {
+    const entries = Map.groupBy(read[2 * i].results.map((e) => ({ ...e, fought: 1, wins: JSON.parse(e.wins ?? '{}'), losses: JSON.parse(e.losses ?? '{}') })).filter((e) => !noShow(e)), (e) => e.user);
+    const outcomes = Map.groupBy(read[2 * i + 1].results.map((o) => ({ ...o, out: JSON.parse(o.out) })), (o) => o.user);
+    return JSON.stringify(Object.fromEntries(JSON.parse(some).map((user) => {
+      const b = bracketOf(usualDivision(eventRecords(outcomes.get(user) ?? [], entries.get(user) ?? [])));
+      return [user, [b.sex, b.age, b.weight]];
+    })));
+  });
 }
 
 const KEPT = 30 * 24 * 60 * 60 * 1000; // the longest career-cache.js keeps anything

@@ -3,7 +3,7 @@ import { useLocation, useSearchParams } from 'wouter';
 
 export const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'] as const;
 // The keys that travel with every link, so following one keeps the ranking's terms.
-export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'athletes', 'active', 'near', 'place', 'km'] as const;
+export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'sex', 'age', 'weight', 'country', 'athletes', 'active', 'near', 'place', 'km'] as const;
 // A place to look around (near: "lat,lng", place: its name) and how far (km), shared by events and academies.
 const PLACE = ['near', 'place', 'km'];
 // The kept keys each page reads: a link, and the page's own address, carry only those.
@@ -61,7 +61,7 @@ export function useFilters() {
   };
   const query = {
     site, off: [...off].join(','), belt: get('belt'), wins: get('wins'), events: get('events'), agemin: get('agemin'), agemax: get('agemax'),
-    country: get('country'), active: get('active'), sort: get('sort') || 'wins', dir: get('dir'), q: get('q'),
+    sex: get('sex'), age: get('age'), weight: get('weight'), country: get('country'), active: get('active'), sort: get('sort') || 'wins', dir: get('dir'), q: get('q'),
   };
   // A path with the reader's filters carried along, after any query of its own.
   const link = (path: string) => {

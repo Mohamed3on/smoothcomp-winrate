@@ -13,7 +13,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, totals, usualDivision } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, totals, usualDivision, weightName } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -21,9 +21,19 @@ import { ReadNow } from '@/components/read-now';
 import { ReadScores, type Target } from '@/components/read-scores';
 import { useRemember } from '@/lib/recent';
 
+// A bracket in words: "brown-belt master men at −85 kg", "adults at −70 kg", "teen girls at −53 kg".
+function bracketName(b: Bracket) {
+  const young = b.age === 'Kids' || b.age === 'Teen';
+  const whom = b.sex ? (b.sex === 'm' ? (young ? 'boys' : 'men') : (young ? 'girls' : 'women')) : null;
+  const age = b.age === 'Kids' ? (whom ? '' : 'kids') : whom ? (b.age === 'Adult' ? '' : b.age.toLowerCase()) : `${b.age.toLowerCase()}s`;
+  return [b.belt && `${b.belt}-belt`, age, whom].filter(Boolean).join(' ') + ` at ${weightName(b.weight)}`;
+}
+
 // One person's accounts read as one: entries, history and outcomes carry the site of the account they came from.
 interface Account { site: string; user: string; name: string | null; club: string | null }
-interface Data { career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; belts?: Belts | null; profile?: Profile | null; accounts?: Account[] }
+// Their place by wins in their bracket (whom, age group, weight class, belt), as the rankings narrowed to it order them.
+interface Bracket { sex: string | null; age: string; weight: number; belt: string | null; rank: number; of: number }
+interface Data { bracket?: Bracket | null; career: Athlete | null; person: (Partial<Athlete> & { hidden: number | null }) | null; entries: Entry[]; history: Past[]; outcomes?: Outcome[]; belts?: Belts | null; profile?: Profile | null; accounts?: Account[] }
 const SITE_NAME = (site: string) => (site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp');
 
 // Every finish is counted under its group (rules.js): an older match list's "escape" is a fastest escape.
@@ -561,6 +571,10 @@ export function AthletePage({ id }: { id: string }) {
               <PopoverTrigger openOnHover className="cursor-help rounded-sm underline decoration-muted-foreground/50 decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Usually {usual}</PopoverTrigger>
               <PopoverContent side="bottom" align="start" className="w-64 text-xs text-muted-foreground">The age group and weight class they entered most in the year up to their latest event.</PopoverContent>
             </Popover>}
+            {data.bracket && <Link href={f.link(`/athletes?${new URLSearchParams({ ...(data.bracket.sex && { sex: data.bracket.sex }), age: data.bracket.age, weight: String(data.bracket.weight), ...(data.bracket.belt && { belt: data.bracket.belt }) })}`)}
+              title="Their place by wins among the athletes in their age group, weight class and belt: the rankings narrowed to them" className="text-foreground hover:text-primary">
+              <b className="font-semibold tabular-nums">#{data.bracket.rank}</b> of {data.bracket.of} {bracketName(data.bracket)}
+            </Link>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
             {arts.size ? [...arts].map(([art, s]) => (
               <span key={art} className="inline-flex items-center gap-1.5" title={`${art}: ${plural(s.events, 'event')} on Smoothcomp`}>

@@ -84,6 +84,8 @@ test('a bracket seeds by win rate where a record is known, then wins per event',
   assert.ok(bySeed({ won: 20, lost: 2 }, { won: 9, lost: 2 }) < 0);
 });
 
+const pick = ({ age, weight }) => ({ age, weight });
+
 // Division names as organisers on both sites write them (read from D1, 2026-11-25).
 const DIVISIONS = {
   "Men's GI / Blue / Master 2 / 85KG": ['Master 2', '−85 kg'],
@@ -113,7 +115,7 @@ const DIVISIONS = {
 
 test("a division's name gives its age group and weight class", () => {
   const { divisionOf } = context.SCWRRules;
-  for (const [name, [age, weight]] of Object.entries(DIVISIONS)) assert.deepEqual({ ...divisionOf(name) }, { age, weight }, name);
+  for (const [name, [age, weight]] of Object.entries(DIVISIONS)) assert.deepEqual((({ age, weight }) => ({ age, weight }))(divisionOf(name)), { age, weight }, name);
 });
 
 test('the usual division is the most entered over the year to the latest event, open weight aside', () => {
@@ -126,17 +128,17 @@ test('the usual division is the most entered over the year to the latest event, 
     at('2025-06-01', 'Gi / Master 1 (30+) / -77 kg'),
     at('2025-11-01', 'Gi / Master 1 (30+) / -77 kg'),
   ]);
-  assert.deepEqual({ ...usual }, { age: 'Master 1', weight: '−77 kg' });
+  assert.deepEqual(pick(usual), { age: 'Master 1', weight: '−77 kg' });
   // A tie goes to the newer.
-  assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Adult / -85 kg'), at('2025-02-01', 'Master 1 / -77 kg')]) }, { age: 'Master 1', weight: '−77 kg' });
-  assert.deepEqual({ ...usualDivision([]) }, { age: null, weight: null });
+  assert.deepEqual(pick(usualDivision([at('2025-01-01', 'Adult / -85 kg'), at('2025-02-01', 'Master 1 / -77 kg')])), { age: 'Master 1', weight: '−77 kg' });
+  assert.deepEqual(pick(usualDivision([])), { age: null, weight: null });
 });
 
 test('a limit with no unit is not a usual weight', () => {
   const { usualDivision } = context.SCWRRules;
   const at = (start, ...divisions) => ({ start, divisions });
-  assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Men Gi / Purple / 190 - 199.9 (Cruiser Weight) / Adult')]) }, { age: 'Adult', weight: null });
-  assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Men Gi / 190 - 199.9 / Adult'), at('2025-02-01', 'Gi / Adult / -85 kg')]) }, { age: 'Adult', weight: '−85 kg' });
+  assert.deepEqual(pick(usualDivision([at('2025-01-01', 'Men Gi / Purple / 190 - 199.9 (Cruiser Weight) / Adult')])), { age: 'Adult', weight: null });
+  assert.deepEqual(pick(usualDivision([at('2025-01-01', 'Men Gi / 190 - 199.9 / Adult'), at('2025-02-01', 'Gi / Adult / -85 kg')])), { age: 'Adult', weight: '−85 kg' });
 });
 
 test('one class drawn differently counts as one: −84.9 kg, −185 lbs and −84 kg', () => {
@@ -149,5 +151,22 @@ test('one class drawn differently counts as one: −84.9 kg, −185 lbs and −8
     at('2026-05-23', 'Men Gi / Purple / Middle Weight (80 Kg to 84.9 Kg) / Master (30+)'), at('2026-11-14', 'Men Gi / Purple / Middle Weight (80 Kg to 84.9 Kg) / Master (30+)'),
     at('2026-09-12', 'Men Gi / Blue / Cruiser Weight (85 Kg to 89.9 Kg) / Adult'),
   ]);
-  assert.deepEqual({ ...usual }, { age: 'Master', weight: '−185 lbs' });
+  assert.deepEqual(pick(usual), { age: 'Master', weight: '−185 lbs' });
+});
+
+test('a bracket is whom, the age group without its level, and the nearest weight class', () => {
+  const { bracketOf, weightName } = context.SCWRRules;
+  const of = (age, weight, sex = 'm') => ({ ...bracketOf({ sex, age, weight }) });
+  assert.deepEqual(of('Master 1', '−84.9 kg'), { sex: 'm', age: 'Master', weight: 85 });
+  assert.deepEqual(of('Master', '−185 lbs'), { sex: 'm', age: 'Master', weight: 85 });
+  assert.deepEqual(of('Adult', '−82.3 kg'), { sex: 'm', age: 'Adult', weight: 80 });
+  assert.deepEqual(of('Adult', '−120 kg'), { sex: 'm', age: 'Adult', weight: 101 });
+  assert.deepEqual(of('Adult', '+100.5 kg'), { sex: 'm', age: 'Adult', weight: 101 });
+  assert.deepEqual(of('Adult', '+94 kg'), { sex: 'm', age: 'Adult', weight: 100 });
+  assert.deepEqual(of('Adult', '−53.5 kg', 'f'), { sex: 'f', age: 'Adult', weight: 53 });
+  assert.deepEqual(of('Kids', '−33.2 kg', null), { sex: null, age: 'Kids', weight: 35 });
+  assert.deepEqual(of('Teen', 'Pesado'), { sex: 'm', age: 'Teen', weight: null });
+  assert.deepEqual({ ...bracketOf() }, { sex: null, age: null, weight: null });
+  assert.equal(weightName(85), '−85 kg');
+  assert.equal(weightName(101), '+100 kg');
 });

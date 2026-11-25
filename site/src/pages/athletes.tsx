@@ -12,7 +12,7 @@ export const ATHLETE_SORTS: [string, string][] = [['wins', 'Wins'], ['submission
   ['rate', 'Submission rate'], ['winRate', 'Win rate'], ['losses', 'Losses'], ['medals', 'Medals'], ['events', 'Events entered'], ['perEvent', 'Wins per event'], ['last', 'Last competed']];
 // The finishes a ranking can name: a win's (its type) or a loss's (lost_ and its type).
 const FINISHES = [...WIN_TYPES, 'fastest_escape', 'other'] as string[];
-export const RESET = ['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'];
+export const RESET = ['off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'sex', 'age', 'weight', 'country', 'sort', 'dir', 'q', 'athletes', 'active'];
 export const resetAction = (f: Filters, also: string[] = []) => ({ label: 'Reset filters', onClick: () => f.set(Object.fromEntries([...RESET, ...also].map((k) => [k, null]))) });
 const perEvent = (a: Athlete) => (a.events ? (a.wins / a.events).toFixed(1) : '–');
 
@@ -59,7 +59,7 @@ export function AthletesPage() {
       <PageHead title="Athletes" aside={count && <Count n={count.total} unit={count.total === 1 ? 'athlete' : 'athletes'} />}
         text="Every athlete Mat Stats has read, in one ranking: their Smoothcomp career, or their results at the events read where Smoothcomp serves no career. Choose which finishes count; walkovers start switched off." />
       <div className="flex flex-col gap-3">
-        <FilterBar f={f} sorts={ATHLETE_SORTS} />
+        <FilterBar f={f} sorts={ATHLETE_SORTS} bracket />
         <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={athleteColumns(f)} rowKey={(a) => a.user} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
           empty={error ? <Empty title="Couldn’t load the ranking" text="Mat Stats didn’t answer. Try again in a moment." action={{ label: 'Try again', onClick: () => refetch() }} /> : <Empty title="No athletes match" text="Lower the minimums, widen the age range, switch more finish types on, or clear the belt and country." action={resetAction(f)} />} />
       </div>
