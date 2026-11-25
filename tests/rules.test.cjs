@@ -104,6 +104,7 @@ const DIVISIONS = {
   'TEEN NO - GI FEMALE / Grey / 68+ kg': ['Teen', '+68 kg'],
   'Prva borba / Men / Seniori / -70 kg B': ['Adult', '−70 kg'],
   'BU13 -46': ['Kids', null],
+  'Men Gi / Purple / Middle Weight (80 Kg to 84.9 Kg) / Master (30+)': ['Master', '−84.9 kg'],
   'Men +18y NOGI / Professional / Masters 35+ / -77 kg': ['Master', '−77 kg'],
   'No-Gi Grappling / Male / 10-11 / Beginner / -79lbs': ['Kids', '−79 lbs'],
   'Pro Grappling / Male / Pro Grappling II (Up to 999 lbs)': [null, 'Open'],
@@ -136,4 +137,17 @@ test('a limit with no unit is not a usual weight', () => {
   const at = (start, ...divisions) => ({ start, divisions });
   assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Men Gi / Purple / 190 - 199.9 (Cruiser Weight) / Adult')]) }, { age: 'Adult', weight: null });
   assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Men Gi / 190 - 199.9 / Adult'), at('2025-02-01', 'Gi / Adult / -85 kg')]) }, { age: 'Adult', weight: '−85 kg' });
+});
+
+test('one class drawn differently counts as one: −84.9 kg, −185 lbs and −84 kg', () => {
+  const { usualDivision } = context.SCWRRules;
+  const at = (start, ...divisions) => ({ start, divisions });
+  // Athlete 1296744's year: −185 lbs alone at three events, −84.9 kg at two, −84 kg at one: the class is theirs at all six.
+  const usual = usualDivision([
+    at('2025-12-01', 'Gi Adult / Male / Blue / Master (30+) / -185 lbs'), at('2026-03-14', 'Gi Adult / Male / Blue / Master (30+) / -185 lbs'),
+    at('2026-10-10', 'Gi Adult / Male / Blue / Master (30+) / -185 lbs'), at('2026-01-24', 'Gi / Male / Blue / Adult / -84 kg'),
+    at('2026-05-23', 'Men Gi / Purple / Middle Weight (80 Kg to 84.9 Kg) / Master (30+)'), at('2026-11-14', 'Men Gi / Purple / Middle Weight (80 Kg to 84.9 Kg) / Master (30+)'),
+    at('2026-09-12', 'Men Gi / Blue / Cruiser Weight (85 Kg to 89.9 Kg) / Adult'),
+  ]);
+  assert.deepEqual({ ...usual }, { age: 'Master', weight: '−185 lbs' });
 });

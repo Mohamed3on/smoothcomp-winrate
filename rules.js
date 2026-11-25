@@ -158,7 +158,7 @@ globalThis.SCWRRules = (() => {
   const rank = (age) => (age ? AGES.indexOf(age.replace(/ \d$/, '')) + (/\d$/.test(age) ? 1 : 0) : -1);
   function weightIn(part) {
     if (/\b(open|absolut)/i.test(part)) return 'Open';
-    const m = /(\d+(?:[.,]\d+)?)\s*\+?\s*(kg|lbs?)\b/i.exec(part);
+    const m = [...part.matchAll(/(\d+(?:[.,]\d+)?)\s*\+?\s*(kg|lbs?)\b/gi)].pop();
     // Unitless, unless it reads as an age ("10-11") or is lighter than anyone over five.
     const bare = !m && BARE.exec(part);
     if (!m && !bare) return CLASS.test(part) ? part.trim().replace(/\s+/g, ' ').toLowerCase().replace(/(^|[\s-])\p{L}/gu, (c) => c.toUpperCase()) : null;
@@ -174,19 +174,26 @@ globalThis.SCWRRules = (() => {
     return { age, weight: parts.map(weightIn).find(Boolean) ?? null };
   }
   // The age group and weight class an athlete entered most over the year to their latest event, each
-  // counted once an event; a tie goes to the newer. Open weight doesn't count, nor a limit with no unit ("−169.9": kg or lbs?). `records` as eventRecords gives them.
+  // counted once an event; a tie goes to the newer. Open weight doesn't count, nor a limit with no unit ("−169.9": kg or lbs?).
+  // Organisers draw one class differently (−84.9 kg, −185 lbs, −85 kg): a limit counts every event with one
+  // within 1.5 kg of it, then the events at it exactly, so the class shows as most of them write it. `records` as eventRecords gives them.
   function usualDivision(records) {
     const dated = records.filter((r) => !Number.isNaN(Date.parse(r.start ?? ''))).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
     const since = dated.length ? Date.parse(dated[0].start) - 365 * 864e5 : 0;
     const ages = new Map();
-    const weights = new Map();
+    const weights = [];
     for (const r of dated.filter((x) => Date.parse(x.start) >= since)) {
       const seen = r.divisions.map(divisionOf);
       for (const a of new Set(seen.map((d) => d.age).filter(Boolean))) ages.set(a, (ages.get(a) ?? 0) + 1);
-      for (const w of new Set(seen.map((d) => d.weight).filter((x) => x && x !== 'Open' && !/^[−+][\d.]+$/.test(x)))) weights.set(w, (weights.get(w) ?? 0) + 1);
+      weights.push(new Set(seen.map((d) => d.weight).filter((x) => x && x !== 'Open' && !/^[−+][\d.]+$/.test(x))));
     }
     const most = (counts) => [...counts].reduce((best, x) => (!best || x[1] > best[1] ? x : best), null)?.[0] ?? null;
-    return { age: most(ages), weight: most(weights) };
+    const kg = (w) => { const m = /^([−+])([\d.]+) (kg|lbs)$/.exec(w); return m && [m[1], m[2] * (m[3] === 'lbs' ? 0.45359237 : 1)]; };
+    const near = (a, b) => a === b || (kg(a) && kg(b) && kg(a)[0] === kg(b)[0] && Math.abs(kg(a)[1] - kg(b)[1]) <= 1.5);
+    const score = (w) => [weights.filter((e) => [...e].some((x) => near(x, w))).length, weights.filter((e) => e.has(w)).length];
+    const weight = [...new Set(weights.flatMap((e) => [...e]))].map((w) => [w, score(w)])
+      .reduce((best, x) => (!best || x[1][0] > best[1][0] || (x[1][0] === best[1][0] && x[1][1] > best[1][1]) ? x : best), null)?.[0] ?? null;
+    return { age: most(ages), weight };
   }
 
   // Places in a division whose results aren't published, read off its matches as Smoothcomp's
