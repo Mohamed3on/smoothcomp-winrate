@@ -241,6 +241,12 @@ test("the academies list's two-year totals count only those who competed in two 
   db.exec("INSERT INTO clubs (site, club_id, club) VALUES ('smoothcomp.com', '9', 'Nine'), ('smoothcomp.com', '10', 'Ten')");
   const list = await (await API.teams({ DB }, new URLSearchParams('site=smoothcomp.com&active=24&athletes=1'))).json();
   assert.deepEqual(list.rows.map((r) => [r.club_id, r.athletes, r.wins]), [['9', 1, 2]]);
+  // Min. wins is the academy's total (academy 9: 2 + 5 over any time), kept or added up here (other finishes counted).
+  const least = async (q) => (await (await API.teams({ DB }, new URLSearchParams(`site=smoothcomp.com&athletes=1&${q}`))).json()).rows.map((r) => r.club_id);
+  for (const off of ['', '&off=walkover,points']) {
+    assert.deepEqual(await least(`active=0&wins=7${off}`), ['9']);
+    assert.deepEqual(await least(`active=0&wins=8${off}`), []);
+  }
   db.prepare("UPDATE board SET last = '2020-01-01' WHERE user = '1'").run();
   assert.deepEqual(await keepRecent({ DB }, 'smoothcomp.com'), { academies: 0, written: 0, gone: 1 });
 });
