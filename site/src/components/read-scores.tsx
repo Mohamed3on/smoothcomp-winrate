@@ -10,12 +10,13 @@ const HOMES: Record<string, string> = { 'smoothcomp.com': 'https://smoothcomp.co
 // Eight requests in flight at most, across every event read at once.
 let open = 0;
 const waiting: (() => void)[] = [];
-async function read(url: string) {
+async function read(url: string, moved?: (to: string) => void) {
   if (open >= 8) await new Promise<void>((go) => waiting.push(go));
   open++;
   try {
     const r = await fetch(url, { headers: { Accept: 'application/json' } });
     if (!r.ok) throw new Error(String(r.status));
+    if (r.redirected) moved?.(r.url);
     return await r.json();
   } finally { open--; waiting.shift()?.(); }
 }
@@ -24,7 +25,7 @@ const seconds = (t?: string) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t!.split(':
 
 interface Side { id?: number; score?: number; advantage?: number; penalty?: number }
 interface Card { left?: Side; right?: Side; matchInfo?: { time?: string; timeRemaining?: number } }
-interface Listed { id: number; name?: string; group?: string; state?: string; wonBy?: string; bracket_id?: number }
+interface Listed { id: number; name?: string; group?: string; state?: string; wonBy?: string; bracket_id?: number; seats?: { name?: string }[] }
 // An event to read: its divisions with a match still unscored, or (none named) every division.
 export interface Target { site: string; event: string; entries?: Entry[] }
 
@@ -51,16 +52,21 @@ async function readEvent({ site, event, entries }: Target, tick: (n: number) => 
   }
 }
 // The finished matches the schedule lists for the divisions asked for, found by every bracket their matches name
-// (pools and the knockout after are two), else by name; none named, every division.
+// (pools and the knockout after are two), else by name; none named, every division. Where every match still
+// unscored names its opponent, only the matches with one of them in a seat, not the whole division's.
 async function listed(base: string, entries?: Entry[]): Promise<Listed[]> {
-  const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`);
+  // An organiser's event redirects to its own subdomain: the rest go there, not through the redirect again.
+  const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`, (to) => { base = to.slice(0, to.indexOf('/schedule/')); });
   const mats: { id: number }[] = (await all(days, (d) => read(`${base}/schedule/new/mats.json/${d.id}`))).flat();
   const lists: Listed[] = (await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`))).flat();
   const brackets = new Set(entries?.flatMap((e) => e.bouts ?? []).map((b) => b.bracket).filter(Boolean));
   const names = new Set(entries?.map((e) => normalize(e.division)));
+  const opponents = entries?.flatMap((e) => e.bouts ?? []).filter((b) => !b.us && b.type !== 'walkover').map((b) => normalize(b.opponent));
+  const against = opponents?.every(Boolean) ? new Set(opponents) : null;
   const seen = new Set<number>();
   return lists.filter((m) => m?.state === 'finished' && m.name && m.wonBy !== 'walkover' && !seen.has(m.id) && seen.add(m.id)
-    && (!entries || brackets.has(Number(m.bracket_id)) || names.has(normalize(m.group ?? ''))));
+    && (!entries || brackets.has(Number(m.bracket_id)) || names.has(normalize(m.group ?? '')))
+    && (!against || !!m.seats?.some((s) => against.has(normalize(s.name)))));
 }
 
 // Reads the events' scores on a click, then the page again, past the browser's copy.
