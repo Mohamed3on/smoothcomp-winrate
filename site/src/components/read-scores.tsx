@@ -25,7 +25,7 @@ const seconds = (t?: string) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t!.split(':
 
 interface Side { id?: number; score?: number; advantage?: number; penalty?: number }
 interface Card { left?: Side; right?: Side; matchInfo?: { time?: string; timeRemaining?: number } }
-interface Listed { id: number; name?: string; group?: string; state?: string; wonBy?: string; bracket_id?: number }
+interface Listed { id: number; name?: string; group?: string; state?: string; wonBy?: string; bracket_id?: number; seats?: { name?: string }[] }
 // An event to read: its divisions with a match still unscored, or (none named) every division.
 export interface Target { site: string; event: string; entries?: Entry[] }
 
@@ -51,18 +51,21 @@ async function readEvent({ site, event, entries }: Target, tick: (n: number) => 
     if (!r.ok) throw new Error(String(r.status));
   }
 }
-// The finished matches the schedule lists for the divisions asked for, found by every bracket their matches name
-// (pools and the knockout after are two), else by name; none named, every division.
+// The finished matches the schedule lists that are still without a score: each found by its division (or bracket),
+// round (where it was kept) and opponent, so a card already read is never read again; none asked for, every division.
 async function listed(base: string, entries?: Entry[]): Promise<Listed[]> {
   // An organiser's event redirects to its own subdomain: the rest go there, not through the redirect again.
   const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`, (to) => { base = to.slice(0, to.indexOf('/schedule/')); });
   const mats: { id: number }[] = (await all(days, (d) => read(`${base}/schedule/new/mats.json/${d.id}`))).flat();
   const lists: Listed[] = (await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`))).flat();
-  const brackets = new Set(entries?.flatMap((e) => e.bouts ?? []).map((b) => b.bracket).filter(Boolean));
-  const names = new Set(entries?.map((e) => normalize(e.division)));
+  // A pool's numbered match is the only one of its number there; a knockout round's is told apart by the opponent,
+  // spelt as either list spells them (a profile's "Hüseyin" is a registration's "Huseyin").
+  const key = (at: unknown, stage: string, name: unknown) => `${at}|${stage}|${/^Match \d+\//.test(stage) ? '' : normalize(name).normalize('NFD').replace(/\p{M}/gu, '')}`;
+  const want = new Set(entries?.flatMap((e) => (e.bouts ?? []).filter((b) => !b.us && b.type !== 'walkover')
+    .flatMap((b) => [normalize(e.division), ...(b.bracket ? [b.bracket] : [])].map((at) => key(at, b.stage ?? '', b.opponent)))));
+  const asked = (m: Listed) => m.seats?.some((s) => [normalize(m.group), m.bracket_id].some((at) => want.has(key(at, m.name!, s.name)) || want.has(key(at, '', s.name))));
   const seen = new Set<number>();
-  return lists.filter((m) => m?.state === 'finished' && m.name && m.wonBy !== 'walkover' && !seen.has(m.id) && seen.add(m.id)
-    && (!entries || brackets.has(Number(m.bracket_id)) || names.has(normalize(m.group ?? ''))));
+  return lists.filter((m) => m?.state === 'finished' && m.name && m.wonBy !== 'walkover' && !seen.has(m.id) && seen.add(m.id) && (!entries || asked(m)));
 }
 
 // Reads the events' scores on a click, then the page again, past the browser's copy.

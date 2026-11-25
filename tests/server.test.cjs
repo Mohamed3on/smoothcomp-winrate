@@ -76,7 +76,7 @@ test("a results page's upload reads back on the stats site", async () => {
   assert.equal(event.event.title, 'Berlin Open');
   assert.deepEqual(event.entries.map((e) => [e.user, e.place, e.wins]).sort(), [['11', 1, { submission: 3, walkover: 1 }], ['12', 2, { points: 1 }]]);
   // Each result names its matches with no score read, for Read scores; one with none names none.
-  assert.deepEqual(event.entries.map((e) => [e.user, e.open]).sort(), [['11', [{ match: null, stage: 'Final', bracket: null }]], ['12', undefined]]);
+  assert.deepEqual(event.entries.map((e) => [e.user, e.open]).sort(), [['11', [{ match: null, stage: 'Final', bracket: null, opponent: 'Bo Sun' }]], ['12', undefined]]);
   // An academy's page opens one event at a time, reading only its own athletes there.
   const club = await (await API.event(env, new URLSearchParams('site=smoothcomp.com&id=900&club=502'))).json();
   assert.deepEqual(club.entries.map((e) => e.user), ['12']);
