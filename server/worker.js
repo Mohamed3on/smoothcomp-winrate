@@ -83,7 +83,7 @@ const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, 
 // and who they met (name, user, academy) in which round.
 const bouts = (list) => (Array.isArray(list) && list.length ? JSON.stringify(list.slice(0, 40).filter((b) => b && typeof b === 'object').map((b) => ({
   won: b.won === true, type: finishOf(b.type ?? ''), how: text(b.how, 60) ?? text(detailOf(b.type), 60), opponent: text(b.opponent, 120), user: validUser(String(b.user ?? '')) ? String(b.user) : null,
-  club: text(b.club, 160), stage: text(b.stage, 60), ...(regOf(b.bracket) ? { bracket: b.bracket } : {}),
+  club: text(b.club, 160), stage: text(b.stage, 60), ...(regOf(b.bracket) ? { bracket: b.bracket } : {}), ...(regOf(b.match) ? { match: b.match } : {}),
   // The score, theirs and their opponent's ([points, advantages, penalties]), and the clock ([ended at, left], seconds).
   ...(trio(b.us) && trio(b.them) ? { us: b.us, them: b.them } : {}),
   ...(Array.isArray(b.clock) && b.clock.length === 2 && b.clock.every((n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000)) ? { clock: b.clock } : {}),
@@ -276,12 +276,12 @@ export function cleanOut(out) {
   }
   const losses = (Array.isArray(out?.losses) ? out.losses : []).slice(0, 60).filter(l => finished(l?.type)).map(l => ({
     type: finished(l.type), how: text(l.how, 60) ?? '', opponent: text(l.opponent, 120), club: text(l.club, 160), division: text(l.division, 200),
-    reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: text(l.stage, 60),
+    reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: text(l.stage, 60), match: regOf(l.match),
   }));
   // A win names its finish, round and division too (from v 2), for a head-to-head.
   const faced = (Array.isArray(out?.faced) ? out.faced : []).slice(0, 120).filter(m => text(m?.name, 120)).map(m => ({
     name: text(m.name, 120), club: text(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
-    ...(m.won === true && finished(m.type) ? { type: finished(m.type), how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60) } : {}),
+    ...(m.won === true && finished(m.type) ? { type: finished(m.type), how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60), match: regOf(m.match) } : {}),
   }));
   return { ...(out?.v === 2 ? { v: 2 } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}) };
 }

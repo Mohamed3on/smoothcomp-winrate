@@ -28,20 +28,13 @@ interface Listed { id: number; name?: string; group?: string; state?: string; wo
 // An event to read: its divisions with a match still unscored, or (none named) every division.
 export interface Target { site: string; event: string; entries?: Entry[] }
 
-// An event's scores, read by this browser straight from the site (its JSON answers any page, no sign-in): the
-// schedule for the match ids, then each finished match's card (a walkover has no score). The divisions asked for
-// are found by every bracket their matches name (pools and the knockout after are two), else by name. What it
-// reads goes to Mat Stats (worker.js scores), which fills the stored matches that have none, so everyone sees them.
+// An event's scores, read by this browser straight from the site (its JSON answers any page, no sign-in): each
+// finished match's card (a walkover has no score), by the match ids stored with the matches, else the schedule's.
+// What it reads goes to Mat Stats (worker.js scores), which fills the stored matches that have none, so everyone sees them.
 async function readEvent({ site, event, entries }: Target, tick: (n: number) => void) {
   const home = HOMES[site], base = `${home}/en/event/${event}`;
-  const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`);
-  const mats: { id: number }[] = (await all(days, (d) => read(`${base}/schedule/new/mats.json/${d.id}`))).flat();
-  const lists: Listed[] = (await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`))).flat();
-  const brackets = new Set(entries?.flatMap((e) => e.bouts ?? []).map((b) => b.bracket).filter(Boolean));
-  const names = new Set(entries?.map((e) => normalize(e.division)));
-  const seen = new Set<number>();
-  const ours = lists.filter((m) => m?.state === 'finished' && m.name && m.wonBy !== 'walkover' && !seen.has(m.id) && seen.add(m.id)
-    && (!entries || brackets.has(Number(m.bracket_id)) || names.has(normalize(m.group ?? ''))));
+  const open = entries?.flatMap((e) => (e.bouts ?? []).filter((b) => !b.us && b.type !== 'walkover').map((b) => ({ id: b.match!, name: b.stage ?? undefined, group: e.division })));
+  const ours = open?.length && open.every((m) => m.id && m.name) ? [...new Map(open.map((m) => [m.id, m])).values()] : await listed(base, entries);
   tick(ours.length);
   const trio = (p: Side) => [p.score, p.advantage, p.penalty].map((n) => (Number.isSafeInteger(n) ? n! : 0));
   const matches = (await all(ours, async (m) => {
@@ -56,6 +49,18 @@ async function readEvent({ site, event, entries }: Target, tick: (n: number) => 
     const r = await fetch('/scores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ site, event, matches: matches.slice(i, i + 2000) }) });
     if (!r.ok) throw new Error(String(r.status));
   }
+}
+// The finished matches the schedule lists for the divisions asked for, found by every bracket their matches name
+// (pools and the knockout after are two), else by name; none named, every division.
+async function listed(base: string, entries?: Entry[]): Promise<Listed[]> {
+  const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`);
+  const mats: { id: number }[] = (await all(days, (d) => read(`${base}/schedule/new/mats.json/${d.id}`))).flat();
+  const lists: Listed[] = (await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`))).flat();
+  const brackets = new Set(entries?.flatMap((e) => e.bouts ?? []).map((b) => b.bracket).filter(Boolean));
+  const names = new Set(entries?.map((e) => normalize(e.division)));
+  const seen = new Set<number>();
+  return lists.filter((m) => m?.state === 'finished' && m.name && m.wonBy !== 'walkover' && !seen.has(m.id) && seen.add(m.id)
+    && (!entries || brackets.has(Number(m.bracket_id)) || names.has(normalize(m.group ?? ''))));
 }
 
 // Reads the events' scores on a click, then the page again, past the browser's copy.

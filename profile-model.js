@@ -35,9 +35,9 @@ const SCWRProfile = (() => {
         out.types[type][seat.isWinner ? 0 : 1]++;
         const other = m.seats.find(s => s !== seat);
         if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner,
-          ...(seat.isWinner ? { type, how: howOf(m.wonBy), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null } : {}) });
+          ...(seat.isWinner ? { type, how: howOf(m.wonBy), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null, match: m.id ?? null } : {}) });
         if (seat.isLoser) out.losses.push({ type, how: howOf(m.wonBy), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
-          reg: other?.event_registration_id ?? null, image: other?.image ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null });
+          reg: other?.event_registration_id ?? null, image: other?.image ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null, match: m.id ?? null });
       }
     }
     return out;

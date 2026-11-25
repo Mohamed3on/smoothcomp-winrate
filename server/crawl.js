@@ -210,7 +210,7 @@ function results(data, start) {
         // Who they met: the other side, named as their bracket card names them where it was read.
         const k = 1 - i;
         const them = sides[k] && (data.users[sides[k][0]] ?? null);
-        if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage, bracket,
+        if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage, bracket, match: id,
           ...(card ? { us: card.s[i], them: card.s[k], clock: card.t } : {}) });
         const bucket = s[1] ? x.e.wins : x.e.losses;
         bucket[finish] = (bucket[finish] ?? 0) + 1;

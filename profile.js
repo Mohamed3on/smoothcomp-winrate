@@ -80,7 +80,9 @@
     let kept = null;
     kept = await SCWRSite.store.load(key);
     const local = (kept?.events ?? []).map(e => ({ ...e, out: clean(e.out) }));
-    const known = new Map(local.filter(e => e.settled).map(e => [e.id, e]));
+    // A copy from before wins kept their details (v 2) isn't kept: the count then falls short of Smoothcomp's,
+    // so the whole history is read again once, and every event comes back with its wins' finish and round.
+    const known = new Map(local.filter(e => e.settled && e.out.v === 2).map(e => [e.id, e]));
     // Nothing kept here, or the whole history read again: what any install already read
     // for this athlete.
     const site = ajp ? 'ajptour.com' : 'smoothcomp.com';

@@ -428,6 +428,8 @@ test('an event asked for on the site is read at once, past the crawler\'s day, w
   // Read as it stands, its row kept to read again in six hours, back in line.
   const entries = db.prepare("SELECT user, place FROM entries WHERE event = '950' AND fought = 1 ORDER BY user").all().map((r) => [r.user, r.place]);
   assert.deepEqual(entries, [['11', 1], ['12', 2], ['13', null], ['14', null]]);
+  // Each match keeps its id, so its card can be read again later without the schedule.
+  assert.equal(JSON.parse(db.prepare("SELECT bouts FROM entries WHERE event = '950' AND user = '11'").get().bouts)[0].match, 70);
   const row = db.prepare("SELECT state, priority, next, wrote FROM crawls WHERE event = '950'").get();
   assert.equal(row.state, 'queued');
   assert.equal(row.priority, 3);
