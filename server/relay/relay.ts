@@ -5,6 +5,19 @@
 const KEY = process.env.RELAY_KEY;
 if (!KEY) throw new Error('RELAY_KEY missing');
 const ALLOWED = (host: string) => host === 'smoothcomp.com' || host.endsWith('.smoothcomp.com') || host === 'ajptour.com';
+// Backup: if Smoothcomp refuses the box too (403), requests go through PROXY (Decodo residential, billed per GB)
+// for the next ten minutes, then the box is tried again.
+const PROXY = process.env.PROXY;
+let proxiedUntil = 0;
+async function get(url: URL, headers: Record<string, string>) {
+  const via = (proxy?: string) => fetch(url, { headers, redirect: 'manual', proxy, signal: AbortSignal.timeout(60_000) }).catch(() => null);
+  if (PROXY && Date.now() < proxiedUntil) return via(PROXY);
+  const r = await via();
+  if (r?.status !== 403 || !PROXY) return r;
+  proxiedUntil = Date.now() + 10 * 60e3;
+  console.log('403 from the box: proxying until', new Date(proxiedUntil).toISOString());
+  return via(PROXY);
+}
 
 Bun.serve({
   hostname: '127.0.0.1',
@@ -17,7 +30,7 @@ Bun.serve({
     const headers = { 'User-Agent': req.headers.get('user-agent') ?? '', Accept: req.headers.get('accept') ?? '*/*' };
     // Redirects (smoothcomp.com to an organiser's subdomain) are followed only within the allowed hosts.
     for (let hops = 0; hops < 5; hops++) {
-      const r = await fetch(url, { headers, redirect: 'manual', signal: AbortSignal.timeout(60_000) }).catch(() => null);
+      const r = await get(url, headers);
       if (!r) return new Response(null, { status: 502 });
       const next = r.status >= 300 && r.status < 400 && r.headers.get('location');
       if (!next) return new Response(r.body, { status: r.status, headers: { 'Content-Type': r.headers.get('content-type') ?? '' } });
