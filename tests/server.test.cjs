@@ -115,6 +115,17 @@ test("a results page's upload reads back on the stats site", async () => {
   assert.deepEqual(looked.records, { 11: { submission: [3, 0], walkover: [1, 0] }, 12: { points: [1, 0], submission: [0, 2] } });
 });
 
+test("a career read says whether a profile is hidden, over the events' flag", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { DB, db } = d1();
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), { DB }, {});
+  await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
+  const hidden = () => db.prepare("SELECT p.user, p.hidden, b.hidden AS ranked FROM people p LEFT JOIN board b USING (site, user) ORDER BY p.user").all().map((r) => [r.user, r.hidden, r.ranked]);
+  assert.deepEqual(hidden(), [['11', 0, 0], ['12', null, null]]);
+  await post('/keep', { site: 'smoothcomp.com', careers: { 11: { at: Date.now(), hidden: true }, 12: { at: Date.now(), wins: { points: 4 }, medals: [1, 0, 0] } } });
+  assert.deepEqual(hidden(), [['11', 1, 1], ['12', 0, 0]]);
+});
+
 test("an event where an athlete had walkovers alone isn't one of theirs: no event, medal or match there counts", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');

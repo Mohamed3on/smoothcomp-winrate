@@ -91,6 +91,10 @@ async function keep(env, body) {
     SELECT ?1, value ->> 'user', value ->> 'kind', value ->> '$.entry.at', value ->> 'entry' FROM json_each(?2) WHERE true
     ON CONFLICT (site, user, kind) DO UPDATE SET at = excluded.at, entry = excluded.entry WHERE excluded.at > athletes.at RETURNING user`)
     .bind(body.site, JSON.stringify(rows)).all();
+  // A career read is their profile page's word on whether it is public, over any event's flag.
+  await env.DB.prepare(`UPDATE people SET hidden = c.hidden FROM (SELECT user, iif(entry ->> '$.hidden' = 1, 1, 0) AS hidden FROM athletes
+      WHERE site = ?1 AND kind = 'careers' AND user IN (SELECT value FROM json_each(?2)) AND (entry ->> '$.hidden' = 1 OR json_type(entry, '$.wins') = 'object')) c
+    WHERE people.site = ?1 AND people.user = c.user AND people.hidden IS NOT c.hidden`).bind(body.site, JSON.stringify(changed.map((row) => row.user))).run();
   // A career or belt read changes their ranking row: only those that changed are recounted.
   await retally(env, body.site, changed.map((row) => row.user));
   return json({});
