@@ -133,7 +133,8 @@
 .scwr-belt-split {
   display: grid;
   gap: 8px;
-  width: min(100%, 300px);
+  width: 300px;
+  max-width: 100%;
   margin: 0 auto;
 }
 /* Placeholders pulse in the card's own ink until the lists are read. */
