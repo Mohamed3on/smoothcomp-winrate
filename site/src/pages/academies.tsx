@@ -42,7 +42,7 @@ export function AcademiesPage() {
   const f = useFilters();
   const near = f.get('near');
   // Ranked by win rate, a few athletes' short records would top the list: the minimum starts higher there.
-  const least = f.query.sort === 'winRate' ? 20 : 3;
+  const least = f.query.sort === 'winRate' ? 10 : 3;
   const query = { ...f.query, near, km: near ? f.get('km') : '', athletes: f.get('athletes') || least };
   const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Team[]; total: number }>('teams', { ...query, limit: 2000, top: 0 });
   const view = f.get('view') === 'map' ? 'map' : 'list';
