@@ -44,6 +44,8 @@ export function DivisionPage({ id }: { id: string }) {
       : [{ key: 'rate', label: 'Win rate', width: '7rem', compact: '4.5rem', title: 'Career win rate and record, as the bracket is seeded', cell: (r: (typeof rows)[number]) => <Seed r={r} /> }]),
     { key: 'career', label: 'Career wins', width: '8rem', narrow: true, title: 'Wins of the finish types switched on: their career, or their results where Smoothcomp serves none', cell: (r) => <Num n={r.career_wins} /> },
   ];
+  // The bracket on the site, where a match names it; the results (or entrants) page where none does.
+  const bracket = data.entries.flatMap((e) => e.bouts ?? []).find((b) => b.bracket)?.bracket;
   const matches = (r: Row) => {
     const list = matchesOf(r);
     return list.length
@@ -59,7 +61,7 @@ export function DivisionPage({ id }: { id: string }) {
           <span>{date(event.start)}</span>
           {event.city && <span>{event.city}</span>}
           <span>{plural(rows.length, 'athlete')}</span>
-          <a href={`${f.home}/en/event/${id}/${fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
+          <a href={`${f.home}/en/event/${id}/${bracket ? `bracket/${bracket}` : fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
         </div>
       </header>
       <Ledger rows={rows} loading={false} columns={columns} rowKey={(r) => r.user} empty={<Empty title="Nobody here" text="Nobody is listed in this division." />} expand={fought ? matches : undefined} openAll />

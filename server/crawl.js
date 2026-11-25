@@ -108,11 +108,11 @@ async function schedule(get, base) {
     if (!sides.length || seen.has(m.id)) continue;
     const winners = sides.filter((s) => s.isWinner);
     const finish = m.state === 'finished' && sides.length === 2 && winners.length === 1 && m.wonBy ? String(m.wonBy) : null;
-    seen.set(m.id, [m.id, m.group ?? '', m.name ?? '', finish, sides.map((s) => [s.event_registration_id, !!s.isWinner, s.name ?? null, s.club || null, s.country || null, s.affiliation || null]), m.state === 'finished']);
+    seen.set(m.id, [m.id, m.group ?? '', m.name ?? '', finish, sides.map((s) => [s.event_registration_id, !!s.isWinner, s.name ?? null, s.club || null, s.country || null, s.affiliation || null]), m.state === 'finished', Number(m.bracket_id) || null]);
   }
   const matches = [...seen.values()];
   const ends = Math.max(0, ...mats.map((m) => Date.parse(m.estimated_end) || 0));
-  return { matches: matches.map((m) => m.slice(0, 5)), over: matches.every((m) => m[5]), ends: ends || null };
+  return { matches: matches.map((m) => [...m.slice(0, 5), m[6]]), over: matches.every((m) => m[5]), ends: ends || null };
 }
 
 // Each match's bracket card: who each side is (their user, academy, affiliation, age, photo), and
@@ -199,7 +199,7 @@ function results(data, start) {
       return entries.get(u.id);
     };
     const bronze = matches.some((m) => m[2] === 'Bronze match');
-    for (const [id, , stage, finish, sides] of [...matches].sort((a, b) => roundOf(a[2]) - roundOf(b[2]) || a[0] - b[0])) {
+    for (const [id, , stage, finish, sides, bracket] of [...matches].sort((a, b) => roundOf(a[2]) - roundOf(b[2]) || a[0] - b[0])) {
       const card = data.cards?.[id];
       const seats = sides.map(of);
       if (!finish) continue;
@@ -209,7 +209,7 @@ function results(data, start) {
         // Who they met: the other side, named as their bracket card names them where it was read.
         const k = 1 - i;
         const them = sides[k] && (data.users[sides[k][0]] ?? null);
-        if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage,
+        if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage, bracket,
           ...(card ? { us: card.s[i], them: card.s[k], clock: card.t } : {}) });
         const bucket = s[1] ? x.e.wins : x.e.losses;
         bucket[finish] = (bucket[finish] ?? 0) + 1;

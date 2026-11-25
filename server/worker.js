@@ -83,7 +83,7 @@ const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, 
 // and who they met (name, user, academy) in which round.
 const bouts = (list) => (Array.isArray(list) && list.length ? JSON.stringify(list.slice(0, 40).filter((b) => b && typeof b === 'object').map((b) => ({
   won: b.won === true, type: finishOf(b.type ?? ''), how: text(b.how, 60) ?? text(detailOf(b.type), 60), opponent: text(b.opponent, 120), user: validUser(String(b.user ?? '')) ? String(b.user) : null,
-  club: text(b.club, 160), stage: text(b.stage, 60),
+  club: text(b.club, 160), stage: text(b.stage, 60), ...(regOf(b.bracket) ? { bracket: b.bracket } : {}),
   // The score, theirs and their opponent's ([points, advantages, penalties]), and the clock ([length, left], seconds).
   ...(trio(b.us) && trio(b.them) ? { us: b.us, them: b.them } : {}),
   ...(Array.isArray(b.clock) && b.clock.length === 2 && b.clock.every((n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000)) ? { clock: b.clock } : {}),

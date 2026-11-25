@@ -20,6 +20,7 @@ export interface Bout {
   won: boolean; type: string; how: string | null; opponent: string | null; user: string | null; club: string | null; stage: string | null;
   // Their score and their opponent's, as [points, advantages, penalties]; the clock as [length, left] in seconds.
   us?: [number, number, number]; them?: [number, number, number]; clock?: [number | null, number | null];
+  bracket?: number;
 }
 export interface Past { event: string; title: string | null; start: string | null; city: string | null; wins: number | null; gold: number; silver: number; bronze: number; known: number; image?: string | null; site?: string }
 // What else their Smoothcomp profile shows, as it last sent it.
