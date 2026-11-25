@@ -30,7 +30,7 @@ class Busy extends Error {}
 
 // How a run spent its time, logged when it ends: requests, their average wait, how long at least
 // one was in flight (the rest went to the database and the counting), and events finished.
-function client(run = RUN) {
+function client(run = RUN, env = {}) {
   let used = 0, waited = 0, open = 0, since = 0, busy = 0;
   const recent = [];
   const started = Date.now();
@@ -46,7 +46,9 @@ function client(run = RUN) {
     const t = Date.now();
     if (!open++) since = t;
     try {
-      const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+      // Through the Hetzner relay when there is one (Smoothcomp refuses Workers the match lists): server/relay/relay.ts.
+      const r = await fetch(env.RELAY ? `${env.RELAY}?url=${encodeURIComponent(url)}` : url,
+        { headers: { 'User-Agent': UA, Accept: 'application/json', ...(env.RELAY && { 'x-relay-key': env.RELAY_KEY }) } });
       if (r.status === 429 || r.status >= 500) throw new Busy(`${r.status}`);
       if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Gone(`${r.status}`);
       return await r.json();
@@ -439,7 +441,7 @@ export async function queue(env) {
 
 // run: how long the lane reads (at most RUN); asked: only events someone on the site asked for.
 export async function crawl(env, record, addBouts, run, asked = false) {
-  const { get, left, report } = client(run);
+  const { get, left, report } = client(run, env);
   let done = 0, why = 'time';
   try { why = (await lane(env, record, addBouts, get, left, () => done++, asked)) ?? why; } finally { report(done, why); }
 }

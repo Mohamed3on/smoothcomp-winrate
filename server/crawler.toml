@@ -10,6 +10,11 @@ preview_urls = false
 [placement]
 region = "aws:eu-west-1"
 
+# Smoothcomp refuses Workers its match lists (403, since 2026-11-25), so the crawl's requests go through the
+# Hetzner box (server/relay/relay.ts); its key is the secret RELAY_KEY.
+[vars]
+RELAY = "https://sc-relay.mohamed3on.com/"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "mat-stats-careers"
