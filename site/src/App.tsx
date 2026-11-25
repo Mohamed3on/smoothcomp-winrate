@@ -2,6 +2,7 @@ import { Link, Route, Switch, useLocation } from 'wouter';
 import { lazy, Suspense, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search } from '@/components/search';
+import { Counting } from '@/components/filter-bar';
 import { KEPT, useFilters, usedBy } from '@/lib/filters';
 import { cn } from '@/lib/utils';
 import { AthletesPage } from '@/pages/athletes';
@@ -40,6 +41,8 @@ export function App() {
           </nav>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <Search f={f} />
+            {/* The events list counts no records; every other page counts by it. */}
+            {location !== '/events' && <Counting f={f} />}
             {/* Events list both sites; every other page reads one. */}
             {location !== '/events' && <Select items={SITES} value={f.site} onValueChange={(v) => {
               // Ids are per site, so a profile page goes back to its list.

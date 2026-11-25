@@ -140,7 +140,6 @@ export function EventPage({ id }: { id: string }) {
   });
   const teamSort = f.get('sort') || 'expected', bracketSort = f.get('sort') || 'wins';
   const sortBy = (fallback: string) => (v: string) => f.set({ sort: v === fallback ? null : v });
-  const stoppages = data.entries.some((e) => Number(JSON.parse(e.career_types ?? '{}').stoppage) || e.wins?.stoppage || e.losses?.stoppage);
   const academies: Academy[] = [...Map.groupBy(people.filter((p) => p.club_id || p.club), (p) => p.club_id ?? p.club ?? '').values()].map((ps) => {
     const rows = ps.flatMap((p) => p.rows);
     const expected = [0, 1, 2].map((m) => ps.reduce((n, p) => n + p.calls.filter((c) => c.medal === m).length, 0));
@@ -268,7 +267,7 @@ export function EventPage({ id }: { id: string }) {
           <TabsList variant="line">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<NumberFlow value={n} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>)}</TabsList>
           <TabsContent value="podiums"><Ledger rows={divisions} loading={false} columns={podiumColumns} rowKey={(d) => d.name} empty={empty} /></TabsContent>
           <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} opened={f.get('open') || undefined} empty={empty} sort={fought ? undefined : teamSort} onSort={sortBy('expected')} expand={roster} /></TabsContent>
-          <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event hide={stoppages ? [] : ['stoppage']} /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user} sort={athleteSort} onSort={sortBy(fought ? '' : 'expected')}
+          <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user} sort={athleteSort} onSort={sortBy(fought ? '' : 'expected')}
             empty={<Empty title="No athletes match" text="Widen the age range, lower the minimum wins, or clear the belt, country and search." action={resetAction(f)} />} /></TabsContent>
           <TabsContent value="divisions"><Ledger rows={divisions} loading={false} columns={divisionColumns} rowKey={(d) => d.name} empty={empty} sort={bracketSort} onSort={sortBy('wins')} expand={bracket} /></TabsContent>
         </Tabs>
