@@ -7,15 +7,15 @@ import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 
 // width: the column's width from lg up; compact: its width below lg (width by default); phone: its width below sm (compact by default);
-// narrow: left off below lg, or below xl with 'xl', or below sm with 'sm',
+// narrow: left off below lg, or below xl with 'xl', or below sm with 'sm'; phoneOnly: shown below sm only, never listed in the expansion;
 // and then listed in the row's expansion, unless preview (a glimpse of what the expansion shows in full).
 export interface Column<T> {
-  key: string; label: string; width?: string; compact?: string; phone?: string; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean | 'sm' | 'xl'; preview?: boolean;
+  key: string; label: string; width?: string; compact?: string; phone?: string; phoneOnly?: boolean; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean | 'sm' | 'xl'; preview?: boolean;
   cell: (row: T, index: number) => React.ReactNode;
 }
 
-const cellClass = (c: { align?: string; narrow?: boolean | 'sm' | 'xl' }, sorted: boolean) =>
-  cn('px-2 py-2.5 align-middle first:pl-3 last:pr-3 sm:px-3 sm:first:pl-5 sm:last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow === 'xl' ? 'max-xl:hidden' : c.narrow === 'sm' ? 'max-sm:hidden' : c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
+const cellClass = (c: { align?: string; narrow?: boolean | 'sm' | 'xl'; phoneOnly?: boolean }, sorted: boolean) =>
+  cn('px-2 py-2.5 align-middle first:pl-3 last:pr-3 sm:px-3 sm:first:pl-5 sm:last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow === 'xl' ? 'max-xl:hidden' : c.narrow === 'sm' ? 'max-sm:hidden' : c.narrow && 'max-lg:hidden', c.phoneOnly && 'sm:hidden', sorted && 'bg-primary/6');
 
 // A ranked ledger: sortable headers, every row reachable, only the rows on screen drawn. opened: a row
 // that starts open and scrolled to, as a link into it asks.
@@ -34,10 +34,10 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   const [fresh, setFresh] = useState<string | null>(null);
   // An expansion spans only the columns shown: spanning hidden ones would add empty columns that take width.
   const sm = useMedia('(width >= 40rem)'), lg = useMedia('(width >= 64rem)'), xl = useMedia('(width >= 80rem)');
-  const shows = (c: Column<T>) => !c.narrow || (c.narrow === 'xl' ? xl : c.narrow === 'sm' ? sm : lg);
+  const shows = (c: Column<T>) => (c.phoneOnly ? !sm : !c.narrow || (c.narrow === 'xl' ? xl : c.narrow === 'sm' ? sm : lg));
   const span = columns.filter(shows).length;
   // What the width leaves off opens under its row instead, so a tap still reaches every column.
-  const tucked = columns.filter((c) => !shows(c) && !c.preview);
+  const tucked = columns.filter((c) => !shows(c) && !c.preview && !c.phoneOnly);
   const opens = !!expand || tucked.length > 0;
   const header = (
     <tr className="text-xs text-muted-foreground">

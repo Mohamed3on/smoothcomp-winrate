@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -73,7 +73,7 @@ export function Counting({ f }: { f: Filters }) {
 }
 
 // On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose,
-// and the finishes counted are the header's (Counting), not the bar's.
+// and the finishes counted are the header's (Counting), not the bar's. On phones it folds behind a button naming how many are set.
 export function FilterBar({ f, sorts, minimumAthletes = false, event = false, place = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; place?: boolean }) {
   const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
   const belts = new Set(f.get('belt').split(',').filter(Boolean));
@@ -85,8 +85,14 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
   const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()} (${c.athletes})` })).sort((a, b) => a.label.localeCompare(b.label))];
   const activeItems = [['', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
+  const [open, setOpen] = useState(false);
+  const set = ['belt', 'wins', 'events', 'athletes', 'active', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(!!(f.get('agemin') || f.get('agemax')));
   return (
-    <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4">
+    <>
+    <Button variant="outline" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={cn('self-start sm:hidden', set && 'border-primary/60 bg-primary/8 dark:bg-primary/8')}>
+      <SlidersHorizontal />Filters{set > 0 && <span className="text-muted-foreground">{set}</span>}<ChevronDown className={cn('opacity-60 transition-transform duration-200 motion-reduce:transition-none', open && 'rotate-180')} />
+    </Button>
+    <div className={cn('flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4', !open && 'max-sm:hidden')}>
       <Field label="Belt">
         <div className="flex flex-wrap gap-1" role="group" aria-label="Belt">
           {BELTS.filter((b) => !['grey', 'yellow', 'orange', 'green'].includes(b) || belts.has(b)).map((b) => (
@@ -129,5 +135,6 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
       <Field label="Name" className="min-w-44 flex-1"><Debounced f={f} name="q" type="search" label="Filter by name" placeholder={event ? 'Name, academy, country or division' : 'Filter by name'} className="w-full max-w-md" /></Field>
       <Button variant="ghost" className="text-muted-foreground" onClick={() => f.set(Object.fromEntries(['belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])))}>Reset</Button>
     </div>
+    </>
   );
 }
