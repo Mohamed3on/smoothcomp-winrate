@@ -61,7 +61,7 @@ export function PlaceFilter({ f }: { f: Filters }) {
                 </CommandGroup>
               ) : (
                 <>
-                  {!isFetching && <CommandEmpty>No place called “{debounced}” found.</CommandEmpty>}
+                  <CommandEmpty>{isFetching ? 'Searching…' : `No place called “${debounced}” found.`}</CommandEmpty>
                   {!!found?.rows.length && (
                     <CommandGroup heading="Places">
                       {found.rows.map((p) => (
