@@ -111,6 +111,8 @@ const DIVISIONS = {
   'No-Gi Grappling / Male / 10-11 / Beginner / -79lbs': ['Kids', '−79 lbs'],
   'Pro Grappling / Male / Pro Grappling II (Up to 999 lbs)': [null, 'Open'],
   'C - Group E - Northern Long Weapon': [null, null],
+  'TOURNOI NOGI U17/JUNIORS/SENIORS/MASTERS / Senior / Masculin / −84 HOMME / White belt': ['Adult', null],
+  'Juvenile Boys No-Gi / White / Juvenile 2 / +86,5+ (Ultra heavy)': ['Juvenile', null],
 };
 
 test("a division's name gives its age group and weight class", () => {

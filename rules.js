@@ -145,7 +145,7 @@ globalThis.SCWRRules = (() => {
     if (years && +(years[2] ?? years[1]) < 30) return byAge(+(years[2] ?? years[1]));
     const under = /(?:\b|[a-z])u ?(\d{1,2})\b|\b(\d+)u\b/i.exec(part);
     if (under) return byAge(+(under[1] ?? under[2]) - 1);
-    const floor = /(?<![\d.,])(\d+)\s*(?:\+|(?:&|and)\s*(?:above|over|older))|\+\s*(\d+)/i.exec(part);
+    const floor = /(?<![\d.,])(\d+)\s*(?:\+|(?:&|and)\s*(?:above|over|older))|\+\s*(\d+)(?![\d.,])/i.exec(part);
     if (floor && (!BARE.test(part) || +(floor[1] ?? floor[2]) <= 40)) return +(floor[1] ?? floor[2]) >= 30 ? 'Master' : 'Adult';
     const named = new Set([
       [/\bmaster|\bveteran/i, 'Master'], [/\bjuvenil/i, 'Juvenile'], [/\b(teen|cadet)/i, 'Teen'],
@@ -173,7 +173,8 @@ globalThis.SCWRRules = (() => {
   const sexOf = (name) => { const named = SEXES.filter(([, re]) => re.test(name)).map(([s]) => s); return named.length === 1 ? named[0] : null; };
   function divisionOf(name) {
     const parts = String(name ?? '').split('/');
-    const age = parts.map(ageIn).reduce((best, a) => (rank(a) >= rank(best) ? a : best), null);
+    // A field listing three age groups or more ("TOURNOI NOGI U17/JUNIORS/SENIORS/MASTERS") is the event's, not the division's.
+    const age = String(name ?? '').split(/\s\/|\/\s/).flatMap((f) => { const a = f.split('/').map(ageIn); return new Set(a.filter(Boolean)).size >= 3 ? [] : a; }).reduce((best, a) => (rank(a) >= rank(best) ? a : best), null);
     return { age, weight: parts.map(weightIn).find(Boolean) ?? null, sex: sexOf(String(name ?? '')) };
   }
   // The age group and weight class an athlete entered most over the year to their latest event, each
