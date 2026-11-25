@@ -60,7 +60,7 @@ export function EventsPage() {
   });
   const dots = useMemo(() => (data?.rows ?? []).filter((e) => e.lat != null && e.lng != null).map((e): Dot => ({
     lat: e.lat!, lng: e.lng!, radius: e.athletes ? 7 : 5, read: !!e.athletes, title: e.title ?? `Event ${e.event}`, href: target(e, f), internal: !!e.athletes,
-    about: [date(e.start), e.city, e.km != null && `${fmt(Math.round(e.km))} km`, runBy(e), e.athletes ? `${fmt(e.athletes)} athletes` : 'Entrants not read yet'].filter(Boolean).join(' · '),
+    about: [date(e.start), e.city, e.km != null && `${fmt(Math.round(e.km))} km`, runBy(e), e.athletes ? `${fmt(e.athletes)} athletes` : e.registered ? `${fmt(e.registered)} registered` : 'Entrants not read yet'].filter(Boolean).join(' · '),
   })), [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const sorts = items([['date', 'Date'], ...(near ? [['distance', 'Distance']] : []), ['athletes', 'Athletes']]);
   const columns: Column<EventRow>[] = [
@@ -68,8 +68,8 @@ export function EventsPage() {
     { key: 'event', label: 'Event', align: 'start', cell: (e) => <EventCell e={e} f={f} /> },
     // Narrow screens show the distance under the event's name already, so it stays out of the row's expansion.
     ...(near ? [{ key: 'km', label: 'Distance', width: '7rem', sort: 'distance', narrow: true, preview: true, cell: (e: EventRow) => <span className={e.km == null ? 'text-muted-foreground' : ''}>{distance(e.km) ?? '–'}</span> }] : []),
-    { key: 'athletes', label: 'Athletes', width: '8rem', compact: '5.5rem', sort: 'athletes', title: 'Who entered, once someone with Mat Stats opens its entrants or results',
-      cell: (e) => (e.athletes ? <Num n={e.athletes} /> : <span className="text-muted-foreground" title="Nobody with Mat Stats has opened its entrants yet">–</span>) },
+    { key: 'athletes', label: 'Athletes', width: '8rem', compact: '5.5rem', sort: 'athletes', title: 'Who entered, once someone with Mat Stats opens its entrants or results; before, how many its page counts',
+      cell: (e) => (e.athletes ? <Num n={e.athletes} /> : e.registered ? <span title="Registered, as the event's own page counts them; nobody with Mat Stats has opened its entrants yet"><Num n={e.registered} dim /></span> : <span className="text-muted-foreground" title="Nobody with Mat Stats has opened its entrants yet">–</span>) },
     { key: 'divisions', label: 'Divisions', width: '8rem', narrow: true, cell: (e) => (e.athletes ? <Num n={e.divisions} /> : <span className="text-muted-foreground">–</span>) },
     { key: 'teams', label: 'Academies', width: '8rem', narrow: true, cell: (e) => (e.athletes ? <Num n={e.teams} /> : <span className="text-muted-foreground">–</span>) },
     { key: 'state', label: 'Read', width: '9rem', narrow: true, cell: (e) => e.fought ? <Badge variant="secondary">Results</Badge> : e.athletes ? <Badge variant="outline" className="border-primary/40 text-primary">Entrants</Badge> : <Badge variant="outline">Not yet</Badge> },

@@ -35,7 +35,7 @@ export interface Loss { type: string; how: string; opponent: string | null; club
 export interface Faced { name: string; club: string | null; image: string | null; reg: number | null; won: boolean; type?: string; how?: string; division?: string | null; bracket?: number | null; stage?: string | null; user?: string | null }
 export interface Outcome { event: string; site?: string; start: string | null; title: string | null; out: { v?: 2; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean } }
 export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null; ends?: number | null }
-export interface EventRow extends EventMeta { site: 'smoothcomp.com' | 'ajptour.com'; athletes: number; divisions: number; teams: number; fought: number; lat: number | null; lng: number | null; url: string | null; km: number | null }
+export interface EventRow extends EventMeta { site: 'smoothcomp.com' | 'ajptour.com'; athletes: number; registered?: number | null; divisions: number; teams: number; fought: number; lat: number | null; lng: number | null; url: string | null; km: number | null }
 export interface EventEntry extends Entry {
   name: string | null; country: string | null; country_name: string | null; photo: string | null; hidden: number | null; born: number | null; belt: string | null;
   career_wins: number | null; career_source: 'career' | 'results' | null; career_types: string | null; career_won?: number | null; career_lost?: number | null; career_events?: number | null; career_gold?: number | null;

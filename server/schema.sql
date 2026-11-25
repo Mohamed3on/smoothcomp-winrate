@@ -50,6 +50,9 @@ CREATE TABLE IF NOT EXISTS events (
   -- Where it is and which sports it holds (Smoothcomp's sport ids, JSON), as the sites' event lists give them
   -- (crawl.js listEvents), and its page. Added by ALTER TABLE ... ADD COLUMN on older databases.
   lat REAL, lng REAL, sports TEXT, url TEXT,
+  -- How many athletes its pages count, and when that was read (crawl.js sizeEvents), for an upcoming event.
+  -- Added by ALTER TABLE ... ADD COLUMN on older databases.
+  registered INTEGER, sized INTEGER,
   PRIMARY KEY (site, event)
 );
 -- One row per athlete per division. A results page's rows (fought = 1) replace

@@ -295,6 +295,34 @@ export async function placeClubs(env, take = 20, gap = 2500) {
   return read;
 }
 
+// How many athletes an event's pages count: the badge on the Athletes link of the menu each one shows.
+// None (null) while the organiser keeps the list hidden, or nobody has entered.
+export function registered(html) {
+  const n = html.match(/Athletes\s*<span class="badge">([^<]*)<\/span>/)?.[1].replace(/\D/g, '');
+  return n ? Number(n) : null;
+}
+
+// Every upcoming grappling event's size, read a few each minute and again a day on, so events nobody opened
+// still show how big they are. Read from its accommodations page: the event's other pages challenge a server
+// (Cloudflare's "Just a moment"), that one doesn't, and its menu counts the athletes the same. A busy site
+// (429, 5xx) ends the run; a page that won't say is asked again a day on.
+export const SIZED = 'UPDATE events SET registered = iif(?4, ?3, registered), sized = ?5 WHERE site = ?1 AND event = ?2';
+export async function sizeEvents(env, take = 10, gap = 2500) {
+  const due = (await env.DB.prepare(`SELECT site, event, url FROM events WHERE site IN ('smoothcomp.com', 'ajptour.com') AND start >= date('now')
+    AND (sized IS NULL OR sized < ?1) AND (sports IS NULL OR EXISTS (SELECT 1 FROM json_each(sports) s WHERE s.value IN ('1', '7', '4', '3', '24')))
+    ORDER BY sized IS NOT NULL, sized, start LIMIT ?2`).bind(Date.now() - DAY, take).all()).results;
+  let read = 0;
+  for (const [i, { site, event, url }] of due.entries()) {
+    if (i) await new Promise((wait) => setTimeout(wait, gap));
+    const page = await fetch(`${url ? new URL(url).origin : HOSTS[site]}/en/event/${event}/accommodations`, { headers: { 'User-Agent': UA } }).catch(() => null);
+    if (!page || page.status === 429 || page.status >= 500) break;
+    const html = page.ok ? await page.text() : '';
+    await env.DB.prepare(SIZED).bind(site, event, registered(html), html.includes('/participants"') ? 1 : 0, Date.now()).run();
+    read++;
+  }
+  return read;
+}
+
 // Academies whose page names no place, looked up on Google Maps (Text Search, which gives each place's
 // name, location and address), searched by the academy's name near where its athletes compete: the busiest
 // first, one every ten minutes (inside the 5,000 a month Google gives free), kept until the academy's page is

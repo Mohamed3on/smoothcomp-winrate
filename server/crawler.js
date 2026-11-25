@@ -3,7 +3,7 @@
 // in about 100 ms against 250 to 850 ms from wherever a cron happens to run. Placement applies only
 // to requests, so each minute's cron sends one request per lane to this same Worker. Its workers.dev
 // address answers only a request carrying the CRAWL_KEY secret (a lane started by hand).
-import { crawl, findClubs, listEvents, placeClubs, queue } from './crawl.js';
+import { crawl, findClubs, listEvents, placeClubs, queue, sizeEvents } from './crawl.js';
 import { addBouts, record } from './worker.js';
 import { budget, checkBudget } from './budget.js';
 
@@ -19,6 +19,7 @@ export default {
     if (state === 'stop' || (state === 'slow' && pathname !== '/run')) return new Response(null, { status: 204 });
     if (pathname === '/list') await listEvents(env);
     else if (pathname === '/clubs') await placeClubs(env);
+    else if (pathname === '/sizes') await sizeEvents(env);
     // ?for: a short lane the site started (worker.js readNow), ended within the 30 seconds it may run.
     else await crawl(env, record, addBouts, Number(searchParams.get('for')) || undefined, state !== 'ok');
     return new Response(null, { status: 204 });
@@ -37,8 +38,8 @@ export default {
     if (at.getUTCHours() === 3 && at.getUTCMinutes() === 15) await env.SELF.fetch('https://crawler/list', { headers: { 'x-crawl-key': env.CRAWL_KEY } });
     // One academy whose page names no place, looked up on Google Maps, every ten minutes.
     if (at.getUTCMinutes() % 10 === 5) await findClubs(env);
-    // Academies' pages, a few each minute, for where each academy says it is.
+    // Academies' pages, a few each minute, for where each academy says it is; and upcoming events' pages, for how many entered.
     await Promise.all([...Array.from({ length: LANES }, () => env.SELF.fetch('https://crawler/run', { headers: { 'x-crawl-key': env.CRAWL_KEY } })),
-      env.SELF.fetch('https://crawler/clubs', { headers: { 'x-crawl-key': env.CRAWL_KEY } })]);
+      ...['clubs', 'sizes'].map((path) => env.SELF.fetch(`https://crawler/${path}`, { headers: { 'x-crawl-key': env.CRAWL_KEY } }))]);
   },
 };

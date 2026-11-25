@@ -440,8 +440,10 @@ async function team(env, params) {
 
 // Grappling events, upcoming (soonest first, from today) or past (latest first), within `days` of today
 // (0 for any), of a sport, with at least `min` athletes, within `km` of a place. The counts are kept on
-// each event (EVENT_COUNTS): an upcoming one nobody opened has none yet and shows unless a minimum is
-// set; a past one shows once read. Sorted by date, distance or size.
+// each event (EVENT_COUNTS): an upcoming one nobody opened has none yet, so its size is what its page
+// counts (registered, crawl.js sizeEvents), and with neither it shows unless a minimum is set; a past one
+// shows once read. Sorted by date, distance or size.
+const SIZE = 'max(coalesce(v.athletes, 0), iif(?10, 0, coalesce(v.registered, 0)))';
 async function events(env, params) {
   const f = filters(params);
   const upcoming = params.get('when') !== 'past';
@@ -449,16 +451,17 @@ async function events(env, params) {
   const days = whole(params.get('days'), 0, 3660);
   const shift = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
   const [from, to] = upcoming ? [today, days ? shift(days) : '9999'] : [days ? shift(-days) : '', shift(-1)];
-  const order = { distance: 'km IS NULL, km, start', athletes: 'athletes DESC, start' }[params.get('sort')] ?? (upcoming ? 'start, event' : 'start DESC, event DESC');
+  const order = { distance: 'km IS NULL, km, start', athletes: 'size DESC, start' }[params.get('sort')] ?? (upcoming ? 'start, event' : 'start DESC, event DESC');
   // Both sites' events in one list, each with its site. AJP Tour files every event under Gi, so one whose
   // title says No-Gi counts as NoGi too.
   const { results } = await env.DB.prepare(`SELECT * FROM (SELECT v.site, v.event, v.title, v.start, v.city, v.country, v.organiser, v.lat, v.lng, v.url,
-      coalesce(v.athletes, 0) AS athletes, coalesce(v.divisions, 0) AS divisions, coalesce(v.teams, 0) AS teams, v.fought, ${KM('v.lat', 'v.lng', 5)} AS km
+      coalesce(v.athletes, 0) AS athletes, coalesce(v.divisions, 0) AS divisions, coalesce(v.teams, 0) AS teams, v.fought, ${KM('v.lat', 'v.lng', 5)} AS km,
+      iif(?10, NULL, v.registered) AS registered, ${SIZE} AS size
     FROM events v
     WHERE substr(v.start, 1, 10) BETWEEN ?3 AND ?4 AND (?2 = '' OR v.title LIKE '%' || ?2 || '%' OR v.city LIKE '%' || ?2 || '%')
       AND (v.sports IS NULL OR EXISTS (SELECT 1 FROM json_each(v.sports) s WHERE s.value IN (SELECT value FROM json_each(?8)))
         OR (?1 = 'nogi' AND (v.title LIKE '%no-gi%' OR v.title LIKE '%nogi%' OR v.title LIKE '%no gi%')))
-      AND coalesce(v.athletes, 0) >= max(?9, ?10))
+      AND ${SIZE} >= max(?9, ?10))
     WHERE ?7 = 0 OR km <= ?7
     ORDER BY ${order}, site LIMIT ?11 OFFSET ?12`)
     .bind(params.get('sport') ?? '', f.q, from, to, f.lat, f.lng, f.km, JSON.stringify(SPORTS[params.get('sport')] ?? SPORTS.grappling), whole(params.get('min'), 0), upcoming ? 0 : 1, f.limit, f.offset).all();

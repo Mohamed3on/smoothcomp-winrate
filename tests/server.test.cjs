@@ -260,6 +260,24 @@ test('listed events are found by place, date, sport and size, and academies wher
   // A minimum size leaves out events nobody has read; past events show once read.
   assert.deepEqual(await find('min=1'), []);
   assert.deepEqual(await find('when=past'), []);
+  // Upcoming grappling events' pages give their size: a count, a menu with none (hidden), a challenge (kept as was).
+  const { sizeEvents } = await import('../server/crawl.js');
+  const menu = (n) => `<a href="https://x/en/event/9/participants"><span>\n  Athletes\n  ${n == null ? '' : `<span class="badge">${n}</span>`}\n</span></a>`;
+  const pages = { 'smoothcomp.com/en/event/1/': menu(1204), 'smoothcomp.com/en/event/2/': menu(null), 'smoothcomp.com/en/event/4/': menu(7) };
+  const real = globalThis.fetch, asked = [];
+  globalThis.fetch = async (url) => {
+    asked.push(url);
+    const page = Object.entries(pages).find(([k]) => url.includes(k))?.[1];
+    return new Response(page ?? 'Just a moment...', { status: page ? 200 : 403 });
+  };
+  try {
+    assert.equal(await sizeEvents(env, 10, 0), 4);
+    assert.deepEqual(asked, ['https://smoothcomp.com/en/event/1/accommodations', 'https://ajptour.com/en/event/1/accommodations',
+      'https://smoothcomp.com/en/event/2/accommodations', 'https://smoothcomp.com/en/event/4/accommodations']);
+    assert.equal(await sizeEvents(env, 10, 0), 0); // read again a day on
+  } finally { globalThis.fetch = real; }
+  assert.deepEqual((await find('min=1&sort=athletes')).map((e) => [e.event, e.athletes, e.registered]), [['1', 0, 1204], ['4', 0, 7]]);
+  assert.deepEqual(await find('when=past'), []);
   // An academy sits where it competes most, and a radius finds it.
   const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
   await post('/record', { site: 'smoothcomp.com', event: '1', records: { 11: [3, 0], 12: [1, 2] }, meta: { title: 'Potsdam Open', start: `${day(10)}T09:00:00Z` }, athletes, read: Date.now() });

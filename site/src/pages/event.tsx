@@ -254,7 +254,7 @@ export function EventPage({ id }: { id: string }) {
           <span title="When someone with Mat Stats last opened the event's pages">
             {fought && <>Results as of {stamp(read(results, 1))}</>}{fought && live && ' · '}{(!fought || live) && registered.length > 0 && <>Entrants as of {stamp(read(registered, 0))}</>}
           </span>
-          <a href={`${f.home}/en/event/${id}/${fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
+          <a href={`${f.home}/en/event/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
           {readable && <ReadNow site={f.site} event={id} route="event" label={fought ? 'Read results again' : 'Read results now'} />}
         </div>
       </header>
