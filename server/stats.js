@@ -397,11 +397,11 @@ async function teams(env, params) {
   // Under the default filters each academy's totals are kept added up: over everyone (club_board, kept as results arrive), or over
   // those who competed in the last two years (club_recent, kept hourly by keepRecent); any other filter adds them up here (2–5 s).
   const recent = f.active === RECENT;
-  // ?wins= is the academy's own total, not each athlete's.
-  const kept = !clubs.length && f.off === '["walkover"]' && !f.events && f.belts === '[]' && !f.country && f.bornFrom === 0 && f.bornTo === 9999 && (!f.since || recent);
+  // ?wins= is the academy's own total, ?events= the events it has results at, ?country= where it is: not each athlete's.
+  const kept = !clubs.length && f.off === '["walkover"]' && f.belts === '[]' && f.bornFrom === 0 && f.bornTo === 9999 && (!f.since || recent);
   const { results } = await env.DB.prepare(`WITH ${careersOf(f.off, 'AND +dup = 0')},
     members AS (SELECT * FROM careers
-      WHERE club_id IS NOT NULL AND (+wins > 0 OR lost > 0) AND coalesce(events, 0) >= ?5 AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND (?11 = '' OR country = ?11) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)${clubs.length ? ' AND club_id IN (SELECT value FROM json_each(?18))' : ''}),
+      WHERE club_id IS NOT NULL AND (+wins > 0 OR lost > 0) AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)${clubs.length ? ' AND club_id IN (SELECT value FROM json_each(?18))' : ''}),
     podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
         iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, iif(o.lat IS NULL, c.country, o.country) AS country,
         iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
@@ -411,12 +411,12 @@ async function teams(env, params) {
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
       count(*) OVER () AS total
     FROM ${recent ? 'club_recent' : 'club_board'} k LEFT JOIN podiums p USING (club_id)
-    WHERE k.site = ?1 AND k.athletes >= ?8 AND k.wins >= ?4 AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17))` : `(SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
+    WHERE k.site = ?1 AND k.athletes >= ?8 AND k.wins >= ?4 AND coalesce(p.entered, 0) >= ?5 AND (?11 = '' OR lower(p.country) = ?11) AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17))` : `(SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
       sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze, sum(coalesce(won, 0)) AS won, sum(coalesce(lost, 0)) AS lost,
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
       count(*) OVER () AS total
     FROM members m LEFT JOIN podiums p USING (club_id)
-    WHERE (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17)
+    WHERE coalesce(p.entered, 0) >= ?5 AND (?11 = '' OR lower(p.country) = ?11) AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17)
     GROUP BY m.club_id HAVING count(*) >= ?8 AND sum(wins) >= ?4)`},
     shown AS (SELECT * FROM totals ORDER BY ${sort}, club_id LIMIT ?9 OFFSET ?10)
     SELECT *, ${top ? `(SELECT json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born))
