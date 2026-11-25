@@ -164,7 +164,9 @@ async function name(get, host, data) {
         users[s[0]] = { id: String(p.id), name: `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || s[2], club: p.club || s[3], clubId: p.club_id ? String(p.club_id) : null,
           affiliation: p.affiliation || s[5] || null,
           country: p.country_flag || (s[4] ? String(s[4]).toLowerCase() : null), countryName: p.country || null, age: Number.isSafeInteger(p.age) ? p.age : null,
-          photo: /^https:/.test(p.profile_image ?? '') ? p.profile_image : null, hidden: p.public === false };
+          photo: /^https:/.test(p.profile_image ?? '') ? p.profile_image : null,
+          // The card's `public` is true for hidden profiles too (2268210), so it can only ever say hidden.
+          hidden: p.public === false || null };
         score[k] = [p.score, p.advantage, p.penalty].map((n) => (Number.isSafeInteger(n) ? n : 0));
       }
       // The score per seat ([points, advantages, penalties]) and the clock: when the match ended and the seconds left
