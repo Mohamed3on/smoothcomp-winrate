@@ -8,6 +8,7 @@
 // read later replaces it.
 import '../rules.js';
 import { CLUBS } from './stats.js';
+import { dayShare } from './budget.js';
 
 const HOSTS = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36';
@@ -20,11 +21,10 @@ const AT_ONCE = 6;
 // so the lane asks one at a time; past twice this even so, it stops until the next minute.
 const SLOW = 300;
 const DAY = 864e5;
-// Events read a day (UTC) at most; lanes count at their start, so together they may pass it by a few. What
-// keeps D1 inside what the plan includes is the budget (budget.js), which stops the crawler for the day. An event
-// writes about 7k rows, so 200 (1.4M) plus the day's uploads fit the plan's 1.67M a day (50M a month) and the
-// crawl runs evenly all day instead of reaching the budget by the afternoon.
-const DAILY = 200;
+// Rows an event read writes to D1, about (entries, people, board, tallies): events are read while the day's
+// writes stay under the day's share of the plan (budget.js dayShare) taken evenly over the day, so the
+// crawler gets whatever uploads leave.
+const ROWS = 7000;
 const { finishOf, normalize, placeOf, roundOf, isPool, poolPlaces } = globalThis.SCWRRules;
 
 class Gone extends Error {}
@@ -400,7 +400,7 @@ export async function findClubs(env) {
 }
 
 // Older events, ARCHIVE pages a site a day past the last year's (about 320 events): the crawler reads them
-// after the recent ones, within its DAILY limit. The page reached is kept in meta, and the walk stops once
+// after the recent ones, within its daily share. The page reached is kept in meta, and the walk stops once
 // the database passes 9 GB (D1 holds 10).
 const ARCHIVE = 8;
 
@@ -464,10 +464,16 @@ export async function crawl(env, record, addBouts, run, asked = false) {
 
 async function lane(env, record, addBouts, get, left, finished, onlyAsked) {
   const now = Date.now();
-  // Spread over the day (one about every five minutes), so Smoothcomp sees a trickle rather than the day's reads in one
+  // Spread over the day (one about every six minutes), so Smoothcomp sees a trickle rather than the day's reads in one
   // burst; a lane reads at most one a run, so time lost (a pause, a block) is made up three a minute at most.
-  const paced = Math.ceil(DAILY * ((now % DAY) + 60e3) / DAY);
-  let room = Math.min(1, paced - await env.DB.prepare("SELECT count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1").bind(now - (now % DAY)).first('n'));
+  // Today's writes: as last counted (every ten minutes, budget.js), plus ROWS for each event read since.
+  const today = now - (now % DAY);
+  const kept = JSON.parse(await env.DB.prepare("SELECT v FROM meta WHERE k = 'budget'").first('v') ?? 'null');
+  const fresh = kept?.at >= today;
+  const since = await env.DB.prepare("SELECT count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1").bind(fresh ? kept.at : today).first('n');
+  const written = (fresh ? kept.writtenToday : 0) + ROWS * since;
+  const line = kept ? dayShare({ written: kept.written, writtenToday: fresh ? kept.writtenToday : 0 }) * ((now % DAY) + 60e3) / DAY : 0;
+  let room = written + ROWS <= line ? 1 : 0;
   while (left() > 10) {
     // Taken and held in one statement, so lanes running side by side never take the same event; through
     // crawls_due, in the order taken, so it stops at the first one due instead of sorting the queue.

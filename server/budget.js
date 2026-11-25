@@ -19,6 +19,11 @@ export function verdict({ written, read, writtenToday, readToday }) {
   return 'ok';
 }
 
+// Rows D1 may write today: a thirtieth of a month's allowance, or less when the 29 days before leave less
+// under the 70% that slows everything (so a steady pace settles at 70% of the month).
+export const dayShare = ({ written, writtenToday }) =>
+  Math.max(0, Math.min(INCLUDED.written / 30, 0.7 * INCLUDED.written - (written - writtenToday)));
+
 // The last 30 days' and today's rows written and read, from the analytics; the verdict kept in meta.
 export async function checkBudget(env, now = Date.now()) {
   if (!env.CF_ANALYTICS_TOKEN) return;
