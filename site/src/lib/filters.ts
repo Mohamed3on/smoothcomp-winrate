@@ -74,7 +74,8 @@ export function useFilters() {
   const linkOn = (path: string, on: string) => {
     const [base, own] = link(path).split('?');
     const keep = new URLSearchParams(own);
-    if (on === 'ajptour.com') keep.set('site', on); else keep.delete('site');
+    // Left out only when the page would read that site anyway: without it, a kept AJP setting would win.
+    if (on === (kept.site === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com')) keep.delete('site'); else keep.set('site', on);
     return base + tidy(keep);
   };
   return { params, get, set, strip, off, counted: (type: string) => !off.has(type), site, query, link, linkOn, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };

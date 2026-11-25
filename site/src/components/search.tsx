@@ -10,15 +10,18 @@ import { date, plural } from '@/lib/format';
 import { forget, keyOf, matches, useRecent, type Recent } from '@/lib/recent';
 import { cn } from '@/lib/utils';
 
+// Both sites' matches, each with its site.
 interface Found {
-  athletes: { user: string; name: string; club: string | null; photo: string | null; wins: number }[];
-  teams: { club_id: string; club: string; athletes: number }[];
-  events: { event: string; title: string; start: string | null; city: string | null }[];
+  athletes: { site: string; user: string; name: string; club: string | null; photo: string | null; wins: number }[];
+  teams: { site: string; club_id: string; club: string; athletes: number }[];
+  events: { site: string; event: string; title: string; start: string | null; city: string | null }[];
 }
 
 const MOD = /Mac|iP/.test(navigator.platform) ? '⌘' : 'Ctrl ';
 const PATH = { athlete: '/athlete/', academy: '/academy/', event: '/event/' } as const;
 const rowOf = (r: Recent) => `r:${keyOf(r)}`;
+// Which site a row is from, where it isn't Smoothcomp's, as the events list names it.
+const Site = ({ site }: { site: string }) => site === 'ajptour.com' ? <span className="shrink-0 rounded border border-border px-1 text-[10px] leading-4 text-muted-foreground">AJP</span> : null;
 // Academies and events have no picture: a mark of what they are, in the photo's place and size.
 const Mark = ({ r }: { r: Recent }) => r.kind === 'athlete' ? <Photo name={r.name} photo={r.photo ?? null} className="size-6" /> : (
   <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -43,14 +46,14 @@ export function Search({ f }: { f: Filters }) {
   const { data, isFetching } = useApi<Found>('search', { site: f.site, off: [...f.off].join(','), q: debounced }, searching);
   // Waiting on the debounce or the answer: the box spins and the last query's results dim until this one's land.
   const pending = q.trim().length >= 2 && (q.trim() !== debounced || isFetching);
-  // What was opened on this site before: all of it on an empty box, and what the typed words match, at once, above what the server finds.
+  // What was opened before, on either site: all of it on an empty box, and what the typed words match, at once, above what the server finds.
   const typed = q.trim();
-  const all = useRecent().filter((r) => r.site === f.site);
+  const all = useRecent();
   const recent = typed ? (typed.length >= 2 ? all.filter((r) => matches(r.name, typed)).slice(0, 4) : []) : all.slice(0, 8);
-  const shown = (kind: Recent['kind'], id: string) => recent.some((r) => r.kind === kind && r.id === id);
-  const athletes = data?.athletes.filter((a) => !shown('athlete', a.user)) ?? [];
-  const teams = data?.teams.filter((t) => !shown('academy', t.club_id)) ?? [];
-  const events = data?.events.filter((e) => !shown('event', e.event)) ?? [];
+  const shown = (site: string, kind: Recent['kind'], id: string) => recent.some((r) => keyOf(r) === keyOf({ site, kind, id }));
+  const athletes = data?.athletes.filter((a) => !shown(a.site, 'athlete', a.user)) ?? [];
+  const teams = data?.teams.filter((t) => !shown(t.site, 'academy', t.club_id)) ?? [];
+  const events = data?.events.filter((e) => !shown(e.site, 'event', e.event)) ?? [];
   // Shift+Backspace (or Delete) takes the highlighted recent row away, and the highlight moves to the row after it.
   const remove = (r: Recent) => {
     const i = recent.indexOf(r);
@@ -65,7 +68,7 @@ export function Search({ f }: { f: Filters }) {
   };
   const live = searching && typed.length >= 2;
   const stale = cn('transition-opacity duration-150 ease-out', pending && 'opacity-60');
-  const go = (path: string) => { setOpen(false); setQ(''); navigate(f.link(path)); };
+  const go = (path: string, site: string) => { setOpen(false); setQ(''); navigate(f.linkOn(path, site)); };
   return (
     <>
       {/* Typing on the box starts the search with that letter. */}
@@ -84,8 +87,8 @@ export function Search({ f }: { f: Filters }) {
             <CommandList aria-busy={pending} className="max-h-[50vh] overscroll-contain">
               {live && !pending && <CommandEmpty>Nothing matches “{debounced}”.</CommandEmpty>}
               {!!recent.length && <CommandGroup heading="Recent">{recent.map((r) => (
-                <CommandItem key={rowOf(r)} value={rowOf(r)} onSelect={() => go(PATH[r.kind] + r.id)} aria-keyshortcuts="Shift+Backspace Shift+Delete">
-                  <Mark r={r} /><span className="truncate">{r.name}</span><span className="ml-auto truncate text-xs text-muted-foreground">{r.sub}</span>
+                <CommandItem key={rowOf(r)} value={rowOf(r)} onSelect={() => go(PATH[r.kind] + r.id, r.site)} aria-keyshortcuts="Shift+Backspace Shift+Delete">
+                  <Mark r={r} /><span className="truncate">{r.name}</span><Site site={r.site} /><span className="ml-auto truncate text-xs text-muted-foreground">{r.sub}</span>
                   {/* Shown on the row under the pointer or keys; keeps the input focused, so the arrows go on working. */}
                   <button type="button" tabIndex={-1} aria-label={`Remove ${r.name} from recent`} title="Remove from recent (⇧⌫)"
                     onPointerDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); remove(r); }}
@@ -94,17 +97,17 @@ export function Search({ f }: { f: Filters }) {
                   </button>
                 </CommandItem>))}</CommandGroup>}
               {live && !!athletes.length && <CommandGroup heading="Athletes" className={stale}>{athletes.map((a) => (
-                <CommandItem key={a.user} value={`a${a.user}`} onSelect={() => go(`/athlete/${a.user}`)}>
-                  <Photo name={a.name} photo={a.photo} className="size-6" /><span className="truncate">{a.name}</span><span className="ml-auto truncate text-xs text-muted-foreground">{a.club}</span>
+                <CommandItem key={a.site + a.user} value={`a:${a.site}:${a.user}`} onSelect={() => go(`/athlete/${a.user}`, a.site)}>
+                  <Photo name={a.name} photo={a.photo} className="size-6" /><span className="truncate">{a.name}</span><Site site={a.site} /><span className="ml-auto truncate text-xs text-muted-foreground">{a.club}</span>
                   {!!a.wins && <span className="shrink-0 text-xs tabular-nums">{plural(a.wins, 'win')}</span>}
                 </CommandItem>))}</CommandGroup>}
               {live && !!teams.length && <CommandGroup heading="Academies" className={stale}>{teams.map((t) => (
-                <CommandItem key={t.club_id} value={`t${t.club_id}`} onSelect={() => go(`/academy/${t.club_id}`)}>
-                  <span className="truncate">{t.club}</span><span className="ml-auto shrink-0 text-xs text-muted-foreground">{plural(t.athletes, 'athlete')}</span>
+                <CommandItem key={t.site + t.club_id} value={`t:${t.site}:${t.club_id}`} onSelect={() => go(`/academy/${t.club_id}`, t.site)}>
+                  <span className="truncate">{t.club}</span><Site site={t.site} /><span className="ml-auto shrink-0 text-xs text-muted-foreground">{plural(t.athletes, 'athlete')}</span>
                 </CommandItem>))}</CommandGroup>}
               {live && !!events.length && <CommandGroup heading="Events" className={stale}>{events.map((e) => (
-                <CommandItem key={e.event} value={`e${e.event}`} onSelect={() => go(`/event/${e.event}`)}>
-                  <span className="truncate">{e.title}</span><span className="ml-auto shrink-0 text-xs text-muted-foreground">{date(e.start)}</span>
+                <CommandItem key={e.site + e.event} value={`e:${e.site}:${e.event}`} onSelect={() => go(`/event/${e.event}`, e.site)}>
+                  <span className="truncate">{e.title}</span><Site site={e.site} /><span className="ml-auto shrink-0 text-xs text-muted-foreground">{date(e.start)}</span>
                 </CommandItem>))}</CommandGroup>}
             </CommandList>
           )}

@@ -439,3 +439,21 @@ test('an event asked for on the site is read at once, past the crawler\'s day, w
   db.prepare("UPDATE crawls SET at = 0 WHERE event = '950'").run();
   assert.deepEqual((await (await post({ site: 'smoothcomp.com', user: '11' })).json()).events, ['950']);
 });
+
+test("search finds both sites' athletes, academies and events, one person's accounts once", async () => {
+  const { API } = await import('../server/stats.js');
+  const { DB, db } = d1();
+  const person = db.prepare('INSERT INTO people (site, user, name, club, club_id, country, born, seen, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)');
+  // The same person on both sites, someone of the same name born another year, and two sites' academies sharing an id.
+  person.run('ajptour.com', '7', 'Ana  Silva', 'Silva Team', '40', 'br', 1990, '2026-01-01');
+  person.run('smoothcomp.com', '7', 'Ana Silva', 'Silva BJJ', '40', 'br', 1990, '2025-01-01');
+  person.run('smoothcomp.com', '8', 'Ana Silva', 'Other', '41', 'br', 1999, '2024-01-01');
+  db.prepare("INSERT INTO events (site, event, title, start, at) VALUES ('ajptour.com', '3', 'Silva Cup', '2026-05-01', 0)").run();
+  const found = async (site) => (await API.search({ DB }, new URLSearchParams({ site, q: 'silva' }))).json();
+  const sc = await found('smoothcomp.com');
+  assert.deepEqual(sc.athletes.map((a) => [a.site, a.user]), [['smoothcomp.com', '7'], ['smoothcomp.com', '8']]);
+  assert.deepEqual(sc.teams.map((t) => [t.site, t.club_id]).sort(), [['ajptour.com', '40'], ['smoothcomp.com', '40']]);
+  assert.deepEqual(sc.events.map((e) => [e.site, e.event]), [['ajptour.com', '3']]);
+  // On AJP, the person is their AJP account.
+  assert.deepEqual((await found('ajptour.com')).athletes.map((a) => [a.site, a.user]), [['ajptour.com', '7'], ['smoothcomp.com', '8']]);
+});
