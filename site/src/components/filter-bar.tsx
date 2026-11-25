@@ -125,7 +125,7 @@ const AGES = [['', 'Any age group'], ...['Adult', 'Master', 'Juvenile', 'Teen', 
 const WEIGHT_ITEMS = [{ value: '', label: 'Any weight' }, ...[...WEIGHTS, 101].map((n) => ({ value: String(n), label: weightName(n) }))];
 
 // `bracket` adds whom, age group and weight class, on the lists that rank athletes.
-export function FilterBar({ f, sorts, minimumAthletes = false, event = false, place = false, bracket = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; place?: boolean; bracket?: boolean }) {
+export function FilterBar({ f, sorts, minimumAthletes = 0, event = false, place = false, bracket = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: number; event?: boolean; place?: boolean; bracket?: boolean }) {
   const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
   const belts = new Set(f.get('belt').split(',').filter(Boolean));
   const toggleBelt = (b: string) => {
@@ -169,7 +169,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
       <Field label="Min. wins"><Debounced f={f} name="wins" label="Minimum wins" placeholder="Any" className="w-20" /></Field>
       {!event && <Field label="Min. events"><Debounced f={f} name="events" label="Minimum events" placeholder="Any" className="w-20" /></Field>}
       {place && <Field label="Near"><PlaceFilter f={f} /></Field>}
-      {minimumAthletes && <Field label="Min. athletes"><Debounced f={f} name="athletes" label="Minimum athletes" placeholder="3" className="w-20" /></Field>}
+      {!!minimumAthletes && <Field label="Min. athletes"><Debounced f={f} name="athletes" label="Minimum athletes" placeholder={String(minimumAthletes)} className="w-20" /></Field>}
       {!event && <Field label="Competed">
         <Select items={activeItems} value={f.query.active || '0'} onValueChange={(v) => f.set({ active: v === f.defaults.active ? null : (v as string) })}>
           <SelectTrigger className={cn('w-40', f.query.active !== f.defaults.active && 'border-primary/60 bg-primary/8')}><SelectValue /></SelectTrigger>

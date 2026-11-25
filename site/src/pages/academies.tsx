@@ -41,7 +41,9 @@ const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per
 export function AcademiesPage() {
   const f = useFilters();
   const near = f.get('near');
-  const query = { ...f.query, near, km: near ? f.get('km') : '', athletes: f.get('athletes') || 3 };
+  // Ranked by win rate, a few athletes' short records would top the list: the minimum starts higher there.
+  const least = f.query.sort === 'winRate' ? 20 : 3;
+  const query = { ...f.query, near, km: near ? f.get('km') : '', athletes: f.get('athletes') || least };
   const { data, isFetching, isLoading, error, refetch } = useApi<{ rows: Team[]; total: number }>('teams', { ...query, limit: 2000, top: 0 });
   const view = f.get('view') === 'map' ? 'map' : 'list';
   // On the map a dot grows with the academy's athletes, and shines where the academy's place is its own (its page or
@@ -75,7 +77,7 @@ export function AcademiesPage() {
           </Tabs></div>}
         text="Each academy ranked by its athletes added up, careers or results, under the same filters. Open a row for every athlete behind it. An athlete counts for the academy their latest event lists; an academy sits where its own page puts it, else where Google Maps finds it, else in the city its athletes have competed in most." />
       <div className="flex flex-col gap-3">
-        <FilterBar f={f} sorts={SORTS} minimumAthletes place />
+        <FilterBar f={f} sorts={SORTS} minimumAthletes={least} place />
         {view === 'map' && !error ? (
           <Suspense fallback={<div className="h-[70svh] min-h-80 rounded-xl border bg-card" />}><PlacesMap dots={dots} f={f} /></Suspense>
         ) : <Ledger rows={data?.rows} loading={isLoading || isFetching} columns={columns} rowKey={(t) => t.club_id} sort={f.query.sort} asc={f.query.dir === 'asc'} onSort={(s, asc) => f.set({ sort: s, dir: asc ? 'asc' : null })}
