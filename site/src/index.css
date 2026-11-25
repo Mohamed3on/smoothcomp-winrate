@@ -174,7 +174,8 @@
 }
 
 /* The events and academies maps (components/places-map.tsx): Leaflet's dots, controls and popups in the site's dark theme. */
-.places-map.leaflet-container { background: var(--background); font: inherit; }
+/* isolation keeps Leaflet's pane z-indexes (400–1000) under the page's popovers and sticky header. */
+.places-map.leaflet-container { background: var(--background); font: inherit; isolation: isolate; }
 .places-map .event-dot { fill: var(--muted-foreground); fill-opacity: 0.9; stroke: var(--background); stroke-width: 1.5; }
 .places-map .event-dot.read { fill: var(--primary); }
 .places-map .event-here { fill: var(--foreground); stroke: var(--background); stroke-width: 2; fill-opacity: 1; }
