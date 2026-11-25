@@ -11,6 +11,7 @@ import { Belt, Identity, Medals, Photo, Place, Record, Stat } from '@/components
 import { useApi, type Athlete, type EventEntry, type Types } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { beltAt, date, plural, rate, winsOf } from '@/lib/format';
+import { useRemember } from '@/lib/recent';
 import { DivisionLink } from '@/pages/division';
 import { ATHLETE_SORTS, athleteColumns, resetAction } from '@/pages/athletes';
 
@@ -50,7 +51,9 @@ function EventGlance({ event, club, f }: { event: string; club: string; f: Filte
 
 export function AcademyPage({ id }: { id: string }) {
   const f = useFilters();
-  const { data, isLoading } = useApi<Data>('team', { site: f.site, off: f.query.off, id });
+  const { data, isLoading, isPlaceholderData } = useApi<Data>('team', { site: f.site, off: f.query.off, id });
+  // Opened here, so search offers it again first.
+  useRemember(data?.club.name && !isPlaceholderData ? { site: f.site, kind: 'academy', id, name: data.club.name, sub: plural(data.members.length, 'athlete') } : null);
   const ranked = useApi<{ rows: Athlete[]; total: number }>('athletes', { ...f.query, limit: 2000, club: id });
   if (isLoading) return <Skeleton className="h-9 w-80" />;
   if (!data) return <Empty title="No academy here" text="Mat Stats has nothing under this academy on this site. It may be on the other site, or nobody has read it yet." />;

@@ -9,6 +9,7 @@ import { Age, Belt, Flag, Hidden, Identity, Medals, Mix, Num, Photo, Place, Reco
 import { useApi, type EventEntry, type EventMeta, type Types } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, plural, rate, winsOf } from '@/lib/format';
+import { useRemember } from '@/lib/recent';
 import { FilterBar } from '@/components/filter-bar';
 import { ReadNow } from '@/components/read-now';
 import { resetAction } from '@/pages/athletes';
@@ -81,7 +82,9 @@ export function seeded<T extends EventEntry>(name: string, list: T[], f: Filters
 
 export function EventPage({ id }: { id: string }) {
   const f = useFilters();
-  const { data, isLoading } = useApi<{ event: EventMeta; entries: EventEntry[]; reads?: Partial<Record<0 | 1, number>> }>('event', { site: f.site, off: f.query.off, id });
+  const { data, isLoading, isPlaceholderData } = useApi<{ event: EventMeta; entries: EventEntry[]; reads?: Partial<Record<0 | 1, number>> }>('event', { site: f.site, off: f.query.off, id });
+  // Opened here, so search offers it again first.
+  useRemember(data?.event.title && !isPlaceholderData ? { site: f.site, kind: 'event', id, name: data.event.title, sub: data.event.start ? date(data.event.start) : null } : null);
   if (isLoading) return <Skeleton className="h-9 w-96" />;
   if (!data) return <Empty title="No event here" text="Mat Stats has nothing under this event on this site. Nobody has opened it with Mat Stats yet." />;
   const { event } = data;

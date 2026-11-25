@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { SearchIcon, XIcon } from 'lucide-react';
+import { flushSync } from 'react-dom';
+import { CalendarDaysIcon, SearchIcon, UsersIcon, XIcon } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Photo } from '@/components/stats';
 import { useApi } from '@/lib/api';
 import type { Filters } from '@/lib/filters';
 import { date, plural } from '@/lib/format';
-import { forget, matches, useRecent } from '@/lib/recent';
+import { forget, keyOf, matches, useRecent, type Recent } from '@/lib/recent';
 import { cn } from '@/lib/utils';
 
 interface Found {
@@ -16,12 +17,21 @@ interface Found {
 }
 
 const MOD = /Mac|iP/.test(navigator.platform) ? '⌘' : 'Ctrl ';
+const PATH = { athlete: '/athlete/', academy: '/academy/', event: '/event/' } as const;
+const rowOf = (r: Recent) => `r:${keyOf(r)}`;
+// Academies and events have no picture: a mark of what they are, in the photo's place and size.
+const Mark = ({ r }: { r: Recent }) => r.kind === 'athlete' ? <Photo name={r.name} photo={r.photo ?? null} className="size-6" /> : (
+  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+    {r.kind === 'academy' ? <UsersIcon className="size-3.5" /> : <CalendarDaysIcon className="size-3.5" />}
+  </span>
+);
 
 // One palette for athletes, academies and events, opened from the header's box or with ⌘K.
 export function Search({ f }: { f: Filters }) {
   const [q, setQ] = useState('');
   const [debounced, setDebounced] = useState('');
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState('');
   const [, navigate] = useLocation();
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 200); return () => clearTimeout(t); }, [q]);
   useEffect(() => {
@@ -33,11 +43,26 @@ export function Search({ f }: { f: Filters }) {
   const { data, isFetching } = useApi<Found>('search', { site: f.site, off: [...f.off].join(','), q: debounced }, searching);
   // Waiting on the debounce or the answer: the box spins and the last query's results dim until this one's land.
   const pending = q.trim().length >= 2 && (q.trim() !== debounced || isFetching);
-  // Athletes opened here before: all of them on an empty box, and those the typed words match, at once, above what the server finds.
+  // What was opened on this site before: all of it on an empty box, and what the typed words match, at once, above what the server finds.
   const typed = q.trim();
-  const all = useRecent(f.site);
+  const all = useRecent().filter((r) => r.site === f.site);
   const recent = typed ? (typed.length >= 2 ? all.filter((r) => matches(r.name, typed)).slice(0, 4) : []) : all.slice(0, 8);
-  const athletes = data?.athletes.filter((a) => !recent.some((r) => r.user === a.user)) ?? [];
+  const shown = (kind: Recent['kind'], id: string) => recent.some((r) => r.kind === kind && r.id === id);
+  const athletes = data?.athletes.filter((a) => !shown('athlete', a.user)) ?? [];
+  const teams = data?.teams.filter((t) => !shown('academy', t.club_id)) ?? [];
+  const events = data?.events.filter((e) => !shown('event', e.event)) ?? [];
+  // Shift+Backspace (or Delete) takes the highlighted recent row away, and the highlight moves to the row after it.
+  const remove = (r: Recent) => {
+    const i = recent.indexOf(r);
+    const next = recent[i + 1] ?? recent[i - 1];
+    // Moved first: cmdk sends the highlight to the top when the highlighted row goes.
+    if (next) flushSync(() => setSelected(rowOf(next)));
+    forget(r);
+  };
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const r = e.shiftKey && (e.key === 'Backspace' || e.key === 'Delete') && recent.find((x) => rowOf(x) === selected);
+    if (r) { e.preventDefault(); remove(r); }
+  };
   const live = searching && typed.length >= 2;
   const stale = cn('transition-opacity duration-150 ease-out', pending && 'opacity-60');
   const go = (path: string) => { setOpen(false); setQ(''); navigate(f.link(path)); };
@@ -53,17 +78,17 @@ export function Search({ f }: { f: Filters }) {
         <kbd className="ml-auto rounded border border-border px-1.5 font-sans text-xs max-md:hidden">{MOD}K</kbd>
       </button>
       <CommandDialog open={open} onOpenChange={setOpen} title="Search" description="Find an athlete, academy or event." className="sm:max-w-xl">
-        <Command shouldFilter={false}>
+        <Command shouldFilter={false} value={selected} onValueChange={setSelected} onKeyDown={onKeyDown}>
           <CommandInput value={q} onValueChange={setQ} loading={pending} placeholder="Search athletes, academies, events" />
           {(live || !!recent.length) && (
             <CommandList aria-busy={pending} className="max-h-[50vh] overscroll-contain">
               {live && !pending && <CommandEmpty>Nothing matches “{debounced}”.</CommandEmpty>}
               {!!recent.length && <CommandGroup heading="Recent">{recent.map((r) => (
-                <CommandItem key={r.user} value={`r${r.user}`} onSelect={() => go(`/athlete/${r.user}`)}>
-                  <Photo name={r.name} photo={r.photo} className="size-6" /><span className="truncate">{r.name}</span><span className="ml-auto truncate text-xs text-muted-foreground">{r.club}</span>
+                <CommandItem key={rowOf(r)} value={rowOf(r)} onSelect={() => go(PATH[r.kind] + r.id)} aria-keyshortcuts="Shift+Backspace Shift+Delete">
+                  <Mark r={r} /><span className="truncate">{r.name}</span><span className="ml-auto truncate text-xs text-muted-foreground">{r.sub}</span>
                   {/* Shown on the row under the pointer or keys; keeps the input focused, so the arrows go on working. */}
-                  <button type="button" tabIndex={-1} aria-label={`Remove ${r.name} from recent`} title="Remove from recent"
-                    onPointerDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); forget(f.site, r.user); }}
+                  <button type="button" tabIndex={-1} aria-label={`Remove ${r.name} from recent`} title="Remove from recent (⇧⌫)"
+                    onPointerDown={(e) => e.preventDefault()} onClick={(e) => { e.stopPropagation(); remove(r); }}
                     className="relative -my-1 -mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-[opacity,color,background-color] duration-150 ease-out group-data-selected/command-item:opacity-100 before:absolute before:-inset-1 hover:bg-foreground/10 hover:text-foreground">
                     <XIcon className="size-3.5" />
                   </button>
@@ -73,11 +98,11 @@ export function Search({ f }: { f: Filters }) {
                   <Photo name={a.name} photo={a.photo} className="size-6" /><span className="truncate">{a.name}</span><span className="ml-auto truncate text-xs text-muted-foreground">{a.club}</span>
                   {!!a.wins && <span className="shrink-0 text-xs tabular-nums">{plural(a.wins, 'win')}</span>}
                 </CommandItem>))}</CommandGroup>}
-              {live && !!data?.teams.length && <CommandGroup heading="Academies" className={stale}>{data.teams.map((t) => (
+              {live && !!teams.length && <CommandGroup heading="Academies" className={stale}>{teams.map((t) => (
                 <CommandItem key={t.club_id} value={`t${t.club_id}`} onSelect={() => go(`/academy/${t.club_id}`)}>
                   <span className="truncate">{t.club}</span><span className="ml-auto shrink-0 text-xs text-muted-foreground">{plural(t.athletes, 'athlete')}</span>
                 </CommandItem>))}</CommandGroup>}
-              {live && !!data?.events.length && <CommandGroup heading="Events" className={stale}>{data.events.map((e) => (
+              {live && !!events.length && <CommandGroup heading="Events" className={stale}>{events.map((e) => (
                 <CommandItem key={e.event} value={`e${e.event}`} onSelect={() => go(`/event/${e.event}`)}>
                   <span className="truncate">{e.title}</span><span className="ml-auto shrink-0 text-xs text-muted-foreground">{date(e.start)}</span>
                 </CommandItem>))}</CommandGroup>}

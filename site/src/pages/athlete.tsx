@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'wouter';
 import { ExternalLink, X } from 'lucide-react';
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
 import { ReadNow } from '@/components/read-now';
-import { remember } from '@/lib/recent';
+import { useRemember } from '@/lib/recent';
 
 // One person's accounts read as one: entries, history and outcomes carry the site of the account they came from.
 interface Account { site: string; user: string; name: string | null; club: string | null }
@@ -476,11 +476,9 @@ export function AthletePage({ id }: { id: string }) {
   const [against, setAgainst] = useState<Rival | null>(null);
   const [show, setShow] = useState<Show>('all');
   const { data, isLoading, error, isPlaceholderData } = useApi<Data>('athlete', { site: f.site, off: f.query.off, id }, true, 0);
-  // Opened here, so search offers them again first.
-  useEffect(() => {
-    const name = data?.person?.name ?? data?.career?.name;
-    if (name && !isPlaceholderData) remember({ site: f.site, user: id, name, club: data?.person?.club ?? data?.career?.club ?? null, photo: data?.person?.photo ?? data?.career?.photo ?? null });
-  }, [data, isPlaceholderData, f.site, id]);
+  // Opened here, so search offers it again first.
+  const name = !isPlaceholderData && (data?.person?.name ?? data?.career?.name);
+  useRemember(name ? { site: f.site, kind: 'athlete', id, name, sub: data?.person?.club ?? data?.career?.club ?? null, photo: data?.person?.photo ?? data?.career?.photo ?? null } : null);
   if (isLoading) return <div className="flex items-center gap-5"><Skeleton className="size-20 rounded-full" /><Skeleton className="h-8 w-64" /></div>;
   if (!data) return <Empty title={(error as { status?: number })?.status === 404 ? 'No athlete here' : 'That didn’t load'} text={(error as { status?: number })?.status === 404 ? 'Mat Stats has nothing under this athlete on this site. They may be on the other site, or nobody has read them yet.' : 'The stats server didn’t answer. Try again in a moment.'} />;
   const { career, person: who, entries, history, outcomes = [], accounts = [] } = data;
