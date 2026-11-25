@@ -509,7 +509,7 @@ async function page(request, env) {
   if (!response.headers.get('Content-Type')?.includes('text/html')) return response;
   const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
   const headers = new Headers(response.headers);
-  headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
+  headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; connect-src 'self' https://smoothcomp.com https://*.smoothcomp.com https://ajptour.com https://*.ajptour.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'`);
   headers.set('X-Content-Type-Options', 'nosniff');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   return new Response(response.body, { status: response.status, headers });
