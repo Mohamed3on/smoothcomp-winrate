@@ -33,17 +33,34 @@ export function Debounced({ f, name, placeholder, className, type = 'number', la
   return <Input aria-label={label} type={type} min={0} inputMode={type === 'number' ? 'numeric' : undefined} value={value} placeholder={placeholder} onChange={(e) => setValue(e.target.value)} className={className} />;
 }
 
-// On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose,
-// and no chip (hide) for a finish nobody there has.
-export function FilterBar({ f, sorts, minimumAthletes = false, event = false, hide = [], place = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; hide?: string[]; place?: boolean }) {
-  const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
-  const belts = new Set(f.get('belt').split(',').filter(Boolean));
+// The finishes every record counts, as chips: each page whose records follow them shows them.
+export function Finishes({ f, hide = [] }: { f: Filters; hide?: string[] }) {
   const toggleType = (t: string) => {
     const off = new Set(f.off);
     if (off.has(t)) off.delete(t);
     else if (WIN_TYPES.filter((w) => !off.has(w)).length > 1) off.add(t); // never an empty allowlist
     f.set({ off: [...off].join(',') });
   };
+  return (
+    <Field label="Wins that count">
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Wins that count">
+        {CHIPS.filter((t) => !hide.includes(t)).map((t) => (
+          <Toggle key={t} variant="outline" size="sm" pressed={f.counted(t)} onPressedChange={() => toggleType(t)}
+            className="h-8 rounded-full duration-160 ease-out-strong active:scale-[0.97] motion-reduce:active:scale-100 aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground text-muted-foreground">
+            <i className={cn('size-2 rounded-full transition-opacity', !f.counted(t) && 'opacity-35')} style={{ background: `var(--color-win-${t})` }} />
+            {typeName(t)}
+          </Toggle>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
+// On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose,
+// and no chip (hide) for a finish nobody there has.
+export function FilterBar({ f, sorts, minimumAthletes = false, event = false, hide = [], place = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; hide?: string[]; place?: boolean }) {
+  const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
+  const belts = new Set(f.get('belt').split(',').filter(Boolean));
   const toggleBelt = (b: string) => {
     const next = new Set(belts);
     if (next.has(b)) next.delete(b); else next.add(b);
@@ -54,17 +71,7 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, hi
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
   return (
     <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4">
-      <Field label="Wins that count">
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Wins that count">
-          {CHIPS.filter((t) => !hide.includes(t)).map((t) => (
-            <Toggle key={t} variant="outline" size="sm" pressed={f.counted(t)} onPressedChange={() => toggleType(t)}
-              className="h-8 rounded-full duration-160 ease-out-strong active:scale-[0.97] motion-reduce:active:scale-100 aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground text-muted-foreground">
-              <i className={cn('size-2 rounded-full transition-opacity', !f.counted(t) && 'opacity-35')} style={{ background: `var(--color-win-${t})` }} />
-              {typeName(t)}
-            </Toggle>
-          ))}
-        </div>
-      </Field>
+      <Finishes f={f} hide={hide} />
       <Field label="Belt">
         <div className="flex flex-wrap gap-1" role="group" aria-label="Belt">
           {BELTS.filter((b) => !['grey', 'yellow', 'orange', 'green'].includes(b) || belts.has(b)).map((b) => (
