@@ -135,7 +135,7 @@ export function FilterBar({ f, sorts, minimumAthletes = 0, event = false, place 
     if (next.has(b)) next.delete(b); else next.add(b);
     f.set({ belt: [...next].join(',') });
   };
-  const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()} (${c.athletes})` })).sort((a, b) => a.label.localeCompare(b.label))];
+  const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()}${minimumAthletes ? '' : ` (${c.athletes})`}` })).sort((a, b) => a.label.localeCompare(b.label))];
   const activeItems = [['0', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
   const set = ['belt', 'sex', 'age', 'weight', 'wins', 'events', 'athletes', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(f.query.active !== f.defaults.active) + Number(!!(f.get('agemin') || f.get('agemax')));

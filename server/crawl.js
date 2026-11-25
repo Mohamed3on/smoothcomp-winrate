@@ -366,10 +366,13 @@ const NOBODY = /^\W*(no (academy|club|team|affiliation)|independent( no club)?|n
 export const lookable = (name) => !NOBODY.test(name ?? '') && tokens(name).some((w) => !COMMON.has(w));
 export function pickPlace(club, places) {
   const part = (p, type, form = 'longText') => p.addressComponents?.find((c) => c.types?.includes(type))?.[form] ?? null;
-  const placed = (places ?? []).filter((p) => Number.isFinite(p.location?.latitude) && Number.isFinite(p.location?.longitude));
+  // Never a place in another country than the academy's own: near where a big team competes most, its affiliate
+  // there shares its name (PSLPB Cicero Costha, of Brazil, took Cicero Costha Berlin's address).
+  const placed = (places ?? []).filter((p) => Number.isFinite(p.location?.latitude) && Number.isFinite(p.location?.longitude)
+    && (!club.country || part(p, 'country', 'shortText') === club.country));
   const near = (p) => club.lat == null || between(club.lat, club.lng, p.location.latitude, p.location.longitude) <= 150;
   const found = placed.find((p) => near(p) && sameAcademy(club.club, p.displayName?.text, club.city))
-    ?? placed.find((p) => club.country && part(p, 'country', 'shortText') === club.country && sameAcademy(club.club, p.displayName?.text, club.city, true));
+    ?? placed.find((p) => club.country && sameAcademy(club.club, p.displayName?.text, club.city, true));
   return found ? { lat: found.location.latitude, lng: found.location.longitude, city: found.postalAddress?.locality || part(found, 'locality') || part(found, 'postal_town'),
     address: typeof found.formattedAddress === 'string' ? found.formattedAddress.slice(0, 200) : null } : null;
 }
