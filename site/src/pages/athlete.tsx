@@ -12,7 +12,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltSplit, eventRecords, finishOf, normalize, rivalsOf, totals } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, rivalsOf, totals } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -132,13 +132,15 @@ interface Belts { worn: string[]; starts: (number | null)[] }
 // belt worn on its date; undated ones count only overall. The current belt shows even with no events.
 interface Split { belt: string; w: number; l: number; events: number }
 // Without their profile's belt timeline, each event counts at the belt its divisions name; one naming
-// none takes the belt of their latest earlier event that does (or the first one after).
+// none takes the belt of their latest earlier event that does (or the first one after). One naming
+// several ("Brown/Black") takes the lowest of them at or above that belt.
 function splitByDivision(records: Records, f: Filters): Split[] | null {
   const named = records.map((r) => r.divisions.map(beltOf).find(Boolean) ?? null);
   let last = named.find(Boolean) ?? null;
   const by = new Map<string, Split>();
   records.forEach((r, i) => {
-    last = named[i] ?? last;
+    const floor = last ? BELTS.indexOf(last) : -1;
+    last = named[i] ?? r.divisions.flatMap(beltsIn).find((b) => BELTS.indexOf(b) >= floor) ?? last;
     if (!last) return;
     const t = by.get(last) ?? { belt: last, w: 0, l: 0, events: 0 };
     by.set(last, t);
