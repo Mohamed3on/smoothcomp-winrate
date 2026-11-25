@@ -43,7 +43,7 @@ export function PlaceFilter({ f }: { f: Filters }) {
         </PopoverTrigger>
         <PopoverContent align="start" className="w-72 p-0">
           <Command shouldFilter={false}>
-            <CommandInput value={q} onValueChange={setQ} placeholder="Search a city" aria-label="Search a city" />
+            <CommandInput value={q} onValueChange={setQ} loading={isFetching || q.trim() !== debounced} placeholder="Search a city" aria-label="Search a city" />
             <CommandList className="max-h-72">
               {debounced.length < 2 ? (
                 <CommandGroup>
@@ -61,7 +61,7 @@ export function PlaceFilter({ f }: { f: Filters }) {
                 </CommandGroup>
               ) : (
                 <>
-                  <CommandEmpty>{isFetching ? 'Searching…' : `No place called “${debounced}” found.`}</CommandEmpty>
+                  <CommandEmpty className="text-muted-foreground">{isFetching ? 'Searching…' : `No place called “${debounced}” found.`}</CommandEmpty>
                   {!!found?.rows.length && (
                     <CommandGroup heading="Places">
                       {found.rows.map((p) => (

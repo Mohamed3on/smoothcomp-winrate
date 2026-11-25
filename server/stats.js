@@ -555,7 +555,7 @@ async function events(env, params) {
 
 // Places to search from: any town by name (Open-Meteo's geocoder, over GeoNames; only the typed name
 // leaves for it, and its answers are cached a day), in English and the reader's language (`lang`), as
-// a local name matches only in its own; biggest first. Else the cities events were held in, best match
+// a local name matches only in its own. Else the cities events were held in, best match
 // then most events first. env.GEOCODER '' leaves the geocoder out.
 async function places(env, params) {
   const f = filters(params);
@@ -565,7 +565,17 @@ async function places(env, params) {
     const langs = [...new Set(['en', /^[a-z]{2}$/.test(params.get('lang') ?? '') ? params.get('lang') : 'en'])];
     const ask = (language) => fetch(`${geocoder}?${new URLSearchParams({ name: f.q, count: '8', language, format: 'json' })}`, { signal: AbortSignal.timeout(3000) })
       .then(async (r) => (r.ok ? (await r.json()).results ?? [] : [])).catch(() => []);
-    const found = [...new Map((await Promise.all(langs.map(ask))).flat().map((p) => [p.id, p])).values()].sort((a, b) => (b.population ?? 0) - (a.population ?? 0)).slice(0, 8);
+    // Towns only (GeoNames' PPL codes, not peaks or regions), one row per name, region and country;
+    // names that start with what was typed first (Chiang Mai before Yangzhou), then biggest.
+    const fold = (s) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+    const starts = (p) => (fold(p.name).startsWith(fold(f.q)) ? 0 : 1);
+    const seen = new Set();
+    const found = (await Promise.all(langs.map(ask))).flat().filter((p) => {
+      const label = `${p.name}|${p.admin1}|${p.country_code}`;
+      if (!p.feature_code?.startsWith('PPL') || seen.has(p.id) || seen.has(label)) return false;
+      seen.add(p.id).add(label);
+      return true;
+    }).sort((a, b) => starts(a) - starts(b) || (b.population ?? 0) - (a.population ?? 0)).slice(0, 8);
     if (found.length) return json({ rows: found.map((p) => ({ city: p.name, region: p.admin1 ?? null, country: p.country_code ?? null, lat: p.latitude, lng: p.longitude })) });
   }
   const c = matcher(f.q, 'events_fts', 'city', 'city', 1);

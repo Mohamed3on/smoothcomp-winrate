@@ -395,6 +395,23 @@ test('listed events are found by place, date, sport and size, and academies wher
   assert.deepEqual(places.rows.map((p) => [p.city, p.events]), [['Potsdam', 1]]);
 });
 
+test('the place search lists towns once, names that start with the search first, then the biggest', async () => {
+  const { API } = await import('../server/stats.js');
+  const town = (id, name, admin1, country_code, population, feature_code = 'PPL') => ({ id, name, admin1, country_code, population, feature_code, latitude: 0, longitude: 0 });
+  const answers = {
+    en: [town(1, 'Chiang Mai', 'Chiang Mai', 'TH', 127240, 'PPLA'), town(2, 'Yangzhou', 'Jiangsu', 'CN', 4559797), town(3, 'Bâ', 'North Province', 'NC', null, 'PK'),
+      town(4, 'Bâ', 'North Province', 'NC', null), town(5, 'Bâ', 'North Province', 'NC', null), town(6, 'Bangko', 'North Sumatra', 'ID', null)],
+    de: [town(6, 'Bangko', 'Sumatera Utara', 'ID', null), town(7, 'Chiang Rai', 'Chiang Rai', 'TH', 78756, 'PPLA')],
+  };
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => Response.json({ results: answers[new URL(url).searchParams.get('language')] });
+  try {
+    const rows = (await (await API.places({}, new URLSearchParams('q=chiang&lang=de'))).json()).rows;
+    // The peak goes, the second Bâ looks the same as the first, and Bangko is one town in two languages.
+    assert.deepEqual(rows.map((p) => p.city), ['Chiang Mai', 'Chiang Rai', 'Yangzhou', 'Bâ', 'Bangko']);
+  } finally { globalThis.fetch = real; }
+});
+
 test('the daily listing walks older events a few pages a day, from where it left off, until the database nears full', async () => {
   const { listEvents } = await import('../server/crawl.js');
   const { DB } = d1();
