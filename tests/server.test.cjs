@@ -105,7 +105,7 @@ test("an athlete's accounts with their name, birth year and country read as one"
   await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
   // AJP numbers its events and accounts apart: its event 900 is another event, and its Kim Lee in Germany someone else.
   const ajp = {
-    77: { name: 'kim  LEE', club: 'Gamma', clubId: '7', country: 'NL', age: 30, entries: [{ division: 'Adult / Blue / -76 kg', place: 2, wins: { points: 2 }, losses: { submission: 1 } }] },
+    77: { name: 'kim  LEE', club: 'Gamma', clubId: '7', country: 'NL', age: 30, entries: [{ division: 'Adult / Black / -76 kg', place: 2, wins: { points: 2 }, losses: { submission: 1 } }] },
     78: { name: 'Kim Lee', club: 'Delta', clubId: '8', country: 'DE', age: 30, entries: [{ division: 'Adult / Blue / -76 kg', place: 1, wins: { points: 3 }, losses: {} }] },
   };
   await post('/record', { site: 'ajptour.com', event: '900', records: { 77: [2, 1], 78: [3, 0] }, meta, athletes: ajp, read: Date.now() });
@@ -114,6 +114,8 @@ test("an athlete's accounts with their name, birth year and country read as one"
   assert.deepEqual(one.entries.map((e) => [e.site, e.event, e.place]).sort(), [['ajptour.com', '900', 2], ['smoothcomp.com', '900', 1]]);
   assert.deepEqual([one.career.wins, one.career.won, one.career.lost, one.career.gold, one.career.silver], [5, 5, 1, 1, 1]);
   assert.equal(one.person.club, 'Alpha BJJ');
+  // A belt one account shows (black at AJP) is theirs on every account: belts only go up.
+  assert.equal(one.career.belt, 'black');
   // From the other side, the same athlete.
   const other = await (await API.athlete(env, new URLSearchParams('site=ajptour.com&id=77'))).json();
   assert.deepEqual(other.accounts.map((a) => [a.site, a.user]), [['smoothcomp.com', '11']]);

@@ -173,12 +173,14 @@ export const MERGE = [`DELETE FROM board_own WHERE site = ?1 AND user IN (SELECT
 `INSERT INTO board (${BOARD_COLS}, dup) WITH ${PEOPLE},
   own AS MATERIALIZED (SELECT o.*, s.k, s.kb, s.kc FROM shared s CROSS JOIN board_own o ON o.site = s.site AND o.user = s.user),
   sums AS (SELECT k, kb, kc, max(source = 'career') AS career, max(at) AS at, max(last) AS last, sum(events) AS events, sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
-      ${COUNTS.map((c) => `sum(${c}) AS ${c}`).join(', ')}
+      ${COUNTS.map((c) => `sum(${c}) AS ${c}`).join(', ')},
+      -- The highest belt any of their accounts holds: belts only go up.
+      max((SELECT j.key FROM json_each(${NAMED}) j WHERE j.value = lower(own.belt))) AS belt
     FROM own GROUP BY k, kb, kc),
   ranked AS (SELECT site, user, row_number() OVER (PARTITION BY k, kb, kc, site ORDER BY coalesce(events, 0) DESC, user) AS n FROM own)
   SELECT o.site, o.user, iif(s.career, 'career', 'results'), iif(s.career, s.at, NULL),
     (SELECT json_group_object(key, value) FROM json_each(json_object(${GROUPS.map((g) => `'${g}', s.w_${g}`).join(', ')})) WHERE value > 0),
-    o.name, o.club, o.club_id, o.country, o.country_name, o.photo, o.born, o.hidden, o.belt, s.last, s.events, s.gold, s.silver, s.bronze,
+    o.name, o.club, o.club_id, o.country, o.country_name, o.photo, o.born, o.hidden, coalesce(json_extract(${NAMED}, '$[' || s.belt || ']'), o.belt), s.last, s.events, s.gold, s.silver, s.bronze,
     ${COUNTS.map((c) => `s.${c}`).join(', ')}, r.n > 1
   FROM own o JOIN sums s ON s.k = o.k AND s.kb = o.kb AND s.kc = o.kc JOIN ranked r ON r.site = o.site AND r.user = o.user WHERE true
   -- An upsert, not a replace: club_board's triggers see the row's change (a replace's delete fires no trigger), and an unchanged row isn't written.
