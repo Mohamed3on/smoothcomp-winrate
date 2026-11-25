@@ -167,8 +167,9 @@ async function name(get, host, data) {
           photo: /^https:/.test(p.profile_image ?? '') ? p.profile_image : null, hidden: p.public === false };
         score[k] = [p.score, p.advantage, p.penalty].map((n) => (Number.isSafeInteger(n) ? n : 0));
       }
-      // The score per seat ([points, advantages, penalties]) and the clock: match length and time left.
-      if (scored(m) && score[0] && score[1]) data.cards[m[0]] = { s: score, t: [seconds(card.matchInfo?.time), Number.isSafeInteger(card.matchInfo?.timeRemaining) ? card.matchInfo.timeRemaining : null] };
+      // The score per seat ([points, advantages, penalties]) and the clock: when the match ended and the seconds left
+      // (the card gives those in milliseconds).
+      if (scored(m) && score[0] && score[1]) data.cards[m[0]] = { s: score, t: [seconds(card.matchInfo?.time), Number.isSafeInteger(card.matchInfo?.timeRemaining) ? Math.round(card.matchInfo.timeRemaining / 1000) : null] };
     });
     data.tried = [...tried];
   }

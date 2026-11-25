@@ -70,14 +70,14 @@ const boutsOf = (r: Row): Meeting[] => (r.read ?? []).filter((e) => e.fought).fl
     site: r.site, won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock,
   })));
 // A match's score as the scoreboard ended it: points, then advantages and penalties where any were
-// given; a finish before the bell says when (the match length less the time left).
+// given; a finish before the bell says when.
 function scoreOf(m: Meeting): string | null {
   if (!m.us || !m.them) return null;
   const parts = [`${m.us[0]}–${m.them[0]}`];
   if (m.us[1] || m.them[1]) parts.push(`adv ${m.us[1]}–${m.them[1]}`);
   if (m.us[2] || m.them[2]) parts.push(`pen ${m.us[2]}–${m.them[2]}`);
-  const [length, left] = m.clock ?? [];
-  if (length && left) { const t = length - left; parts.push(`at ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`); }
+  const [t, left] = m.clock ?? [];
+  if (t && left) parts.push(`at ${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`);
   return parts.join(' · ');
 }
 // A match counts under the finishes switched on; a win from before v 2 names none, so it always shows.

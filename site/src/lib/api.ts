@@ -18,7 +18,7 @@ export interface Entry {
 // One match of a division, as the results read give it: won or lost, its finish, who they met and in which round.
 export interface Bout {
   won: boolean; type: string; how: string | null; opponent: string | null; user: string | null; club: string | null; stage: string | null;
-  // Their score and their opponent's, as [points, advantages, penalties]; the clock as [length, left] in seconds.
+  // Their score and their opponent's, as [points, advantages, penalties]; the clock as [ended at, left] in seconds.
   us?: [number, number, number]; them?: [number, number, number]; clock?: [number | null, number | null];
   bracket?: number;
 }
