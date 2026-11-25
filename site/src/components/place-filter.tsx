@@ -65,7 +65,7 @@ export function PlaceFilter({ f }: { f: Filters }) {
                   {!!found?.rows.length && (
                     <CommandGroup heading="Places">
                       {found.rows.map((p) => (
-                        <CommandItem key={`${p.city}|${p.country}`} value={`${p.city}|${p.country}`} onSelect={() => pick(at(p.lat, p.lng), p.city)}>
+                        <CommandItem key={`${p.city}|${p.lat},${p.lng}`} value={`${p.city}|${p.lat},${p.lng}`} onSelect={() => pick(at(p.lat, p.lng), p.city)}>
                           <span className="truncate">{p.city}</span>
                           <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">{[p.region, p.country, p.events != null && plural(p.events, 'event')].filter(Boolean).join(' · ')}</span>
                         </CommandItem>
