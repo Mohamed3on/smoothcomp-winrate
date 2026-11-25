@@ -361,6 +361,16 @@ const AtBelt = ({ belt }: { belt: string | null }) => (belt
   ? <span className="mt-[5px] inline-flex" title={`${belt[0].toUpperCase()}${belt.slice(1)} belt at the time`}><Belt belt={belt} /></span>
   : <span className="w-[22px] shrink-0" aria-hidden />);
 
+// Knockout rounds read as a chip, tinted by the medal the match decided; pool numbering ("Match 2/14") stays plain.
+function Stage({ m }: { m: Meeting }) {
+  const s = m.stage!;
+  const chip = /^final/i.test(s) ? ['Final', m.won ? 'bg-gold/15 text-gold' : 'bg-silver/15 text-silver']
+    : /bronze/i.test(s) ? ['Bronze match', m.won ? 'bg-bronze/15 text-bronze' : 'bg-muted text-foreground/85']
+    : /^semi/i.test(s) ? ['Semifinal', 'bg-muted text-foreground/85']
+    : /^quarter/i.test(s) ? ['Quarterfinal', 'bg-muted text-foreground/85'] : null;
+  return chip ? <span className={cn('rounded px-1.5 py-px font-medium', chip[1])}>{chip[0]}</span> : <span>{m.type ? '· ' : ''}{s}</span>;
+}
+
 export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisions: boolean }) {
   return (
     <li className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-sm">
@@ -370,7 +380,7 @@ export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisio
       <span className="ml-auto flex max-w-[55%] flex-wrap items-center justify-end gap-x-1.5 pl-3 text-right text-xs text-muted-foreground">
         {m.type && <><i className="size-2 rounded-full" style={{ background: dot(m.type) }} /><span className="text-foreground/85">{m.how || typeName(m.type)}</span></>}
         {scoreOf(m) && <span className="tabular-nums">· {scoreOf(m)}</span>}
-        {m.stage && <span>{m.type ? '· ' : ''}{m.stage}</span>}
+        {m.stage && <Stage m={m} />}
         {divisions && m.division && <span>· {m.division}</span>}
       </span>
     </li>
@@ -397,16 +407,19 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
             const named = [...new Set(all.map((m) => m.division).filter(Boolean))] as string[];
             const divisions: (Entry | string[])[] = row.read?.length ? row.read : [named];
             const span = Math.max(divisions.length, 1);
+            // Each division's matches sit under its own row; matches naming none of them go under the last.
+            const names = divisions.map((d) => (Array.isArray(d) ? null : normalize(d.division)));
+            const under = Map.groupBy(shown, (m) => { const i = span > 1 ? names.indexOf(normalize(m.division)) : 0; return i < 0 ? span - 1 : i; });
             const fin = row.outcome && Object.entries(row.outcome.out.types).reduce(([a, b], [t, [w, l]]) => (f.counted(finishOf(t)) ? [a + w, b + l] : [a, b]), [0, 0]);
-            return [
-              ...Array.from({ length: span }, (_, k) => {
+            return Array.from({ length: span }, (_, k) => {
                 const d = divisions[k];
                 const e = d && !Array.isArray(d) ? d : undefined;
                 const division = e
                   ? <><span className="flex items-start gap-2"><AtBelt belt={beltOf(e.division) ?? beltAt([...(row.read ?? []).map((x) => x.division), ...named])} /><DivisionLink event={row.id} name={e.division} f={f} site={row.site} /></span>{e.club && normalize(e.club) !== normalize(club) && <span className="block pl-[30px] text-xs">{e.club}</span>}</>
                   : Array.isArray(d) ? d.map((x) => <span key={x} className="flex items-start gap-2"><AtBelt belt={beltOf(x) ?? beltAt(d)} />{x}</span>) : '';
-                return (
-                  <TableRow key={`${row.id}-${k}`} className={cn((k < span - 1 || shown.length) && 'border-b-0', 'hover:bg-transparent')}>
+                const ms = under.get(k) ?? [];
+                return [
+                  <TableRow key={`${row.id}-${k}`} className={cn((k < span - 1 || ms.length) && 'border-b-0', 'hover:bg-transparent')}>
                     <TableCell className="pl-5 align-top text-muted-foreground max-sm:hidden">{k ? '' : date(row.start)}</TableCell>
                     <TableCell className="align-top whitespace-normal max-sm:pl-3">{k ? '' : <div className="flex items-start gap-3">{row.listed?.image && <img src={row.listed.image} alt="" loading="lazy" className="mt-0.5 hidden aspect-[16/9] w-16 shrink-0 rounded-md object-cover outline outline-1 -outline-offset-1 outline-white/10 lg:block" />}<div className="flex min-w-0 flex-col gap-0.5"><EventLink row={row} f={f} />{row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}<span className="text-xs text-muted-foreground sm:hidden">{date(row.start)}</span></div></div>}
                       {division && <div className={cn('text-muted-foreground sm:hidden', !k && 'mt-2')}>{division}</div>}</TableCell>
@@ -420,24 +433,19 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
                         : !k && fin && !read.length ? <Record w={fin[0]} l={fin[1]} />
                         : !k && row.listed?.wins != null && !read.length ? <span><b className="font-semibold">{row.listed.wins}</b> <span className="text-xs text-muted-foreground">{row.listed.wins === 1 ? 'win' : 'wins'}</span></span> : ''}
                     </TableCell>
-                  </TableRow>
-                );
-              }),
-              shown.length > 0 && (
-                <TableRow key={`${row.id}-m`} className="hover:bg-transparent">
-                  <TableCell className="max-sm:hidden" />
-                  <TableCell colSpan={phone ? 3 : 4} className="pt-0 pr-3 pb-3 whitespace-normal max-sm:pl-3 sm:pr-5">
-                    <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">
-                      {/* With more than one division there, each division's matches sit under its name. */}
-                      {[...Map.groupBy(shown, (m) => ((row.read?.length ?? named.length) > 1 ? m.division ?? null : null))].map(([division, ms]) => [
-                        division && <li key={division} className="pt-1 text-xs text-muted-foreground first:pt-0">{row.read?.length ? <DivisionLink event={row.id} name={division} f={f} site={row.site} /> : division}</li>,
-                        ...ms.map((m, i) => <MatchLine key={`${division}-${i}`} m={m} f={f} divisions={false} />),
-                      ])}
-                    </ul>
-                  </TableCell>
-                </TableRow>
-              ),
-            ];
+                  </TableRow>,
+                  ms.length > 0 && (
+                    <TableRow key={`${row.id}-m${k}`} className={cn(k < span - 1 && 'border-b-0', 'hover:bg-transparent')}>
+                      <TableCell className="max-sm:hidden" />
+                      <TableCell colSpan={phone ? 3 : 4} className="pt-0 pr-3 pb-3 whitespace-normal max-sm:pl-3 sm:pr-5">
+                        <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">
+                          {ms.map((m, i) => <MatchLine key={i} m={m} f={f} divisions={span === 1 && named.length > 1} />)}
+                        </ul>
+                      </TableCell>
+                    </TableRow>
+                  ),
+                ];
+              });
           })}
         </TableBody>
       </Table>
