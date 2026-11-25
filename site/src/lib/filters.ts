@@ -37,13 +37,16 @@ const save = (changes: Record<string, string | null>) => {
 
 export function useFilters() {
   const [params] = useSearchParams();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const kept = useSyncExternalStore(subscribe, () => saved);
   const has = (key: string) => params.has(key) || key in kept;
   const get = (key: string) => params.get(key) ?? kept[key] ?? '';
   // Only walkovers start uncounted; nobody is filtered out until the reader sets a minimum.
   const off = new Set((has('off') ? get('off') : 'walkover').split(',').filter(Boolean));
   const site = get('site') === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com';
+  // Athletes rank among those who competed in the last two years unless the reader says otherwise ("0": any time). The
+  // academies list counts every athlete: its totals are kept added up, and any window adds them up afresh (2–5 s).
+  const defaults = { active: location.startsWith('/academies') ? '0' : '24' };
   const set = (changes: Record<string, string | null>) => {
     save(changes);
     // The live address, not this render's: a debounced field writes after others may have.
@@ -61,7 +64,7 @@ export function useFilters() {
   };
   const query = {
     site, off: [...off].join(','), belt: get('belt'), wins: get('wins'), events: get('events'), agemin: get('agemin'), agemax: get('agemax'),
-    sex: get('sex'), age: get('age'), weight: get('weight'), country: get('country'), active: get('active'), sort: get('sort') || 'wins', dir: get('dir'), q: get('q'),
+    sex: get('sex'), age: get('age'), weight: get('weight'), country: get('country'), active: has('active') ? get('active') : defaults.active, sort: get('sort') || 'wins', dir: get('dir'), q: get('q'),
   };
   // A path with the reader's filters carried along, after any query of its own.
   const link = (path: string) => {
@@ -78,6 +81,6 @@ export function useFilters() {
     if (on === (kept.site === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com')) keep.delete('site'); else keep.set('site', on);
     return base + tidy(keep);
   };
-  return { params, get, set, strip, off, counted: (type: string) => !off.has(type), site, query, link, linkOn, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };
+  return { params, get, set, strip, defaults, off, counted: (type: string) => !off.has(type), site, query, link, linkOn, home: site === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com' };
 }
 export type Filters = ReturnType<typeof useFilters>;

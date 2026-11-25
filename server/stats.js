@@ -139,7 +139,7 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
     SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last,
-      bk.value AS bracket, p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt) AS grade,
+      bk.value AS bracket, p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt) AS grade, bl.worn ->> '$[#-1]' AS profile_belt,
       ${floorBelt('us.user')} AS least_belt
     FROM us
     LEFT JOIN athletes c ON c.site = ?1 AND c.user = us.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL
@@ -154,7 +154,9 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
         coalesce((SELECT json_group_object(key, value ->> 0) FROM json_each(rec) WHERE value ->> 0 > 0), '{}')) AS types
     FROM src WHERE entry IS NOT NULL OR te > 0)
   SELECT ?1, user, source, iif(source = 'career', at, NULL), types, name, club, club_id, country, country_name, photo, born, hidden,
-    coalesce(${higher('b.grade', 'b.least_belt')}, b.grade, ${namedBelt('b.user')}), last,
+    -- Their profile's belt list, where it was read, is the belt: a blue belt who entered purple divisions competed up.
+    -- Else their divisions lift the belt their registrations name.
+    coalesce(b.profile_belt, ${higher('b.grade', 'b.least_belt')}, b.grade, ${namedBelt('b.user')}), last,
     iif(source = 'career', nullif(max(coalesce(entry ->> '$.events', 0), coalesce(listed, 0)), 0), max(te, coalesce(listed, 0))),
     iif(source = 'career', coalesce(entry ->> '$.medals[0]', 0), tg), iif(source = 'career', coalesce(entry ->> '$.medals[1]', 0), ts), iif(source = 'career', coalesce(entry ->> '$.medals[2]', 0), tb),
     ${GROUPS.map((g) => `coalesce(types ->> '$.${g}', 0)`).join(', ')},
@@ -439,13 +441,14 @@ async function athlete(env, params) {
   // Each account's events, newest first; their profile, belts and who they are from this account, else another's.
   const newest = (a, b) => String(b.start ?? '').localeCompare(String(a.start ?? ''));
   // Where they rank in their bracket (whom, age group, weight class, belt) by wins under the finishes counted, as the rankings
-  // narrowed to it order them; ties share a place. Read through board_bracket: that bracket's rows alone.
+  // narrowed to it order them ("Competed" too); ties share a place. Read through board_bracket: that bracket's rows alone.
+  // One who last competed before that window isn't in that ranking, so has no place in it.
   const held = each.findIndex((a) => a.career);
   const career = held < 0 ? null : each[held].career;
-  const bracket = career?.weight && career.age && (career.wins > 0 || career.lost > 0)
+  const bracket = career?.weight && career.age && (career.wins > 0 || career.lost > 0) && (!f.since || career.last >= f.since)
     ? await env.DB.prepare(`WITH ${careersOf(f.off, 'AND weight = ?2 AND age = ?3 AND sex IS ?4 AND belt IS ?5 AND dup = 0')}
-        SELECT count(*) AS of, count(*) FILTER (WHERE wins > ?6) + 1 AS rank FROM careers WHERE wins > 0 OR lost > 0`)
-      .bind(accounts[held].site, career.weight, career.age, career.sex, career.belt, career.wins).first() : null;
+        SELECT count(*) AS of, count(*) FILTER (WHERE wins > ?6) + 1 AS rank FROM careers WHERE (wins > 0 OR lost > 0) AND (?7 = '' OR last >= ?7)`)
+      .bind(accounts[held].site, career.weight, career.age, career.sex, career.belt, career.wins, f.since).first() : null;
   return json({
     bracket: bracket && { sex: career.sex, age: career.age, weight: career.weight, belt: career.belt, rank: bracket.rank, of: bracket.of },
     history: each.flatMap((a) => a.history).sort(newest),

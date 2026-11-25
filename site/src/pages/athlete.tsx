@@ -513,7 +513,7 @@ export function AthletePage({ id }: { id: string }) {
   const f = useFilters();
   const [against, setAgainst] = useState<Rival | null>(null);
   const [show, setShow] = useState<Show>('all');
-  const { data, isLoading, error, isPlaceholderData } = useApi<Data>('athlete', { site: f.site, off: f.query.off, id }, true, 0);
+  const { data, isLoading, error, isPlaceholderData } = useApi<Data>('athlete', { site: f.site, off: f.query.off, active: f.query.active, id }, true, 0);
   // Opened here, so search offers it again first.
   const name = !isPlaceholderData && (data?.person?.name ?? data?.career?.name);
   useRemember(name ? { site: f.site, kind: 'athlete', id, name, sub: data?.person?.club ?? data?.career?.club ?? null, photo: data?.person?.photo ?? data?.career?.photo ?? null } : null);

@@ -286,6 +286,16 @@ test("an athlete's belt is at least the lowest belt of every division they enter
   const page = async (id) => (await (await API.athlete(env, new URLSearchParams(`site=smoothcomp.com&id=${id}`))).json()).bracket;
   assert.deepEqual(await page('24'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 1, of: 2 });
   assert.deepEqual(await page('21'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 2, of: 2 });
+  // Their profile's belt list ends at blue, yet they entered a purple division since (athlete 1296744): they competed up, and stay blue.
+  await post('/record', { site: 'smoothcomp.com', event: '954', records: { 25: [1, 0] }, meta: { ...meta, start: '2026-11-14T07:00:00Z' }, athletes: {
+    25: { name: 'Max Up', belt: 'Blue', entries: [{ division: 'Men Gi / Purple / Middle Weight (80 Kg to 84.9 Kg) / Master (30+)', place: 1, wins: { points: 1 }, losses: {} }] },
+  }, read: Date.now() });
+  await post('/belts', { site: 'smoothcomp.com', user: '25', worn: ['white', 'blue'], starts: [null, Date.parse('2025-06-01')] });
+  assert.equal((await page('25')).belt, 'blue');
+  // A ranking of those who competed lately ranks only them: one whose latest event is older has no place in it.
+  const lately = async (id) => (await (await API.athlete(env, new URLSearchParams(`site=smoothcomp.com&id=${id}&active=6`))).json()).bracket;
+  assert.equal((await lately('24'))?.of, 1);
+  assert.equal(await lately('22'), null);
 });
 
 test('listed events are found by place, date, sport and size, and academies where they compete', async () => {

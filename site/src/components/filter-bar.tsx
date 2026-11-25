@@ -134,9 +134,9 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
     f.set({ belt: [...next].join(',') });
   };
   const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()} (${c.athletes})` })).sort((a, b) => a.label.localeCompare(b.label))];
-  const activeItems = [['', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
+  const activeItems = [['0', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
-  const set = ['belt', 'sex', 'age', 'weight', 'wins', 'events', 'athletes', 'active', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(!!(f.get('agemin') || f.get('agemax')));
+  const set = ['belt', 'sex', 'age', 'weight', 'wins', 'events', 'athletes', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(f.query.active !== f.defaults.active) + Number(!!(f.get('agemin') || f.get('agemax')));
   const reset = () => f.set(Object.fromEntries(['belt', 'sex', 'age', 'weight', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])));
   const fields = <>
       <Field label="Belt">
@@ -171,8 +171,8 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
       {place && <Field label="Near"><PlaceFilter f={f} /></Field>}
       {minimumAthletes && <Field label="Min. athletes"><Debounced f={f} name="athletes" label="Minimum athletes" placeholder="3" className="w-20" /></Field>}
       {!event && <Field label="Competed">
-        <Select items={activeItems} value={f.get('active')} onValueChange={(v) => f.set({ active: (v as string) || null })}>
-          <SelectTrigger className={cn('w-40', f.get('active') && 'border-primary/60 bg-primary/8')}><SelectValue /></SelectTrigger>
+        <Select items={activeItems} value={f.query.active || '0'} onValueChange={(v) => f.set({ active: v === f.defaults.active ? null : (v as string) })}>
+          <SelectTrigger className={cn('w-40', f.query.active !== f.defaults.active && 'border-primary/60 bg-primary/8')}><SelectValue /></SelectTrigger>
           <SelectContent>{activeItems.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
         </Select>
       </Field>}
