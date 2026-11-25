@@ -209,6 +209,25 @@ test("an academy's kept totals follow its athletes in, changed, moved away and o
   assert.deepEqual(kept(), []);
 });
 
+test("the academies list's two-year totals count only those who competed in two years, and rewrite only what changed", async () => {
+  const { keepRecent, API } = await import('../server/stats.js');
+  const { DB, db } = d1();
+  const counts = ['w', 'rw', 'rl', 'sl'].flatMap((p) => ['submission', 'points', 'walkover', 'decision', 'disqualification', 'stoppage', 'fastest_escape', 'other'].map((g) => `${p}_${g}`));
+  const lately = new Date(Date.now() - 100 * 864e5).toISOString().slice(0, 10);
+  const add = (user, club, last, sub) => db.prepare(`INSERT INTO board (site, user, source, club_id, last, gold, silver, bronze, ${counts}) VALUES ('smoothcomp.com', '${user}', 'results', '${club}', '${last}', 1, 0, 0, ${counts.map((c) => (c === 'w_submission' ? sub : 0))})`).run();
+  add(1, '9', lately, 2); add(2, '9', '2020-01-01', 5); add(3, '10', '2020-01-01', 1);
+  assert.deepEqual(await keepRecent({ DB }, 'smoothcomp.com'), { academies: 1, written: 1, gone: 0 });
+  assert.deepEqual(db.prepare('SELECT club_id, athletes, wins, submission, gold FROM club_recent').all().map((r) => Object.values(r)), [['9', 1, 2, 2, 1]]);
+  // Nothing changed, nothing written; an academy whose last recent athlete goes stale leaves.
+  assert.deepEqual(await keepRecent({ DB }, 'smoothcomp.com'), { academies: 1, written: 0, gone: 0 });
+  // The list under the default window reads these totals (club 10, nobody recent, isn't in it).
+  db.exec("INSERT INTO clubs (site, club_id, club) VALUES ('smoothcomp.com', '9', 'Nine'), ('smoothcomp.com', '10', 'Ten')");
+  const list = await (await API.teams({ DB }, new URLSearchParams('site=smoothcomp.com&active=24&athletes=1'))).json();
+  assert.deepEqual(list.rows.map((r) => [r.club_id, r.athletes, r.wins]), [['9', 1, 2]]);
+  db.prepare("UPDATE board SET last = '2020-01-01' WHERE user = '1'").run();
+  assert.deepEqual(await keepRecent({ DB }, 'smoothcomp.com'), { academies: 0, written: 0, gone: 1 });
+});
+
 test('the same results sent again write nothing but when they were read', async () => {
   const worker = (await import('../server/worker.js')).default;
   const { DB, db } = d1();

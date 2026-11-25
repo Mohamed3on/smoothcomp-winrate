@@ -273,6 +273,12 @@ CREATE TABLE IF NOT EXISTS club_board (
   gold INTEGER NOT NULL, silver INTEGER NOT NULL, bronze INTEGER NOT NULL,
   PRIMARY KEY (site, club_id)
 );
+-- club_board over the athletes who competed in the last two years (stats.js keepRecent, hourly from the crawler).
+CREATE TABLE IF NOT EXISTS club_recent (
+  site TEXT NOT NULL, club_id TEXT NOT NULL, athletes INTEGER NOT NULL, wins INTEGER NOT NULL, submission INTEGER NOT NULL, points INTEGER NOT NULL,
+  gold INTEGER NOT NULL, silver INTEGER NOT NULL, bronze INTEGER NOT NULL,
+  PRIMARY KEY (site, club_id)
+);
 CREATE VIEW IF NOT EXISTS board_counts AS SELECT * FROM (SELECT site, user, club_id,
     w_submission + w_stoppage + w_fastest_escape + w_points + w_decision + w_disqualification + w_other AS wins,
     iif(rw_submission + rw_stoppage + rw_fastest_escape + rw_points + rw_decision + rw_disqualification + rw_other + rl_submission + rl_stoppage + rl_fastest_escape + rl_points + rl_decision + rl_disqualification + rl_other > 0,

@@ -37,16 +37,16 @@ const save = (changes: Record<string, string | null>) => {
 
 export function useFilters() {
   const [params] = useSearchParams();
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
   const kept = useSyncExternalStore(subscribe, () => saved);
   const has = (key: string) => params.has(key) || key in kept;
   const get = (key: string) => params.get(key) ?? kept[key] ?? '';
   // Only walkovers start uncounted; nobody is filtered out until the reader sets a minimum.
   const off = new Set((has('off') ? get('off') : 'walkover').split(',').filter(Boolean));
   const site = get('site') === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com';
-  // Athletes rank among those who competed in the last two years unless the reader says otherwise ("0": any time). The
-  // academies list counts every athlete: its totals are kept added up, and any window adds them up afresh (2–5 s).
-  const defaults = { active: location.startsWith('/academies') ? '0' : '24' };
+  // Rankings count those who competed in the last two years unless the reader says otherwise ("0": any time); the academies
+  // list keeps its totals for that window too (stats.js keepRecent).
+  const defaults = { active: '24' };
   const set = (changes: Record<string, string | null>) => {
     save(changes);
     // The live address, not this render's: a debounced field writes after others may have.

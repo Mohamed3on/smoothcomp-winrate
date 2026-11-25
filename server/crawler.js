@@ -6,6 +6,7 @@
 import { crawl, findClubs, listEvents, placeClubs, queue, sizeEvents } from './crawl.js';
 import { addBouts, record } from './worker.js';
 import { budget, checkBudget } from './budget.js';
+import { keepRecent } from './stats.js';
 
 const LANES = 3;
 
@@ -36,6 +37,8 @@ export default {
     if (at.getUTCMinutes() % 30 === 0) await queue(env);
     // The last year's events are listed once a day, before the 03:30 refill queues them.
     if (at.getUTCHours() === 3 && at.getUTCMinutes() === 15) await env.SELF.fetch('https://crawler/list', { headers: { 'x-crawl-key': env.CRAWL_KEY } });
+    // The academies list's totals over those who competed in the last two years, once an hour (stats.js keepRecent).
+    if (at.getUTCMinutes() === 20) for (const site of ['smoothcomp.com', 'ajptour.com']) await keepRecent(env, site).catch((e) => console.error('recent', site, e?.message));
     // One academy whose page names no place, looked up on Google Maps, every ten minutes.
     if (at.getUTCMinutes() % 10 === 5) await findClubs(env);
     // Academies' pages, a few each minute, for where each academy says it is; and upcoming events' pages, for how many entered.
