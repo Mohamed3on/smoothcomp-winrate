@@ -209,12 +209,16 @@ test("an academy's kept totals follow its athletes in, changed, moved away and o
   const { db } = d1();
   const counts = ['w', 'rw', 'rl', 'sl'].flatMap((p) => ['submission', 'points', 'walkover', 'decision', 'disqualification', 'stoppage', 'fastest_escape', 'other'].map((g) => `${p}_${g}`));
   db.prepare(`INSERT INTO board (site, user, source, club_id, gold, silver, bronze, ${counts}) VALUES ('s', '1', 'results', '9', 1, 0, 0, ${counts.map((c) => (c === 'w_submission' ? 2 : 0))})`).run();
-  const kept = () => db.prepare('SELECT club_id, athletes, wins, submission, points, gold FROM club_board WHERE athletes > 0').all().map((r) => Object.values(r));
-  assert.deepEqual(kept(), [['9', 1, 2, 2, 0, 1]]);
-  db.prepare("UPDATE board SET w_points = 3, w_walkover = 4 WHERE user = '1'").run();
-  assert.deepEqual(kept(), [['9', 1, 5, 2, 3, 1]]);
+  const kept = () => db.prepare('SELECT club_id, athletes, wins, submission, points, gold, won, lost FROM club_board WHERE athletes > 0').all().map((r) => Object.values(r));
+  // A results-ranked athlete's record is their wins and their results' losses.
+  assert.deepEqual(kept(), [['9', 1, 2, 2, 0, 1, 2, 0]]);
+  db.prepare("UPDATE board SET w_points = 3, w_walkover = 4, sl_points = 1 WHERE user = '1'").run();
+  assert.deepEqual(kept(), [['9', 1, 5, 2, 3, 1, 5, 1]]);
+  // A match-list record, where one is read, is the record (walkovers aside).
+  db.prepare("UPDATE board SET rw_points = 6, rw_walkover = 9, rl_submission = 2 WHERE user = '1'").run();
+  assert.deepEqual(kept(), [['9', 1, 5, 2, 3, 1, 6, 2]]);
   db.prepare("UPDATE board SET club_id = '10' WHERE user = '1'").run();
-  assert.deepEqual(kept(), [['10', 1, 5, 2, 3, 1]]);
+  assert.deepEqual(kept(), [['10', 1, 5, 2, 3, 1, 6, 2]]);
   db.prepare("UPDATE board SET dup = 1 WHERE user = '1'").run();
   assert.deepEqual(kept(), []);
   db.prepare("UPDATE board SET dup = 0 WHERE user = '1'").run();

@@ -8,7 +8,7 @@ export interface Athlete {
 }
 export interface Team {
   club_id: string; club: string | null; city: string | null; club_country: string | null; km: number | null; placed: 'pin' | 'town' | 'google' | 'events' | null; lat: number | null; lng: number | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
-  podium_gold: number; podium_silver: number; podium_bronze: number; entered: number;
+  podium_gold: number; podium_silver: number; podium_bronze: number; entered: number; won: number; lost: number;
   top: { user: string; name: string | null; wins: number; belt: string | null; photo: string | null; born: number | null }[];
 }
 export interface Entry {

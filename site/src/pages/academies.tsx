@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Medals, Num, Photo } from '@/components/stats';
 import { useApi, type Team } from '@/lib/api';
 import { useFilters } from '@/lib/filters';
-import { fmt, plural } from '@/lib/format';
+import { fmt, plural, rate } from '@/lib/format';
 import { Roster, resetAction } from '@/pages/athletes';
 
 // Where an academy's place comes from, said on hover.
@@ -36,7 +36,7 @@ function TopAthletes({ rows, i, query, f }: { rows: Team[]; i: number; query: Qu
   );
 }
 
-const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
+const SORTS: [string, string][] = [['wins', 'Total wins'], ['average', 'Wins per athlete'], ['winRate', 'Win rate'],['athletes', 'Athletes'], ['submission', 'Submissions'], ['podiums', 'Medals']];
 
 export function AcademiesPage() {
   const f = useFilters();
@@ -62,6 +62,8 @@ export function AcademiesPage() {
     { key: 'athletes', label: 'Athletes', width: '8%', compact: '5.5rem', sort: 'athletes', title: 'Athletes who pass the filters', cell: (t) => <Num n={t.athletes} /> },
     { key: 'wins', label: 'Wins', width: '8%', compact: '4.5rem', sort: 'wins', cell: (t) => <Num n={t.wins} /> },
     { key: 'avg', label: 'Per athlete', width: '9%', sort: 'average', narrow: true, cell: (t) => (t.wins / t.athletes).toFixed(1) },
+    { key: 'rate', label: 'Win rate', width: '8%', compact: '5rem', sort: 'winRate', narrow: true, title: 'Its athletes’ wins over matches added up, from the same records as their own win rates (no walkovers)',
+      cell: (t) => (rate(t.won, t.lost) ? <span title={`${fmt(t.won)}–${fmt(t.lost)}`}>{rate(t.won, t.lost)}</span> : <span className="text-muted-foreground">–</span>) },
     { key: 'podiums', label: 'Medals', width: '14%', sort: 'podiums', narrow: true, title: 'Medals won for this academy at the events Mat Stats has read results for', cell: (t) => <Medals g={t.podium_gold} s={t.podium_silver} b={t.podium_bronze} /> },
     { key: 'top', label: 'Top athletes', width: '22%', align: 'start', narrow: true, preview: true, cell: (_, i) => <TopAthletes rows={data!.rows} i={i} query={query} f={f} /> },
   ];

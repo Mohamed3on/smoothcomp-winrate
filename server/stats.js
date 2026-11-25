@@ -350,6 +350,8 @@ const TEAM_SORTS = {
   // Medals won for the academy (an older link's "medals" sorts the same).
   medals: 'podium_gold DESC, podium_silver DESC, podium_bronze DESC, wins DESC',
   podiums: 'podium_gold DESC, podium_silver DESC, podium_bronze DESC, wins DESC',
+  // Its athletes' records added up (one without a record adds nothing); ties to the longer record, as the athletes' win rate.
+  winRate: 'won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, -(won + lost) ASC, wins DESC',
 };
 
 // The months the site's "Competed" filter starts at: the academies list keeps its totals for them (club_recent).
@@ -359,11 +361,12 @@ export const RECENT = 24;
 // day, so no trigger can keep it. Read in club order through board_club (the + keeps board_ranked off, and the order
 // needs no sort: a sort over every athlete once reset D1); only academies whose totals changed are written.
 export async function keepRecent(env, site) {
-  const COLS = ['athletes', 'wins', 'submission', 'points', 'gold', 'silver', 'bronze'];
+  const COLS = ['athletes', 'wins', 'submission', 'points', 'gold', 'silver', 'bronze', 'won', 'lost'];
   const [{ results: now }, { results: kept }] = await env.DB.batch([
     env.DB.prepare(`WITH ${careersOf('["walkover"]', 'AND +dup = 0')}
       SELECT club_id, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
-        sum(coalesce(gold, 0)) AS gold, sum(coalesce(silver, 0)) AS silver, sum(coalesce(bronze, 0)) AS bronze
+        sum(coalesce(gold, 0)) AS gold, sum(coalesce(silver, 0)) AS silver, sum(coalesce(bronze, 0)) AS bronze,
+        sum(coalesce(won, 0)) AS won, sum(coalesce(lost, 0)) AS lost
       FROM careers WHERE club_id IS NOT NULL AND last >= ?2 AND (wins > 0 OR lost > 0) GROUP BY club_id`).bind(site, sinceOf(RECENT)),
     env.DB.prepare(`SELECT club_id, ${COLS.join(', ')} FROM club_recent WHERE site = ?1`).bind(site),
   ]);
@@ -403,12 +406,12 @@ async function teams(env, params) {
         iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
       FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1),
     totals AS ${kept ? `(SELECT k.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, k.athletes, k.wins, k.submission, k.points,
-      k.gold, k.silver, k.bronze,
+      k.gold, k.silver, k.bronze, k.won, k.lost,
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
       count(*) OVER () AS total
     FROM ${recent ? 'club_recent' : 'club_board'} k LEFT JOIN podiums p USING (club_id)
     WHERE k.site = ?1 AND k.athletes >= ?8 AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17))` : `(SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
-      sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze,
+      sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze, sum(coalesce(won, 0)) AS won, sum(coalesce(lost, 0)) AS lost,
       coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
       count(*) OVER () AS total
     FROM members m LEFT JOIN podiums p USING (club_id)
