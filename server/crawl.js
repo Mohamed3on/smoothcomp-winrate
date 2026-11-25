@@ -82,10 +82,12 @@ async function schedule(get, base) {
   const days = await get(`${base}/schedule/new/matcategories.json`);
   if (!Array.isArray(days) || !days.length) throw new Gone('no days');
   // A day or mat that failed to read fails the event, so it is read again rather than kept with its matches missing.
+  // Refused (403) past the event's day list is Smoothcomp blocking Workers (since 2026-11-25): the lane stops, as
+  // for a 429, and no event loses a try.
   const read = async (items, url) => {
     const out = await each(items, (x) => get(url(x)));
     const failed = out.find((x) => x instanceof Error);
-    if (failed) throw failed;
+    if (failed) throw failed.message === '403' ? new Busy('403') : failed;
     return out;
   };
   const mats = (await read(days, (d) => `${base}/schedule/new/mats.json/${d.id}`)).flatMap((m) => (Array.isArray(m) ? m : []));
@@ -492,7 +494,7 @@ async function lane(env, record, addBouts, get, left, finished, onlyAsked) {
       if (e instanceof Busy) {
         const later = e.message === 'budget' || e.message === 'slow' ? 0 : Date.now() + 15 * 60e3;
         if (data) await save('reading', data, later); else await env.DB.prepare('UPDATE crawls SET next = ?3 WHERE site = ?1 AND event = ?2').bind(job.site, job.event, later).run();
-        if (e.message === 'budget' || e.message === 'slow' || e.message === '429') return e.message;
+        if (['budget', 'slow', '429', '403'].includes(e.message)) return e.message;
         continue;
       }
       const tries = job.tries + 1;
