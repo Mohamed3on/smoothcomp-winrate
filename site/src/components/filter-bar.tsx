@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, Settings2, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Settings2, SlidersHorizontal, X } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils';
 
 // The chips run from the commonest finish to the rarest, as every career read adds up; walkovers, not contests, last.
 const CHIPS = ['submission', 'points', 'decision', 'disqualification', 'stoppage', 'walkover'];
+// A control off its default: every filter set looks the same.
+const ON = 'border-primary/60 bg-primary/8 dark:bg-primary/8';
 
 export const Field = ({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) => (
   <div className={cn('flex flex-col gap-1.5', className)}>
@@ -33,7 +35,7 @@ export function Debounced({ f, name, placeholder, className, type = 'number', la
     const timer = setTimeout(() => f.set({ [name]: value }), 300);
     return () => clearTimeout(timer);
   }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
-  return <Input aria-label={label} type={type} min={0} inputMode={type === 'number' ? 'numeric' : undefined} value={value} placeholder={placeholder} onChange={(e) => setValue(e.target.value)} className={className} />;
+  return <Input aria-label={label} type={type} min={0} inputMode={type === 'number' ? 'numeric' : undefined} value={value} placeholder={placeholder} onChange={(e) => setValue(e.target.value)} className={cn(f.get(name) && ON, className)} />;
 }
 
 // The finishes every record on the site counts: one control in the header, as the site picker is.
@@ -137,6 +139,12 @@ export function FilterBar({ f, sorts, minimumAthletes = 0, event = false, place 
   const activeItems = [['0', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
   const set = ['belt', 'sex', 'age', 'weight', 'wins', 'events', 'athletes', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(f.query.active !== f.defaults.active) + Number(!!(f.get('agemin') || f.get('agemax')));
+  // Clearing is lit, and names how many, while any filter is set; with none it stays put, dimmed.
+  const clear = (className?: string) => (
+    <Button variant="outline" disabled={!set} onClick={reset} className={cn('text-muted-foreground', set > 0 && cn(ON, 'text-foreground'), className)}>
+      <X />{set ? `Clear ${set} ${set === 1 ? 'filter' : 'filters'}` : 'No filters set'}
+    </Button>
+  );
   const reset = () => f.set(Object.fromEntries(['belt', 'sex', 'age', 'weight', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])));
   const fields = <>
       <Field label="Belt">
@@ -178,7 +186,7 @@ export function FilterBar({ f, sorts, minimumAthletes = 0, event = false, place 
       </Field>}
       <Field label="Country">
         <Select items={countryItems} value={f.get('country')} onValueChange={(v) => f.set({ country: (v as string) || null })}>
-          <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+          <SelectTrigger className={cn('w-48', f.get('country') && ON)}><SelectValue /></SelectTrigger>
           <SelectContent>{countryItems.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
         </Select>
       </Field>
@@ -200,14 +208,14 @@ export function FilterBar({ f, sorts, minimumAthletes = 0, event = false, place 
           <DrawerHeader><DrawerTitle>Filters</DrawerTitle></DrawerHeader>
           <div className="flex min-h-0 flex-wrap items-end gap-x-6 gap-y-4 overflow-y-auto p-4 [scrollbar-width:thin] [scrollbar-color:color-mix(in_oklab,var(--primary)_45%,transparent)_transparent]">{fields}</div>
           <DrawerFooter className="flex-row">
-            <Button variant="ghost" className="text-muted-foreground" onClick={reset}>Reset</Button>
+            {clear()}
             <DrawerClose className={cn(buttonVariants(), 'flex-1')}>Done</DrawerClose>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
       <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4 max-sm:hidden">
         {fields}
-        <Button variant="ghost" className="text-muted-foreground" onClick={reset}>Reset</Button>
+        {clear('ml-auto')}
       </div>
     </>
   );
