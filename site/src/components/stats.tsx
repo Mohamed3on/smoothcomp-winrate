@@ -106,7 +106,7 @@ export function Mix({ types, f, large = false, legend = true, scale = 1, note, e
         {shown.map(([t, c]) => <i key={t} className="block min-w-0.5" style={{ flex: Number(c), background: colour(t) }} />)}
       </div>
       {legend === 'short' && (
-        <div className="flex items-center gap-2.5 whitespace-nowrap text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 whitespace-nowrap text-xs text-muted-foreground">
           {shown.filter(([t]) => named.has(t)).map(([t, c]) => {
             const chip = <><i className="size-1.5 rounded-full" style={{ background: colour(t) }} /><b className="font-semibold text-foreground/80">{fmt(Number(c))}</b>{SHORT[t] ?? typeName(t).toLowerCase()}</>;
             return pick

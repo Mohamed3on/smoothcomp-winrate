@@ -17,9 +17,9 @@ export const resetAction = (f: Filters, also: string[] = []) => ({ label: 'Reset
 const perEvent = (a: Athlete) => (a.events ? (a.wins / a.events).toFixed(1) : '–');
 
 
-// A total beside the bar of its finishes.
+// A total beside the bar of its finishes; on phones, above it.
 const Tally = ({ n, children }: { n: number | null; children: React.ReactNode }) => (
-  <div className="flex items-center gap-3"><span className="w-9 shrink-0 text-right"><Num n={n} /></span><div className="min-w-0 flex-1">{children}</div></div>
+  <div className="flex items-center gap-3 max-sm:flex-col max-sm:items-stretch max-sm:gap-1"><span className="w-9 shrink-0 text-right max-sm:w-auto max-sm:text-left"><Num n={n} /></span><div className="min-w-0 flex-1">{children}</div></div>
 );
 
 export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => {
@@ -33,12 +33,12 @@ export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => {
   return [
   { key: 'rank', label: '#', width: '3.5rem', compact: '3rem', align: 'start', cell: (_, i) => <span className={i < 3 ? 'font-semibold' : 'text-muted-foreground'}>{i + 1}</span> },
   { key: 'who', label: 'Athlete', align: 'start', cell: (a) => <Identity a={a} f={f} club={club} /> },
-  { key: 'rate', label: 'Win rate', width: '6.5rem', sort: 'winRate', title: 'Wins over matches, counted finishes, no walkovers: from their profile’s match lists where someone opened it, else their results at the events read',
+  { key: 'rate', label: 'Win rate', width: '6.5rem', compact: '5rem', phone: '4rem', sort: 'winRate', title: 'Wins over matches, counted finishes, no walkovers: from their profile’s match lists where someone opened it, else their results at the events read',
     cell: (a) => (rate(a.won, a.lost) ? <span className="font-semibold" title={`${a.won}–${a.lost}`}>{rate(a.won, a.lost)}</span> : <span className="text-muted-foreground">–</span>) },
-  { key: 'won', label: won ? `How they won · ${sort === 'rate' ? 'sub rate' : short(won)}` : 'How they won', width: '14rem', align: 'start', sort: won ? sort : 'wins',
+  { key: 'won', label: won ? `How they won · ${sort === 'rate' ? 'sub rate' : short(won)}` : 'How they won', width: '14rem', compact: '11rem', phone: '5.5rem', align: 'start', sort: won ? sort : 'wins',
     title: 'Wins of the finish types switched on, and how they came',
     cell: (a) => <Tally n={a.wins}>{a.wins > 0 && <Mix types={a.types} f={f} legend="short" focus={won} pick={rank} note={<FromResults a={a} />} />}</Tally> },
-  { key: 'lost', label: lost ? `How they lost · ${short(lost)}` : 'How they lost', width: '12rem', align: 'start', sort: lost ? sort : 'losses', title: 'Losses of the finish types switched on, from the same record as the win rate',
+  { key: 'lost', label: lost ? `How they lost · ${short(lost)}` : 'How they lost', width: '12rem', compact: '9rem', narrow: 'sm', align: 'start', sort: lost ? sort : 'losses', title: 'Losses of the finish types switched on, from the same record as the win rate',
     cell: (a) => <Tally n={a.lost}>{!!a.lost && a.lost_types && <Mix types={a.lost_types} f={f} legend="short" focus={lost} pick={(t) => rank(`lost_${t}`)} />}</Tally> },
   { key: 'medals', label: 'Medals', width: '9rem', sort: 'medals', narrow: true, title: 'Golds, then silvers, then bronzes', cell: (a) => <Medals g={a.gold} s={a.silver} b={a.bronze} /> },
   { key: 'events', label: 'Events', width: '7%', sort: sort === 'perEvent' ? 'perEvent' : 'events', narrow: 'xl', title: 'Events entered, and wins per event',

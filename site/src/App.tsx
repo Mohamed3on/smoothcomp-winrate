@@ -30,16 +30,16 @@ export function App() {
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur-md">
-        {/* On phones the nav takes a second row under the logo and controls. */}
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 px-4 sm:h-14 sm:gap-x-8 sm:flex-nowrap sm:px-6">
+        {/* Below lg the nav takes a second row under the logo and controls. */}
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 px-4 sm:px-6 lg:h-14 lg:gap-x-8 lg:flex-nowrap">
           <Link href={f.link('/')} className="flex h-14 items-center gap-2 font-semibold tracking-tight whitespace-nowrap"><img src="/icon.svg" alt="" className="size-6" />Mat Stats</Link>
-          <nav className="flex h-10 w-full gap-6 text-sm max-sm:order-last sm:h-full sm:w-auto">
+          <nav className="flex h-10 w-full gap-6 text-sm max-lg:order-last lg:h-full lg:w-auto">
             {nav.map(([key, href, label]) => (
               <Link key={key} href={f.link(href)} aria-current={section === key ? 'page' : undefined}
                 className={cn('relative flex items-center text-muted-foreground transition-colors hover:text-foreground', section === key && 'text-foreground after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary')}>{label}</Link>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+          <div className="ml-auto flex min-w-0 items-center gap-2 max-lg:w-full sm:gap-3">
             <Search f={f} />
             {/* The events list counts no records; every other page counts by it. */}
             {location !== '/events' && <Counting f={f} />}

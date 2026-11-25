@@ -264,7 +264,7 @@ export function EventPage({ id }: { id: string }) {
       </header>
       {entries.length ? (
         <Tabs value={tab} onValueChange={(v) => setTab(v as string)} className="gap-4">
-          <TabsList variant="line">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<NumberFlow value={n} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>)}</TabsList>
+          <TabsList variant="line" className="max-w-full overflow-x-auto [scrollbar-width:none]">{tabs.map(([k, label, n]) => <TabsTrigger key={k} value={k}>{label}<NumberFlow value={n} className="ml-1 text-xs text-muted-foreground" /></TabsTrigger>)}</TabsList>
           <TabsContent value="podiums"><Ledger rows={divisions} loading={false} columns={podiumColumns} rowKey={(d) => d.name} empty={empty} /></TabsContent>
           <TabsContent value="academies"><Ledger rows={academies} loading={false} columns={academyColumns} rowKey={(t) => t.id ?? t.name ?? ''} opened={f.get('open') || undefined} empty={empty} sort={fought ? undefined : teamSort} onSort={sortBy('expected')} expand={roster} /></TabsContent>
           <TabsContent value="athletes" className="flex flex-col gap-3"><FilterBar f={f} sorts={[]} event /><Ledger rows={shown} loading={false} columns={athleteColumns} rowKey={(p) => p.user} sort={athleteSort} onSort={sortBy(fought ? '' : 'expected')}

@@ -6,15 +6,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 
-// width: the column's width from lg up; compact: its width below lg (width by default); narrow: left off below lg, or below xl with 'xl',
+// width: the column's width from lg up; compact: its width below lg (width by default); phone: its width below sm (compact by default);
+// narrow: left off below lg, or below xl with 'xl', or below sm with 'sm',
 // and then listed in the row's expansion, unless preview (a glimpse of what the expansion shows in full).
 export interface Column<T> {
-  key: string; label: string; width?: string; compact?: string; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean | 'xl'; preview?: boolean;
+  key: string; label: string; width?: string; compact?: string; phone?: string; sort?: string; align?: 'start' | 'end'; title?: string; narrow?: boolean | 'sm' | 'xl'; preview?: boolean;
   cell: (row: T, index: number) => React.ReactNode;
 }
 
-const cellClass = (c: { align?: string; narrow?: boolean | 'xl' }, sorted: boolean) =>
-  cn('px-2 py-2.5 align-middle first:pl-3 last:pr-3 sm:px-3 sm:first:pl-5 sm:last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow === 'xl' ? 'max-xl:hidden' : c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
+const cellClass = (c: { align?: string; narrow?: boolean | 'sm' | 'xl' }, sorted: boolean) =>
+  cn('px-2 py-2.5 align-middle first:pl-3 last:pr-3 sm:px-3 sm:first:pl-5 sm:last:pr-5', c.align === 'start' ? 'text-left' : 'text-right', c.narrow === 'xl' ? 'max-xl:hidden' : c.narrow === 'sm' ? 'max-sm:hidden' : c.narrow && 'max-lg:hidden', sorted && 'bg-primary/6');
 
 // A ranked ledger: sortable headers, every row reachable, only the rows on screen drawn. opened: a row
 // that starts open and scrolled to, as a link into it asks.
@@ -32,8 +33,8 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   }, []);
   const [fresh, setFresh] = useState<string | null>(null);
   // An expansion spans only the columns shown: spanning hidden ones would add empty columns that take width.
-  const lg = useMedia('(width >= 64rem)'), xl = useMedia('(width >= 80rem)');
-  const shows = (c: Column<T>) => !c.narrow || (c.narrow === 'xl' ? xl : lg);
+  const sm = useMedia('(width >= 40rem)'), lg = useMedia('(width >= 64rem)'), xl = useMedia('(width >= 80rem)');
+  const shows = (c: Column<T>) => !c.narrow || (c.narrow === 'xl' ? xl : c.narrow === 'sm' ? sm : lg);
   const span = columns.filter(shows).length;
   // What the width leaves off opens under its row instead, so a tap still reaches every column.
   const tucked = columns.filter((c) => !shows(c) && !c.preview);
@@ -41,8 +42,8 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
   const header = (
     <tr className="text-xs text-muted-foreground">
       {columns.map((c) => (
-        <th key={c.key} scope="col" style={{ '--w': c.width, '--cw': c.compact ?? c.width } as React.CSSProperties} aria-sort={c.sort && c.sort === sort ? (asc ? 'ascending' : 'descending') : undefined}
-          className={cn(cellClass(c, false), 'h-10 w-(--cw) bg-card font-medium lg:w-(--w) whitespace-nowrap', c.sort === sort && c.sort && 'text-primary')}>
+        <th key={c.key} scope="col" style={{ '--w': c.width, '--cw': c.compact ?? c.width, '--pw': c.phone ?? c.compact ?? c.width } as React.CSSProperties} aria-sort={c.sort && c.sort === sort ? (asc ? 'ascending' : 'descending') : undefined}
+          className={cn(cellClass(c, false), 'h-10 w-(--pw) bg-card font-medium sm:w-(--cw) lg:w-(--w) sm:whitespace-nowrap', c.sort === sort && c.sort && 'text-primary')}>
           {c.sort && onSort
             ? <button type="button" title={c.title ?? `Rank by ${c.label.toLowerCase()}`} onClick={() => onSort(c.sort!, c.sort === sort && !asc)} className="inline-flex items-center gap-1 rounded-sm hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">
                 {c.label}<ChevronDown className={cn('size-3.5 transition-[opacity,rotate]', c.sort === sort ? 'opacity-100' : 'opacity-0', c.sort === sort && asc && 'rotate-180')} />
@@ -76,7 +77,7 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
         computeItemKey={(_, item) => `${rowKey(item.row)}${item.detail ? ':detail' : ''}`}
         components={{
           Table: (props) => <table {...props} className="w-full table-fixed border-separate border-spacing-0 text-sm" />,
-          TableHead: forwardRef((props, ref) => <thead {...props} ref={ref} className="sticky top-24! z-10 sm:top-14! [&_th]:border-b" />),
+          TableHead: forwardRef((props, ref) => <thead {...props} ref={ref} className="sticky top-32! z-10 lg:top-14! [&_th]:border-b" />),
           TableRow: ({ item, ...props }) => (
             <tr {...props}
               aria-expanded={opens && !item.detail ? open.has(rowKey(item.row)) : undefined}

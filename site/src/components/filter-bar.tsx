@@ -50,7 +50,7 @@ export function Counting({ f }: { f: Filters }) {
   const changed = out.join() !== 'walkover';
   return (
     <Popover>
-      <PopoverTrigger title={label} className={cn(buttonVariants({ variant: 'outline' }), 'max-w-64 justify-start text-muted-foreground', changed && 'border-primary/60 bg-primary/8 text-foreground dark:bg-primary/8')}>
+      <PopoverTrigger title={label} className={cn(buttonVariants({ variant: 'outline' }), 'max-w-64 min-w-0 shrink justify-start text-muted-foreground max-lg:flex-1', changed && 'border-primary/60 bg-primary/8 text-foreground dark:bg-primary/8')}>
         <span className="truncate">{label}</span><ChevronDown className="opacity-60" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-max max-w-[calc(100vw-2rem)] gap-3 p-3">
