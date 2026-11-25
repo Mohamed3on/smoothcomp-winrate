@@ -104,6 +104,7 @@ const DIVISIONS = {
   'TEEN NO - GI FEMALE / Grey / 68+ kg': ['Teen', '+68 kg'],
   'Prva borba / Men / Seniori / -70 kg B': ['Adult', '−70 kg'],
   'BU13 -46': ['Kids', null],
+  'Men +18y NOGI / Professional / Masters 35+ / -77 kg': ['Master', '−77 kg'],
   'No-Gi Grappling / Male / 10-11 / Beginner / -79lbs': ['Kids', '−79 lbs'],
   'Pro Grappling / Male / Pro Grappling II (Up to 999 lbs)': [null, 'Open'],
   'C - Group E - Northern Long Weapon': [null, null],
@@ -128,4 +129,11 @@ test('the usual division is the most entered over the year to the latest event, 
   // A tie goes to the newer.
   assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Adult / -85 kg'), at('2025-02-01', 'Master 1 / -77 kg')]) }, { age: 'Master 1', weight: '−77 kg' });
   assert.deepEqual({ ...usualDivision([]) }, { age: null, weight: null });
+});
+
+test('a limit with no unit is not a usual weight', () => {
+  const { usualDivision } = context.SCWRRules;
+  const at = (start, ...divisions) => ({ start, divisions });
+  assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Men Gi / Purple / 190 - 199.9 (Cruiser Weight) / Adult')]) }, { age: 'Adult', weight: null });
+  assert.deepEqual({ ...usualDivision([at('2025-01-01', 'Men Gi / 190 - 199.9 / Adult'), at('2025-02-01', 'Gi / Adult / -85 kg')]) }, { age: 'Adult', weight: '−85 kg' });
 });

@@ -10,6 +10,7 @@
 /* The win rate leads the block at the size Smoothcomp gives its own key figure's label. */
 .scwr-rate { display: flex; justify-content: center; align-items: baseline; gap: 6px; padding-top: 4px; }
 .scwr-progress { text-align: center; padding-top: 4px; font-variant-numeric: tabular-nums; }
+.scwr-usual { text-align: center; padding-top: 4px; }
 .scwr-rate > .scwr-belt { align-self: center; }
 .scwr-rate-figure { font-size: 22px; font-weight: 600; line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 /* Once read, the finish chips here carry each finish's wins and losses, so Smoothcomp's own

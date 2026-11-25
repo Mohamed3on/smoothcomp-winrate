@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Toggle } from '@/components/ui/toggle';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Empty } from '@/components/empty';
 import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record } from '@/components/stats';
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
@@ -556,7 +557,10 @@ export function AthletePage({ id }: { id: string }) {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {(a.country || a.country_name) && <span className="inline-flex items-center gap-1.5"><Flag code={a.country} name={a.country_name} />{a.country_name ?? a.country?.toUpperCase()}</span>}
             {age != null && <span>{age} years old</span>}
-            {usual && <span title="The age group and weight class they entered most in the year up to their latest event">Usually {usual}</span>}
+            {usual && <Popover>
+              <PopoverTrigger openOnHover className="cursor-help rounded-sm underline decoration-muted-foreground/50 decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Usually {usual}</PopoverTrigger>
+              <PopoverContent side="bottom" align="start" className="w-64 text-xs text-muted-foreground">The age group and weight class they entered most in the year up to their latest event.</PopoverContent>
+            </Popover>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
             {arts.size ? [...arts].map(([art, s]) => (
               <span key={art} className="inline-flex items-center gap-1.5" title={`${art}: ${plural(s.events, 'event')} on Smoothcomp`}>

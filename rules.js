@@ -135,7 +135,7 @@ globalThis.SCWRRules = (() => {
   const byAge = (n) => (n <= 12 ? 'Kids' : n <= 17 ? 'Teen' : n < 30 ? 'Adult' : 'Master');
   function ageIn(part) {
     if (/\d\s*\+?\s*(kg|lbs?)\b/i.test(part)) return null;
-    const master = /\bmasters?\s*(\d)/i.exec(part);
+    const master = /\bmasters?\s*(\d)\b/i.exec(part);
     if (master) return `Master ${master[1]}`;
     if (/\binfanto/i.test(part)) return 'Teen';
     // Years as a range or an age ("11-12 anos", "Pee Wee I (7yrs)", a bare "10-11"), the oldest deciding;
@@ -174,7 +174,7 @@ globalThis.SCWRRules = (() => {
     return { age, weight: parts.map(weightIn).find(Boolean) ?? null };
   }
   // The age group and weight class an athlete entered most over the year to their latest event, each
-  // counted once an event; a tie goes to the newer. Open weight doesn't count. `records` as eventRecords gives them.
+  // counted once an event; a tie goes to the newer. Open weight doesn't count, nor a limit with no unit ("−169.9": kg or lbs?). `records` as eventRecords gives them.
   function usualDivision(records) {
     const dated = records.filter((r) => !Number.isNaN(Date.parse(r.start ?? ''))).sort((a, b) => Date.parse(b.start) - Date.parse(a.start));
     const since = dated.length ? Date.parse(dated[0].start) - 365 * 864e5 : 0;
@@ -183,7 +183,7 @@ globalThis.SCWRRules = (() => {
     for (const r of dated.filter((x) => Date.parse(x.start) >= since)) {
       const seen = r.divisions.map(divisionOf);
       for (const a of new Set(seen.map((d) => d.age).filter(Boolean))) ages.set(a, (ages.get(a) ?? 0) + 1);
-      for (const w of new Set(seen.map((d) => d.weight).filter((x) => x && x !== 'Open'))) weights.set(w, (weights.get(w) ?? 0) + 1);
+      for (const w of new Set(seen.map((d) => d.weight).filter((x) => x && x !== 'Open' && !/^[−+][\d.]+$/.test(x)))) weights.set(w, (weights.get(w) ?? 0) + 1);
     }
     const most = (counts) => [...counts].reduce((best, x) => (!best || x[1] > best[1] ? x : best), null)?.[0] ?? null;
     return { age: most(ages), weight: most(weights) };
