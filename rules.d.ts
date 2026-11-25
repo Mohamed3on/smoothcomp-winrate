@@ -24,6 +24,8 @@ declare global {
       outcomes: { event: string | number; start?: string | null; out?: { types?: Types; faced?: { division?: string | null }[]; losses?: { division?: string | null }[] } }[],
       entries: { event: string | number; start?: string | null; division: string; wins?: Record<string, number> | null; losses?: Record<string, number> | null; fought?: number | boolean }[],
     ): EventRecord[];
+    noShow(entry: { wins?: Record<string, number> | null; losses?: Record<string, number> | null }): boolean;
+    playedSql(alias: string): string;
     totals(records: EventRecord[]): Types;
     beltSplit(records: EventRecord[], worn: string[], starts: (number | null)[]): { belt: string; types: Types; events: number }[];
     placeOf(stage: string | null | undefined, won: boolean, bronze: boolean): number | null;

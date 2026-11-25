@@ -2,7 +2,7 @@
 // the finish types counted, a belt, a country, and the fewest wins and events that count.
 import '../rules.js';
 
-const { BELTS, FINISHES, finishSql } = globalThis.SCWRRules;
+const { BELTS, FINISHES, finishSql, playedSql } = globalThis.SCWRRules;
 const SITES = ['smoothcomp.com', 'ajptour.com'];
 const KEPT = 30 * 24 * 60 * 60 * 1000;
 const json = (body, status = 200, cache = 'public, max-age=60') => Response.json(body, { status, headers: { 'Cache-Control': cache } });
@@ -58,7 +58,7 @@ const TALLY_COLS = ['rec','seen','gold','silver','bronze','events','listed','las
 export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last)
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   -- CROSS JOIN keeps these athletes the outer loop, so each table is read by athlete, never whole.
-  fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1),
+  fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1 AND ${playedSql('e')}),
   per AS (
     SELECT o.user, ${finishSql('j.key')} AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM us CROSS JOIN outcomes o, json_each(o.out, '$.types') j WHERE o.site = ?1 AND o.user = us.user
     UNION ALL SELECT f.user, j.key, j.value, 0 FROM fe f, json_each(f.wins) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
@@ -206,7 +206,7 @@ export const CLUBS = `INSERT OR REPLACE INTO clubs (site, club_id, club, podium_
   WITH ids AS MATERIALIZED (SELECT DISTINCT value AS club_id FROM json_each(?2)),
   -- One pass over each academy's results, read through the academy index (CROSS JOIN keeps ids outer).
   podiums AS (SELECT e.club_id, sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, count(DISTINCT e.event) AS entered
-    FROM ids CROSS JOIN entries e WHERE e.site = ?1 AND e.club_id = ids.club_id AND e.fought = 1 GROUP BY e.club_id),
+    FROM ids CROSS JOIN entries e WHERE e.site = ?1 AND e.club_id = ids.club_id AND e.fought = 1 AND ${playedSql('e')} GROUP BY e.club_id),
   cities AS (SELECT e.club_id, v.city, v.country, avg(v.lat) AS lat, avg(v.lng) AS lng,
       row_number() OVER (PARTITION BY e.club_id ORDER BY count(DISTINCT e.event) DESC, max(v.start) DESC) AS rank
     FROM ids CROSS JOIN entries e JOIN events v ON v.site = e.site AND v.event = e.event
@@ -449,7 +449,7 @@ async function team(env, params) {
     // Grouped by +e.event, or SQLite walks every entry on the site for the order instead of this academy's.
     env.DB.prepare(`SELECT e.event, v.title, v.start, v.city, v.country, count(DISTINCT e.user) AS athletes, max(e.fought) AS fought,
         sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, json_group_array(json_object('wins', json(e.wins), 'losses', json(e.losses))) AS records
-      FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.club_id = ?2
+      FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.club_id = ?2 AND ${playedSql('e')}
       GROUP BY +e.event ORDER BY v.start DESC, e.event DESC`).bind(f.site, club),
   ]);
   const named = members.results.filter((m) => m.club).sort((a, b) => b.seen.localeCompare(a.seen))[0];

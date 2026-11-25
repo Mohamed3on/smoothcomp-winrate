@@ -12,7 +12,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, rivalsOf, totals } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, totals } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -508,7 +508,11 @@ export function AthletePage({ id }: { id: string }) {
   useRemember(name ? { site: f.site, kind: 'athlete', id, name, sub: data?.person?.club ?? data?.career?.club ?? null, photo: data?.person?.photo ?? data?.career?.photo ?? null } : null);
   if (isLoading) return <div className="flex items-center gap-5"><Skeleton className="size-20 rounded-full" /><Skeleton className="h-8 w-64" /></div>;
   if (!data) return <Empty title={(error as { status?: number })?.status === 404 ? 'No athlete here' : 'That didn’t load'} text={(error as { status?: number })?.status === 404 ? 'Mat Stats has nothing under this athlete on this site. They may be on the other site, or nobody has read them yet.' : 'The stats server didn’t answer. Try again in a moment.'} />;
-  const { career, person: who, entries, history, outcomes = [], accounts = [] } = data;
+  const { career, person: who, accounts = [] } = data;
+  // An event where they had walkovers alone (rules.js noShow) isn't one they fought: it's left out whole.
+  const skip = new Set(data.entries.filter(noShow).map(at));
+  for (const e of data.entries) if (!noShow(e)) skip.delete(at(e));
+  const [entries, history, outcomes] = [data.entries.filter((e) => !skip.has(at(e))), data.history.filter((h) => !skip.has(at(h))), (data.outcomes ?? []).filter((o) => !skip.has(at(o)))];
   const a = { ...(who ?? {}), ...(career ?? {}), name: who?.name ?? career?.name ?? null, born: who?.born ?? career?.born ?? null } as Athlete & { hidden: number | null };
   // With no belt read for them, the highest one their divisions name.
   a.belt ??= (BELTS.findLast((b) => entries.some((e) => beltOf(e.division) === b)) ?? null) as Athlete["belt"];

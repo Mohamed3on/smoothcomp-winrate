@@ -115,6 +115,25 @@ test("a results page's upload reads back on the stats site", async () => {
   assert.deepEqual(looked.records, { 11: { submission: [3, 0], walkover: [1, 0] }, 12: { points: [1, 0], submission: [0, 2] } });
 });
 
+test("an event where an athlete had walkovers alone isn't one of theirs: no event, medal or match there counts", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { API } = await import('../server/stats.js');
+  const { DB } = d1();
+  const env = { DB };
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const at = (event, start, entries) => post('/record', { site: 'smoothcomp.com', event, meta: { ...meta, start }, read: Date.now(), records: { 21: [0, 0] },
+    athletes: { 21: { name: 'Ana Ruiz', club: 'Alpha BJJ', clubId: '501', entries } } });
+  await at('901', '2026-09-01T08:00:00Z', [{ division: 'Adult / Blue / -76 kg', place: 2, wins: { submission: 1 }, losses: { points: 1 } }]);
+  // A no-show: a walkover won, then walkovers lost, and a silver for it.
+  await at('902', '2026-10-01T08:00:00Z', [{ division: 'Adult / Blue / -76 kg', place: 2, wins: { walkover: 1 }, losses: { forfeit: 2 } }]);
+  // A bracket of one, with no match at all, still counts.
+  await at('903', '2026-11-01T08:00:00Z', [{ division: 'Adult / Blue / -82 kg', place: 1, wins: {}, losses: {} }]);
+  const ranked = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&off='))).json();
+  assert.deepEqual(ranked.rows.map((r) => [r.user, r.events, r.gold, r.silver, r.won, r.lost, r.walkovers]), [['21', 2, 1, 1, 1, 1, 0]]);
+  const club = await (await API.team(env, new URLSearchParams('site=smoothcomp.com&id=501'))).json();
+  assert.deepEqual(club.events.map((e) => e.event), ['903', '901']);
+});
+
 test("an athlete's accounts with their name, birth year and country read as one", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');

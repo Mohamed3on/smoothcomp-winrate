@@ -82,6 +82,13 @@ globalThis.SCWRRules = (() => {
     }
     return [...by.values()].sort((a, b) => String(a.start ?? '').localeCompare(String(b.start ?? '')));
   }
+  // An entry whose every match was a walkover: they fought no one there, so it isn't one of their events
+  // (a bracket of one, with no match at all, still is). playedSql asks the opposite of an entries row in SQL.
+  const noShow = (e) => {
+    const finishes = [...Object.keys(e.wins ?? {}), ...Object.keys(e.losses ?? {})];
+    return finishes.length > 0 && finishes.every((t) => finishOf(t) === 'walkover');
+  };
+  const playedSql = (e) => `(SELECT count(*) = 0 OR sum(${finishSql('key')} != 'walkover') > 0 FROM (SELECT key FROM json_each(${e}.wins) UNION ALL SELECT key FROM json_each(${e}.losses)))`;
   // Every event's [won, lost] by finish, summed.
   const totals = (records) => records.reduce((into, r) => {
     for (const [t, [w, l]] of Object.entries(r.types)) add(into, t, w, l);
@@ -161,5 +168,5 @@ globalThis.SCWRRules = (() => {
     return (k[1] >= 0 || k[3] >= 0) && seeds.every((s, j) => j === i || seedKey(s).slice(0, 4).some((n, m) => n !== k[m]));
   };
 
-  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, totals, beltSplit, rivalsOf, placeOf, roundOf, isPool, poolPlaces };
+  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, placeOf, roundOf, isPool, poolPlaces };
 })();
