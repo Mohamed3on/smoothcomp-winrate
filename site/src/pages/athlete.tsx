@@ -13,7 +13,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, totals, usualDivision, weightName } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -79,11 +79,15 @@ const meetingsOfRow = (r: Row): Meeting[] => {
   const ids = new Map(bouts.map((m) => [normalize(m.opponent), m.user]));
   // Each takes from the read match against the same opponent, with the same result, in the same round where both name it,
   // its score, and the finish and round a profile list from before v 2 leaves out.
-  return meetingsOf(r.outcome).map((m) => {
+  const out = meetingsOf(r.outcome).map((m) => {
     const i = bouts.findIndex((b) => b.won === m.won && normalize(b.opponent) === normalize(m.opponent) && (!m.stage || !b.stage || b.stage === m.stage));
     const b = i < 0 ? undefined : bouts.splice(i, 1)[0];
     return { ...m, site: r.site, user: m.user ?? ids.get(normalize(m.opponent)), type: m.type ?? b?.type, how: m.how ?? b?.how, stage: m.stage ?? b?.stage, us: b?.us, them: b?.them, clock: b?.clock };
   });
+  // The match list isn't in the order fought (a Final can come before the pool's last match): each
+  // division in turn, its rounds in order, as the crawler keeps them.
+  const divisions = [...new Set(out.map((m) => m.division))];
+  return out.sort((a, b) => divisions.indexOf(a.division) - divisions.indexOf(b.division) || roundOf(a.stage) - roundOf(b.stage));
 };
 const boutsOf = (r: Row): Meeting[] => (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
     site: r.site, won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock,
