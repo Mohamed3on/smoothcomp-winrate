@@ -81,8 +81,15 @@ async function each(items, work) {
 async function schedule(get, base) {
   const days = await get(`${base}/schedule/new/matcategories.json`);
   if (!Array.isArray(days) || !days.length) throw new Gone('no days');
-  const mats = (await each(days, (d) => get(`${base}/schedule/new/mats.json/${d.id}`))).flatMap((m) => (Array.isArray(m) ? m : []));
-  const lists = await each(mats, (m) => get(`${base}/schedule/new/mat/${m.id}/matches.json`));
+  // A day or mat that failed to read fails the event, so it is read again rather than kept with its matches missing.
+  const read = async (items, url) => {
+    const out = await each(items, (x) => get(url(x)));
+    const failed = out.find((x) => x instanceof Error);
+    if (failed) throw failed;
+    return out;
+  };
+  const mats = (await read(days, (d) => `${base}/schedule/new/mats.json/${d.id}`)).flatMap((m) => (Array.isArray(m) ? m : []));
+  const lists = await read(mats, (m) => `${base}/schedule/new/mat/${m.id}/matches.json`);
   const seen = new Map();
   for (const m of lists.flatMap((l) => (Array.isArray(l) ? l : []))) {
     const sides = (m.seats ?? []).filter((s) => s.type === 'registration' && s.event_registration_id);
