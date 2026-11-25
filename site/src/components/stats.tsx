@@ -57,8 +57,8 @@ export function Hidden({ className }: { className?: string }) {
 export function Identity({ a, f, club = true, children }: { a: Person; f: Filters; club?: boolean; children?: React.ReactNode }) {
   const on = `Profile on ${f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}`;
   return (
-    <div className={cn("flex min-w-0 gap-3", children ? "items-start" : "items-center")}>
-      <Photo name={a.name} photo={a.photo} className="max-sm:hidden" />
+    <div className={cn("flex min-w-0 gap-3 max-sm:gap-2", children ? "items-start" : "items-center")}>
+      <Photo name={a.name} photo={a.photo} className="max-sm:size-7 max-[22.5rem]:hidden" />
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex items-center gap-1.5">
           <Link href={f.link(`/athlete/${a.user}`)} className={cn('min-w-0 font-medium break-words hover:text-primary', !a.name && 'italic text-muted-foreground')}>
