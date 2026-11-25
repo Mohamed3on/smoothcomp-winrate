@@ -5,7 +5,7 @@ import '../rules.js';
 import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
 
-const { BELTS, LABELS, finishOf, detailOf, beltOf } = globalThis.SCWRRules;
+const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize } = globalThis.SCWRRules;
 
 // Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), each summed with
 // their person's other accounts (MERGE), a few hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
@@ -416,14 +416,15 @@ async function readNow(env, { site, event, user }, ctx) {
   return json({ events: results.map((r) => r.event), found: found.results.length });
 }
 
-// A division's scores, which a reader's browser read from its match cards (site read-scores.tsx), filled into the
-// stored matches that have none: each by its round and the two users who fought it. Only rows that change are written.
-async function scores(env, { site, event, division, matches }) {
+// An event's scores, which a reader's browser read from its match cards (site read-scores.tsx), filled into the
+// stored matches that have none: each by its division, round and the two users who fought it. Only rows that change are written.
+async function scores(env, { site, event, matches }) {
   const time = (n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000);
-  const list = Array.isArray(matches) ? matches.slice(0, 500).filter((m) => text(m?.stage, 60) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
-    && Array.isArray(m.s) && m.s.length === 2 && m.s.every(trio) && (m.clock == null || (Array.isArray(m.clock) && m.clock.length === 2 && m.clock.every(time)))) : [];
-  if (!SITES.includes(site) || !/^\d{1,9}$/.test(String(event ?? '')) || !text(division, 300) || !list.length) return json({ error: 'Bad scores' }, 400);
-  const { results } = await env.DB.prepare('SELECT user, bouts FROM entries WHERE site = ?1 AND event = ?2 AND division = ?3 AND bouts IS NOT NULL').bind(site, String(event), division).all();
+  const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => text(m?.stage, 60) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
+    && Array.isArray(m.s) && m.s.length === 2 && m.s.every(trio) && (m.clock == null || (Array.isArray(m.clock) && m.clock.length === 2 && m.clock.every(time)))).map((m) => ({ ...m, users: m.users.map(String), group: m.group ? normalize(String(m.group)) : null })) : [];
+  if (!SITES.includes(site) || !/^\d{1,9}$/.test(String(event ?? '')) || !list.length) return json({ error: 'Bad scores' }, 400);
+  const { results } = await env.DB.prepare('SELECT user, division, bouts FROM entries WHERE site = ?1 AND event = ?2 AND user IN (SELECT value FROM json_each(?3)) AND bouts IS NOT NULL')
+    .bind(site, String(event), JSON.stringify([...new Set(list.flatMap((m) => m.users))])).all();
   const changed = [];
   for (const row of results) {
     let bouts;
@@ -431,16 +432,16 @@ async function scores(env, { site, event, division, matches }) {
     let filled = false;
     for (const b of bouts) {
       if (b.us || b.type === 'walkover') continue;
-      const m = list.find((x) => x.stage === b.stage && x.users.map(String).includes(row.user) && (!b.user || x.users.map(String).includes(b.user)));
+      const m = list.find((x) => x.stage === b.stage && x.users.includes(row.user) && (!b.user || x.users.includes(b.user)) && (!x.group || x.group === normalize(row.division)));
       if (!m) continue;
-      const i = m.users.map(String).indexOf(row.user);
+      const i = m.users.indexOf(row.user);
       Object.assign(b, { us: m.s[i], them: m.s[1 - i] }, m.clock ? { clock: m.clock } : {});
       filled = true;
     }
-    if (filled) changed.push([row.user, JSON.stringify(bouts)]);
+    if (filled) changed.push([row.user, row.division, JSON.stringify(bouts)]);
   }
-  if (changed.length) await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 1 FROM json_each(?4) j
-    WHERE entries.site = ?1 AND entries.event = ?2 AND entries.division = ?3 AND entries.user = j.value ->> 0`).bind(site, String(event), division, JSON.stringify(changed)).run();
+  if (changed.length) await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 2 FROM json_each(?3) j
+    WHERE entries.site = ?1 AND entries.event = ?2 AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`).bind(site, String(event), JSON.stringify(changed)).run();
   return json({ filled: changed.length });
 }
 

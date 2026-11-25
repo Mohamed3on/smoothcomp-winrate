@@ -66,11 +66,12 @@ const meetingsOfRow = (r: Row): Meeting[] => {
   if (!r.outcome) return boutsOf(r);
   const bouts = boutsOf(r);
   const ids = new Map(bouts.map((m) => [normalize(m.opponent), m.user]));
-  // Each takes its score from the read match against the same opponent, with the same result, in the same round where both name it.
+  // Each takes from the read match against the same opponent, with the same result, in the same round where both name it,
+  // its score, and the finish and round a profile list from before v 2 leaves out.
   return meetingsOf(r.outcome).map((m) => {
     const i = bouts.findIndex((b) => b.won === m.won && normalize(b.opponent) === normalize(m.opponent) && (!m.stage || !b.stage || b.stage === m.stage));
     const b = i < 0 ? undefined : bouts.splice(i, 1)[0];
-    return { ...m, site: r.site, user: m.user ?? ids.get(normalize(m.opponent)), us: b?.us, them: b?.them, clock: b?.clock };
+    return { ...m, site: r.site, user: m.user ?? ids.get(normalize(m.opponent)), type: m.type ?? b?.type, how: m.how ?? b?.how, stage: m.stage ?? b?.stage, us: b?.us, them: b?.them, clock: b?.clock };
   });
 };
 const boutsOf = (r: Row): Meeting[] => (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
@@ -450,7 +451,6 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
                       <TableCell colSpan={phone ? 3 : 4} className="pt-0 pr-3 pb-3 whitespace-normal max-sm:pl-3 sm:pr-5">
                         <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">
                           {ms.map((m, i) => <MatchLine key={i} m={m} f={f} divisions={span === 1 && named.length > 1} />)}
-                          {e?.bouts?.some((b) => !b.us && b.type !== 'walkover') && <li><ReadScores site={row.site ?? f.site} event={row.id} entry={e} route="athlete" /></li>}
                         </ul>
                       </TableCell>
                     </TableRow>
@@ -497,6 +497,11 @@ export function AthletePage({ id }: { id: string }) {
   const all = rows(entries, history, outcomes);
   const upcoming = all.filter((r) => isUpcoming(r.start) && !r.read?.some((e) => e.fought));
   const past = all.filter((r) => !upcoming.includes(r));
+  // Their events with a match read but not its score, each with the divisions that have one.
+  const unscored = past.flatMap((r) => {
+    const open = (r.read ?? []).filter((e) => e.bouts?.some((b) => !b.us && b.type !== 'walkover'));
+    return open.length ? [{ site: r.site ?? f.site, event: r.id, entries: open }] : [];
+  });
   const age = ageOf(a.born);
   const rivals = rivalsIn(all.filter((r) => !isUpcoming(r.start) || r.read?.some((e) => e.fought)));
   const met = past.flatMap(meetingsOfRow);
@@ -538,6 +543,7 @@ export function AthletePage({ id }: { id: string }) {
         </div>
         <div className="flex shrink-0 gap-2">
           <ReadNow site={f.site} user={id} route="athlete" label="Read latest events" size="lg" />
+          {unscored.length > 0 && <ReadScores targets={unscored} route="athlete" size="lg" />}
           {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>{plural(data.profile!.videos!, 'match video')}<ExternalLink /></a>}
           <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ size: 'lg' })}>Profile on {SITE_NAME(f.site)}<ExternalLink /></a>
         </div>

@@ -12,6 +12,7 @@ import { ageOf, beltAt, date, fmt, plural, rate, winsOf } from '@/lib/format';
 import { useRemember } from '@/lib/recent';
 import { FilterBar } from '@/components/filter-bar';
 import { ReadNow } from '@/components/read-now';
+import { ReadScores } from '@/components/read-scores';
 import { resetAction } from '@/pages/athletes';
 import { cn } from '@/lib/utils';
 import { DivisionLink } from '@/pages/division';
@@ -259,6 +260,7 @@ export function EventPage({ id }: { id: string }) {
           </span>
           <a href={`${f.home}/en/event/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
           {readable && <ReadNow site={f.site} event={id} route="event" label={fought ? 'Read results again' : 'Read results now'} />}
+          {fought && <ReadScores targets={[{ site: f.site, event: id }]} route="division" />}
         </div>
       </header>
       {entries.length ? (
