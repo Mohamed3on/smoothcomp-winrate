@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Settings2, SlidersHorizontal } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -38,12 +39,6 @@ export function Debounced({ f, name, placeholder, className, type = 'number', la
 // The finishes every record on the site counts: one control in the header, as the site picker is.
 // Its label names what's left out (or, when fewer are in, what's in) and lights up off the default.
 export function Counting({ f }: { f: Filters }) {
-  const toggleType = (t: string) => {
-    const off = new Set(f.off);
-    if (off.has(t)) off.delete(t);
-    else if (WIN_TYPES.filter((w) => !off.has(w)).length > 1) off.add(t); // never an empty allowlist
-    f.set({ off: [...off].join(',') });
-  };
   const out = CHIPS.filter((t) => !f.counted(t));
   const on = CHIPS.filter((t) => f.counted(t));
   const label = !out.length ? 'Counts every finish' : on.length < out.length ? `Counts ${on.map(typeName).join(', ')}` : `Counts all but ${out.map(typeName).join(', ')}`;
@@ -53,7 +48,21 @@ export function Counting({ f }: { f: Filters }) {
       <PopoverTrigger title={label} className={cn(buttonVariants({ variant: 'outline' }), 'max-w-64 min-w-0 shrink justify-start text-muted-foreground max-lg:flex-1', changed && 'border-primary/60 bg-primary/8 text-foreground dark:bg-primary/8')}>
         <span className="truncate">{label}</span><ChevronDown className="opacity-60" />
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-max max-w-[calc(100vw-2rem)] gap-3 p-3">
+      <PopoverContent align="end" className="w-max max-w-[calc(100vw-2rem)] gap-3 p-3"><Finishes f={f} /></PopoverContent>
+    </Popover>
+  );
+}
+
+// The finish chips, under their heading.
+function Finishes({ f }: { f: Filters }) {
+  const toggleType = (t: string) => {
+    const off = new Set(f.off);
+    if (off.has(t)) off.delete(t);
+    else if (WIN_TYPES.filter((w) => !off.has(w)).length > 1) off.add(t); // never an empty allowlist
+    f.set({ off: [...off].join(',') });
+  };
+  return (
+    <>
         <div className="flex flex-col gap-0.5">
           <span className="font-medium">Wins that count</span>
           <span className="text-xs text-muted-foreground">Every record, ranking and career on the site counts these.</span>
@@ -67,13 +76,49 @@ export function Counting({ f }: { f: Filters }) {
           </Toggle>
         ))}
         </div>
-      </PopoverContent>
-    </Popover>
+    </>
+  );
+}
+
+const SITES = [{ value: 'smoothcomp.com', label: 'Smoothcomp' }, { value: 'ajptour.com', label: 'AJP Tour' }];
+// The site picker: the header's select from sm up; pick does the switching.
+export function SitePicker({ site, pick }: { site: string; pick: (site: string) => void }) {
+  return (
+    <Select items={SITES} value={site} onValueChange={(v) => pick(v as string)}>
+      <SelectTrigger className="w-32" aria-label="Site"><SelectValue /></SelectTrigger>
+      <SelectContent>{SITES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
+    </Select>
+  );
+}
+
+// On phones the header's two controls (finishes and site) move into one sheet behind a settings button, lit when either is off its default.
+export function Settings({ f, pick }: { f: Filters; pick: (site: string) => void }) {
+  const changed = CHIPS.filter((t) => !f.counted(t)).join() !== 'walkover' || f.site !== 'smoothcomp.com';
+  return (
+    <Drawer showSwipeHandle>
+      <DrawerTrigger aria-label="Settings" className={cn(buttonVariants({ variant: 'outline', size: 'icon' }), 'text-muted-foreground', changed && 'border-primary/60 bg-primary/8 text-foreground dark:bg-primary/8')}><Settings2 /></DrawerTrigger>
+      <DrawerContent>
+        <DrawerHeader><DrawerTitle>Settings</DrawerTitle></DrawerHeader>
+        <div className="flex min-h-0 flex-col gap-6 overflow-y-auto p-4">
+          <div className="flex flex-col gap-3"><Finishes f={f} /></div>
+          <div className="flex flex-col gap-3">
+            <span className="font-medium">Site</span>
+            <div className="flex flex-wrap gap-1" role="group" aria-label="Site">
+              {SITES.map((s) => (
+                <Toggle key={s.value} variant="outline" size="sm" pressed={f.site === s.value} onPressedChange={() => f.site !== s.value && pick(s.value)}
+                  className="h-8 rounded-full px-3 text-muted-foreground aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground">{s.label}</Toggle>
+              ))}
+            </div>
+          </div>
+        </div>
+        <DrawerFooter><DrawerClose className={buttonVariants()}>Done</DrawerClose></DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
 // On an event page (event) the bar filters the entrants already loaded: no event count, recency or ranking to choose,
-// and the finishes counted are the header's (Counting), not the bar's. On phones it folds behind a button naming how many are set.
+// and the finishes counted are the header's (Counting), not the bar's. On phones the fields open in a sheet, behind a button naming how many are set.
 export function FilterBar({ f, sorts, minimumAthletes = false, event = false, place = false }: { f: Filters; sorts: [string, string][]; minimumAthletes?: boolean; event?: boolean; place?: boolean }) {
   const { data: countries } = useApi<{ rows: { country: string; name: string | null; athletes: number }[] }>('countries', { site: f.site });
   const belts = new Set(f.get('belt').split(',').filter(Boolean));
@@ -85,14 +130,9 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
   const countryItems = [{ value: '', label: 'All countries' }, ...(countries?.rows ?? []).map((c) => ({ value: c.country, label: `${c.name ?? c.country.toUpperCase()} (${c.athletes})` })).sort((a, b) => a.label.localeCompare(b.label))];
   const activeItems = [['', 'Any time'], ['6', 'Last 6 months'], ['12', 'Last 12 months'], ['24', 'Last 2 years'], ['36', 'Last 3 years']].map(([value, label]) => ({ value, label }));
   const sortItems = sorts.map(([value, label]) => ({ value, label }));
-  const [open, setOpen] = useState(false);
   const set = ['belt', 'wins', 'events', 'athletes', 'active', 'country', 'q', 'near'].filter((k) => f.get(k)).length + Number(!!(f.get('agemin') || f.get('agemax')));
-  return (
-    <>
-    <Button variant="outline" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={cn('self-start sm:hidden', set && 'border-primary/60 bg-primary/8 dark:bg-primary/8')}>
-      <SlidersHorizontal />Filters{set > 0 && <span className="text-muted-foreground">{set}</span>}<ChevronDown className={cn('opacity-60 transition-transform duration-200 motion-reduce:transition-none', open && 'rotate-180')} />
-    </Button>
-    <div className={cn('flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4', !open && 'max-sm:hidden')}>
+  const reset = () => f.set(Object.fromEntries(['belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])));
+  const fields = <>
       <Field label="Belt">
         <div className="flex flex-wrap gap-1" role="group" aria-label="Belt">
           {BELTS.filter((b) => !['grey', 'yellow', 'orange', 'green'].includes(b) || belts.has(b)).map((b) => (
@@ -133,8 +173,26 @@ export function FilterBar({ f, sorts, minimumAthletes = false, event = false, pl
         </Select>
       </Field>}
       <Field label="Name" className="min-w-44 flex-1"><Debounced f={f} name="q" type="search" label="Filter by name" placeholder={event ? 'Name, academy, country or division' : 'Filter by name'} className="w-full max-w-md" /></Field>
-      <Button variant="ghost" className="text-muted-foreground" onClick={() => f.set(Object.fromEntries(['belt', 'wins', 'events', 'agemin', 'agemax', 'country', 'sort', 'dir', 'q', 'athletes', 'active'].map((k) => [k, null])))}>Reset</Button>
-    </div>
+  </>;
+  return (
+    <>
+      <Drawer showSwipeHandle>
+        <DrawerTrigger className={cn(buttonVariants({ variant: 'outline' }), 'self-start sm:hidden', set && 'border-primary/60 bg-primary/8 dark:bg-primary/8')}>
+          <SlidersHorizontal />Filters{set > 0 && <span className="text-muted-foreground">{set}</span>}
+        </DrawerTrigger>
+        <DrawerContent>
+          <DrawerHeader><DrawerTitle>Filters</DrawerTitle></DrawerHeader>
+          <div className="flex min-h-0 flex-wrap items-end gap-x-6 gap-y-4 overflow-y-auto p-4 [scrollbar-width:thin] [scrollbar-color:color-mix(in_oklab,var(--primary)_45%,transparent)_transparent]">{fields}</div>
+          <DrawerFooter className="flex-row">
+            <Button variant="ghost" className="text-muted-foreground" onClick={reset}>Reset</Button>
+            <DrawerClose className={cn(buttonVariants(), 'flex-1')}>Done</DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-4 rounded-xl border bg-card p-4 max-sm:hidden">
+        {fields}
+        <Button variant="ghost" className="text-muted-foreground" onClick={reset}>Reset</Button>
+      </div>
     </>
   );
 }

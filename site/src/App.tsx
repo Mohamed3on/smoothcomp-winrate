@@ -1,8 +1,7 @@
 import { Link, Route, Switch, useLocation } from 'wouter';
 import { lazy, Suspense, useEffect } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search } from '@/components/search';
-import { Counting } from '@/components/filter-bar';
+import { Counting, Settings, SitePicker } from '@/components/filter-bar';
 import { KEPT, useFilters, usedBy } from '@/lib/filters';
 import { cn } from '@/lib/utils';
 import { AthletesPage } from '@/pages/athletes';
@@ -17,8 +16,6 @@ import { Empty } from '@/components/empty';
 // Dev only: the Demo data / Worst case switch (src/dev).
 const DataToggle = import.meta.env.DEV ? lazy(() => import('@/dev/data-toggle')) : null;
 
-const SITES = [{ value: 'smoothcomp.com', label: 'Smoothcomp' }, { value: 'ajptour.com', label: 'AJP Tour' }];
-
 export function App() {
   const f = useFilters();
   const [location, navigate] = useLocation();
@@ -26,11 +23,17 @@ export function App() {
   // Each page's address keeps only the filters it reads.
   useEffect(() => f.strip(KEPT.filter((k) => !usedBy(location).includes(k))), [location]); // eslint-disable-line react-hooks/exhaustive-deps
   const section = location.startsWith('/academ') ? 'academies' : location.startsWith('/event') ? 'events' : 'athletes';
+  const pickSite = (v: string) => {
+    // Ids are per site, so a profile page goes back to its list.
+    const list = location.match(/^\/(athlete|academy|event)\//)?.[1];
+    if (list) navigate({ athlete: '/', academy: '/academies', event: '/events' }[list] + (v === 'ajptour.com' ? '?site=ajptour.com' : ''));
+    else f.set({ site: v === 'smoothcomp.com' ? null : v, country: null });
+  };
   const nav = [['athletes', '/', 'Athletes'], ['academies', '/academies', 'Academies'], ['events', '/events', 'Events']] as const;
   return (
     <div className="flex min-h-svh flex-col">
       <header className="sticky top-0 z-20 border-b bg-background/85 backdrop-blur-md">
-        {/* Below lg the nav takes a second row under the logo and controls. */}
+        {/* Below lg the nav takes a second row under the logo and controls; between sm and lg the controls take a row of their own. */}
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-4 px-4 sm:px-6 lg:h-14 lg:gap-x-8 lg:flex-nowrap">
           <Link href={f.link('/')} className="flex h-14 items-center gap-2 font-semibold tracking-tight whitespace-nowrap"><img src="/icon.svg" alt="" className="size-6" />Mat Stats</Link>
           <nav className="flex h-10 w-full gap-6 text-sm max-lg:order-last lg:h-full lg:w-auto">
@@ -39,20 +42,14 @@ export function App() {
                 className={cn('relative flex items-center text-muted-foreground transition-colors hover:text-foreground', section === key && 'text-foreground after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary')}>{label}</Link>
             ))}
           </nav>
-          <div className="ml-auto flex min-w-0 items-center gap-2 max-lg:w-full sm:gap-3">
+          <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3 sm:max-lg:w-full">
             <Search f={f} />
-            {/* The events list counts no records; every other page counts by it. */}
-            {location !== '/events' && <Counting f={f} />}
-            {/* Events list both sites; every other page reads one. */}
-            {location !== '/events' && <Select items={SITES} value={f.site} onValueChange={(v) => {
-              // Ids are per site, so a profile page goes back to its list.
-              const list = location.match(/^\/(athlete|academy|event)\//)?.[1];
-              if (list) navigate({ athlete: '/', academy: '/academies', event: '/events' }[list] + (v === 'ajptour.com' ? '?site=ajptour.com' : ''));
-              else f.set({ site: v === 'smoothcomp.com' ? null : (v as string), country: null });
-            }}>
-              <SelectTrigger className="w-32" aria-label="Site"><SelectValue /></SelectTrigger>
-              <SelectContent>{SITES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}</SelectContent>
-            </Select>}
+            {/* The events list counts no records and lists both sites; every other page counts by the finishes and reads one site.
+                On phones both sit in the settings sheet. */}
+            {location !== '/events' && <>
+              <div className="contents max-sm:hidden"><Counting f={f} /><SitePicker site={f.site} pick={pickSite} /></div>
+              <div className="contents sm:hidden"><Settings f={f} pick={pickSite} /></div>
+            </>}
           </div>
         </div>
       </header>

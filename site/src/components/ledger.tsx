@@ -77,7 +77,7 @@ export function Ledger<T>({ rows, columns, sort, asc = false, onSort, rowKey, lo
         computeItemKey={(_, item) => `${rowKey(item.row)}${item.detail ? ':detail' : ''}`}
         components={{
           Table: (props) => <table {...props} className="w-full table-fixed border-separate border-spacing-0 text-sm" />,
-          TableHead: forwardRef((props, ref) => <thead {...props} ref={ref} className="sticky top-32! z-10 lg:top-14! [&_th]:border-b" />),
+          TableHead: forwardRef((props, ref) => <thead {...props} ref={ref} className="sticky top-24! z-10 sm:top-32! lg:top-14! [&_th]:border-b" />),
           TableRow: ({ item, ...props }) => (
             <tr {...props}
               aria-expanded={opens && !item.detail ? open.has(rowKey(item.row)) : undefined}
