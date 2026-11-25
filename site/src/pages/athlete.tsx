@@ -371,11 +371,13 @@ function Stage({ m }: { m: Meeting }) {
   return chip ? <span className={cn('rounded px-1.5 py-px font-medium', chip[1])}>{chip[0]}</span> : <span>{m.type ? '· ' : ''}{s}</span>;
 }
 
+// A match the record leaves out (walkovers, or a finish switched off) is dimmed, its result uncoloured.
 export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisions: boolean }) {
+  const off = !!m.type && !f.counted(finishOf(m.type));
   return (
-    <li className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-sm">
+    <li className={cn('flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 text-sm', off && 'opacity-50')} title={off ? 'Not counted in the record' : undefined}>
       <Photo name={m.opponent} photo={m.image} className="size-6" />
-      <span className={cn('shrink-0 text-xs font-semibold', m.won ? 'text-won' : 'text-lost')}>{m.won ? 'Beat' : 'Lost to'}</span>
+      <span className={cn('shrink-0 text-xs font-semibold', off ? 'text-muted-foreground' : m.won ? 'text-won' : 'text-lost')}>{m.won ? 'Beat' : 'Lost to'}</span>
       <span className="min-w-0 grow basis-32 break-words">{m.user ? <Link href={f.linkOn(`/athlete/${m.user}`, m.site ?? f.site)} className="font-medium hover:text-primary">{m.opponent ?? 'Unknown opponent'}</Link> : <span className="font-medium">{m.opponent ?? 'Unknown opponent'}</span>}{m.club && <span className="text-muted-foreground"> · {m.club}</span>}</span>
       <span className="ml-auto flex max-w-[55%] flex-wrap items-center justify-end gap-x-1.5 pl-3 text-right text-xs text-muted-foreground">
         {m.type && <><i className="size-2 rounded-full" style={{ background: dot(m.type) }} /><span className="text-foreground/85">{m.how || typeName(m.type)}</span></>}
