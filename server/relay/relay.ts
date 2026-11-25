@@ -5,17 +5,25 @@
 const KEY = process.env.RELAY_KEY;
 if (!KEY) throw new Error('RELAY_KEY missing');
 const ALLOWED = (host: string) => host === 'smoothcomp.com' || host.endsWith('.smoothcomp.com') || host === 'ajptour.com';
-// Backup: if Smoothcomp refuses the box too (403), requests go through PROXY (Decodo residential, billed per GB)
-// for the next ten minutes, then the box is tried again.
+// Backup, used as little as it can be: PROXY (Decodo residential) is billed per GB. Only Cloudflare's block page
+// (not another 403, such as a private event's) turns it on; while on, the box is tried again once a minute, and
+// the first answer it gets turns it off.
 const PROXY = process.env.PROXY;
-let proxiedUntil = 0;
+let proxied = false, tried = 0;
+const blocked = async (r: Response) => r.status === 403 && /Attention Required|cf-error-details/.test(await r.clone().text());
 async function get(url: URL, headers: Record<string, string>) {
   const via = (proxy?: string) => fetch(url, { headers, redirect: 'manual', proxy, signal: AbortSignal.timeout(60_000) }).catch(() => null);
-  if (PROXY && Date.now() < proxiedUntil) return via(PROXY);
+  if (PROXY && proxied && Date.now() - tried < 60e3) return via(PROXY);
+  tried = Date.now();
   const r = await via();
-  if (r?.status !== 403 || !PROXY) return r;
-  proxiedUntil = Date.now() + 10 * 60e3;
-  console.log('403 from the box: proxying until', new Date(proxiedUntil).toISOString());
+  if (!r || !PROXY) return r;
+  if (!(await blocked(r))) {
+    if (proxied) console.log('the box is answered again: proxy off');
+    proxied = false;
+    return r;
+  }
+  if (!proxied) console.log('the box is blocked: proxy on');
+  proxied = true;
   return via(PROXY);
 }
 

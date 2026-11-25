@@ -28,6 +28,7 @@ const { finishOf, normalize, placeOf, roundOf, isPool, poolPlaces } = globalThis
 class Gone extends Error {}
 class Busy extends Error {}
 
+let relayUntil = 0;
 // How a run spent its time, logged when it ends: requests, their average wait, how long at least
 // one was in flight (the rest went to the database and the counting), and events finished.
 function client(run = RUN, env = {}) {
@@ -46,9 +47,16 @@ function client(run = RUN, env = {}) {
     const t = Date.now();
     if (!open++) since = t;
     try {
-      // Through the Hetzner relay when there is one (Smoothcomp refuses Workers the match lists): server/relay/relay.ts.
-      const r = await fetch(env.RELAY ? `${env.RELAY}?url=${encodeURIComponent(url)}` : url,
-        { headers: { 'User-Agent': UA, Accept: 'application/json', ...(env.RELAY && { 'x-relay-key': env.RELAY_KEY }) } });
+      // Straight from here first. Refused (Smoothcomp blocked Workers the match lists on 2026-11-25), the request
+      // and the next quarter hour's go through the Hetzner relay (server/relay/relay.ts); then here is tried again.
+      const ask = (relay) => fetch(relay ? `${env.RELAY}?url=${encodeURIComponent(url)}` : url,
+        { headers: { 'User-Agent': UA, Accept: 'application/json', ...(relay && { 'x-relay-key': env.RELAY_KEY }) } });
+      const direct = !env.RELAY || Date.now() >= relayUntil;
+      let r = await ask(!direct);
+      if (direct && r.status === 403 && env.RELAY) {
+        relayUntil = Date.now() + 15 * 60e3;
+        r = await ask(true);
+      }
       if (r.status === 429 || r.status >= 500) throw new Busy(`${r.status}`);
       if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) throw new Gone(`${r.status}`);
       return await r.json();
