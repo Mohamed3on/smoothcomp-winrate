@@ -21,8 +21,10 @@ const AT_ONCE = 6;
 const SLOW = 300;
 const DAY = 864e5;
 // Events read a day (UTC) at most; lanes count at their start, so together they may pass it by a few. What
-// keeps D1 inside what the plan includes is the budget (budget.js), which stops the crawler for the day.
-const DAILY = 300;
+// keeps D1 inside what the plan includes is the budget (budget.js), which stops the crawler for the day. An event
+// writes about 7k rows, so 200 (1.4M) plus the day's uploads fit the plan's 1.67M a day (50M a month) and the
+// crawl runs evenly all day instead of reaching the budget by the afternoon.
+const DAILY = 200;
 const { finishOf, normalize, placeOf, roundOf, isPool, poolPlaces } = globalThis.SCWRRules;
 
 class Gone extends Error {}
