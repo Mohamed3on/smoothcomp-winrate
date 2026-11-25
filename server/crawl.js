@@ -456,7 +456,10 @@ export async function crawl(env, record, addBouts, run, asked = false) {
 
 async function lane(env, record, addBouts, get, left, finished, onlyAsked) {
   const now = Date.now();
-  let room = DAILY - await env.DB.prepare("SELECT count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1").bind(now - (now % DAY)).first('n');
+  // Spread over the day (one about every five minutes), so Smoothcomp sees a trickle rather than the day's reads in one
+  // burst; a lane reads at most one a run, so time lost (a pause, a block) is made up three a minute at most.
+  const paced = Math.ceil(DAILY * ((now % DAY) + 60e3) / DAY);
+  let room = Math.min(1, paced - await env.DB.prepare("SELECT count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1").bind(now - (now % DAY)).first('n'));
   while (left() > 10) {
     // Taken and held in one statement, so lanes running side by side never take the same event; through
     // crawls_due, in the order taken, so it stops at the first one due instead of sorting the queue.
