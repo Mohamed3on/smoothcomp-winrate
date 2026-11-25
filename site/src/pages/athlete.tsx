@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
 import { ReadNow } from '@/components/read-now';
+import { ReadScores } from '@/components/read-scores';
 import { useRemember } from '@/lib/recent';
 
 // One person's accounts read as one: entries, history and outcomes carry the site of the account they came from.
@@ -63,8 +64,14 @@ function meetingsOf(o: Outcome | undefined): Meeting[] {
 // account: the server finds it among their divisions' entrants, else the results read there give it.
 const meetingsOfRow = (r: Row): Meeting[] => {
   if (!r.outcome) return boutsOf(r);
-  const ids = new Map(boutsOf(r).map((m) => [normalize(m.opponent), m.user]));
-  return meetingsOf(r.outcome).map((m) => ({ ...m, site: r.site, user: m.user ?? ids.get(normalize(m.opponent)) }));
+  const bouts = boutsOf(r);
+  const ids = new Map(bouts.map((m) => [normalize(m.opponent), m.user]));
+  // Each takes its score from the read match against the same opponent, with the same result, in the same round where both name it.
+  return meetingsOf(r.outcome).map((m) => {
+    const i = bouts.findIndex((b) => b.won === m.won && normalize(b.opponent) === normalize(m.opponent) && (!m.stage || !b.stage || b.stage === m.stage));
+    const b = i < 0 ? undefined : bouts.splice(i, 1)[0];
+    return { ...m, site: r.site, user: m.user ?? ids.get(normalize(m.opponent)), us: b?.us, them: b?.them, clock: b?.clock };
+  });
 };
 const boutsOf = (r: Row): Meeting[] => (r.read ?? []).filter((e) => e.fought).flatMap((e) => (e.bouts ?? []).map((b) => ({
     site: r.site, won: b.won, opponent: b.opponent, club: b.club, image: null, type: b.type, how: b.how ?? undefined, division: e.division, stage: b.stage, user: b.user, us: b.us, them: b.them, clock: b.clock,
@@ -443,6 +450,7 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
                       <TableCell colSpan={phone ? 3 : 4} className="pt-0 pr-3 pb-3 whitespace-normal max-sm:pl-3 sm:pr-5">
                         <ul className="flex flex-col gap-1.5 border-t border-dashed border-border pt-2.5">
                           {ms.map((m, i) => <MatchLine key={i} m={m} f={f} divisions={span === 1 && named.length > 1} />)}
+                          {e?.bouts?.some((b) => !b.us && b.type !== 'walkover') && <li><ReadScores site={row.site ?? f.site} event={row.id} entry={e} route="athlete" /></li>}
                         </ul>
                       </TableCell>
                     </TableRow>

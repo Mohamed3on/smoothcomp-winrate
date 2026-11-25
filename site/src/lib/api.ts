@@ -42,7 +42,7 @@ export interface EventEntry extends Entry {
   career_wins: number | null; career_source: 'career' | 'results' | null; career_types: string | null; career_won?: number | null; career_lost?: number | null; career_events?: number | null; career_gold?: number | null;
 }
 
-export async function get<T>(route: string, query: Record<string, string | number | null | undefined>): Promise<T> {
+export async function get<T>(route: string, query: Record<string, string | number | null | undefined>, init?: RequestInit): Promise<T> {
   // Dev only: ?data= answers from a fixture instead (src/dev/fixtures.ts); the build drops this branch.
   if (import.meta.env.DEV) {
     const state = new URLSearchParams(location.search).get('data');
@@ -52,7 +52,7 @@ export async function get<T>(route: string, query: Record<string, string | numbe
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(query)) if (v != null && v !== '') params.set(k, String(v));
   if (query.off === '') params.set('off', '');
-  const response = await fetch(`/api/${route}?${params}`);
+  const response = await fetch(`/api/${route}?${params}`, init);
   if (!response.ok) throw Object.assign(new Error((await response.json().catch(() => ({}))).error ?? `HTTP ${response.status}`), { status: response.status });
   return response.json();
 }

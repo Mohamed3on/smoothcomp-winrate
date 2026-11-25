@@ -440,6 +440,30 @@ test('an event asked for on the site is read at once, past the crawler\'s day, w
   assert.deepEqual((await (await post({ site: 'smoothcomp.com', user: '11' })).json()).events, ['950']);
 });
 
+test("a division's scores a browser read fill its stored matches that have none, each side's its own", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { DB, db } = d1();
+  const env = { DB };
+  const post = (body) => worker.fetch(new Request('https://matstats.test/scores', { method: 'POST', body: JSON.stringify(body) }), env, { waitUntil: () => {} });
+  const bouts = (list) => JSON.stringify(list.map(([won, type, user, stage, extra]) => ({ won, type, opponent: 'x', user, stage, ...extra })));
+  const row = db.prepare("INSERT INTO entries (site, event, user, division, fought, at, bouts) VALUES ('smoothcomp.com', '960', ?, 'Adult / Blue', 1, 0, ?)");
+  row.run('11', bouts([[true, 'submission', '12', 'Match 1/3'], [false, 'walkover', '13', 'Match 3/3'], [true, 'points', '14', 'Final', { us: [2, 0, 0], them: [0, 0, 0] }]]));
+  row.run('12', bouts([[false, 'submission', '11', 'Match 1/3']]));
+  const matches = [
+    { stage: 'Match 1/3', users: ['12', '11'], s: [[0, 0, 0], [4, 1, 0]], clock: [148, 151] },
+    { stage: 'Match 3/3', users: ['11', '13'], s: [[0, 0, 0], [0, 0, 0]], clock: [0, 300] },
+    { stage: 'Final', users: ['11', '14'], s: [[9, 0, 0], [0, 0, 0]], clock: [300, 0] },
+  ];
+  assert.equal((await post({ site: 'smoothcomp.com', event: '960', division: 'Adult / Blue', matches: [{ stage: 'x', users: ['a', 'b'], s: [] }] })).status, 400);
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', division: 'Adult / Blue', matches })).json(), { filled: 2 });
+  const read = (user) => JSON.parse(db.prepare("SELECT bouts FROM entries WHERE user = ?").get(user).bouts).map((b) => [b.us, b.them, b.clock]);
+  // A walkover keeps none, a match already scored keeps its own.
+  assert.deepEqual(read('11'), [[[4, 1, 0], [0, 0, 0], [148, 151]], [undefined, undefined, undefined], [[2, 0, 0], [0, 0, 0], undefined]]);
+  assert.deepEqual(read('12'), [[[0, 0, 0], [4, 1, 0], [148, 151]]]);
+  // Sent again, nothing is left to fill.
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', division: 'Adult / Blue', matches })).json(), { filled: 0 });
+});
+
 test("search finds both sites' athletes, academies and events, one person's accounts once", async () => {
   const { API } = await import('../server/stats.js');
   const { DB, db } = d1();
