@@ -787,13 +787,15 @@ async function pick() {
 async function shareRoster() {
   const read = Date.now();
   const meta = await SCWRSite.event();
-  // A registration's age is the athlete's now; the server keeps a birth year from the event's.
-  const ahead = meta?.start ? new Date(meta.start).getUTCFullYear() - new Date().getUTCFullYear() : 0;
+  // The server keeps a birth year as the event's year less the age sent, so the age sent is as of
+  // the event's year: from the registration's birth year, else from its age (the athlete's now).
+  const now = new Date().getUTCFullYear();
+  const year = meta?.start ? new Date(meta.start).getUTCFullYear() : now;
   const athletes = {};
   for (const g of vm.all) for (const r of g.registrations) {
     if (!r.user_id) continue;
     const a = athletes[r.user_id] ??= { name: `${r.firstname ?? ''} ${r.lastname ?? ''}`, club: r.clubName, clubId: r.club_id ? String(r.club_id) : null,
-      country: r.cn, countryName: r.country, belt: belt(r.user_id), age: r.age === '' || r.age == null ? null : Number(r.age) + ahead,
+      country: r.cn, countryName: r.country, belt: belt(r.user_id), age: /^\d{4}$/.test(r.birth) ? year - Number(r.birth) : r.age === '' || r.age == null ? null : Number(r.age) + year - now,
       photo: r.profile_image_id && !/placeholder/i.test(r.profile_image ?? '') ? r.profile_image : null, entries: [] };
     a.entries.push({ division: g.name });
   }
