@@ -8,6 +8,13 @@ import { PLACED, locate } from './crawl.js';
 
 const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize, noShow, eventRecords, usualDivision, bracketOf } = globalThis.SCWRRules;
 
+// An event their profile lists with no match, win or medal they didn't show at (profile-model.js entry marks it too): marked
+// `absent` here as well, whatever install sent it. ?1 site, ?2 the athletes (JSON).
+export const ABSENT = `UPDATE outcomes SET out = json_set(out, '$.absent', json('true'))
+  WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND out ->> '$.absent' IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(out, '$.types'))
+    AND EXISTS (SELECT 1 FROM history h WHERE h.site = outcomes.site AND h.user = outcomes.user AND h.event = outcomes.event
+      AND coalesce(h.wins, 0) = 0 AND coalesce(h.gold, 0) + coalesce(h.silver, 0) + coalesce(h.bronze, 0) = 0)`;
+
 // Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), each summed with
 // their person's other accounts (MERGE), a few hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
 async function retally(env, site, users) {
@@ -17,7 +24,7 @@ async function retally(env, site, users) {
   const brackets = chunks.length ? await bracketsOf(env, site, chunks) : [];
   const statements = [];
   chunks.forEach((some, i) => {
-    statements.push(env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
+    statements.push(env.DB.prepare(ABSENT).bind(site, some), env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some),
       env.DB.prepare(BOARD[0]).bind(site, some, 0), env.DB.prepare(BOARD[1]).bind(site, some, 0, brackets[i]), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some)));
@@ -61,6 +68,10 @@ async function lookup(env, { site, users }) {
   const counts = await env.DB.prepare('SELECT user, count(*) AS events FROM history WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
     .bind(site, JSON.stringify(Object.keys(kept.careers).filter((user) => kept.careers[user].wins && kept.careers[user].events == null))).all();
   for (const row of counts.results) kept.careers[row.user].events = row.events;
+  // How many of the events their profile lists they didn't show at (stats.js missed): their count leaves those out.
+  const absent = await env.DB.prepare('SELECT user, absent FROM tallies WHERE site = ?1 AND absent > 0 AND user IN (SELECT value FROM json_each(?2))')
+    .bind(site, JSON.stringify(users)).all();
+  kept.absent = Object.fromEntries(absent.results.map((row) => [row.user, row.absent]));
   // What results pages have shown of each athlete, event by event, walkovers aside.
   const seen = await env.DB.prepare(`SELECT user, (SELECT sum(value ->> 0) FROM json_each(seen) WHERE key != 'walkover') AS wins,
       (SELECT sum(value ->> 1) FROM json_each(seen) WHERE key != 'walkover') AS losses, events
@@ -333,7 +344,7 @@ export function cleanOut(out) {
     name: text(m.name, 120), club: text(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
     ...(m.won === true && finished(m.type) ? { type: finished(m.type), how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60), match: regOf(m.match) } : {}),
   }));
-  return { ...(out?.v === 2 ? { v: 2 } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}) };
+  return { ...(out?.v === 2 ? { v: 2 } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true && !Object.keys(types).length ? { absent: true } : {}) };
 }
 // An athlete's stored matches whose score was read, for the points their profile shows (profile.js readPoints): each
 // with its event, division, result, opponent, round and match id where kept; then the cards kept for the match ids
@@ -374,7 +385,7 @@ async function crawled(env, { site, user, events }) {
   for (const [event, rows] of by) {
     const fought = rows.filter(r => r.division);
     if ((!fought.length || fought.some(r => !r.bouts)) && (rows[0].state !== 'done' || rows[0].wins)) continue;
-    const out = { v: 2, types: {}, losses: [], faced: [] };
+    const out = { v: 2, types: {}, losses: [], faced: [], ...(!fought.length && { absent: true }) };
     for (const r of fought) for (const b of JSON.parse(r.bouts ?? '[]')) {
       const type = finishOf(b.type);
       if (type === 'walkover') continue;

@@ -62,7 +62,7 @@
   // kept events and Smoothcomp's count stop agreeing, the whole history is read again,
   // on top of what is kept; when some match lists never load, at most once a day.
   // Kept in the extension's own storage (site.js store.load/save), which holds the athletes looked at latest.
-  const STORE = 'profile:12:';
+  const STORE = 'profile:13:';
   const DAY = 864e5, { WEEK } = SCWRProfile;
   const keep = (key, value) => SCWRSite.store.save(key, value);
   // Settled events are shared through Mat Stats' own server, so whoever opens a profile

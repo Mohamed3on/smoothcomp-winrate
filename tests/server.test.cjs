@@ -135,6 +135,13 @@ test("an event their profile lists but they didn't show at isn't theirs: not in 
   assert.deepEqual({ ...db.prepare("SELECT events, last FROM board WHERE user = '31'").get() }, { events: 1, last: '2025-10-03' });
   const page = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=31'))).json();
   assert.deepEqual(page.history.map((h) => h.event), ['800']);
+  // A participants page's lookup says how many of their listed events they didn't show at.
+  assert.deepEqual((await (await post('/lookup', { site: 'smoothcomp.com', users: ['31'] })).json()).absent, { 31: 1 });
+  // Their profile's match lists, from any install, showing no match, win or medal at an event: not theirs either.
+  listed.run('700', '2025-06-01', 0);
+  await post('/keep-outcomes', { site: 'smoothcomp.com', user: '31', events: [{ id: 700, start_date: '2025-06-01', title: 'Open', out: { v: 2, types: {}, losses: [], faced: [] } }] });
+  assert.equal(db.prepare("SELECT out ->> '$.absent' AS absent FROM outcomes WHERE user = '31' AND event = '700'").get().absent, 1);
+  assert.deepEqual({ ...db.prepare("SELECT events, last FROM board WHERE user = '31'").get() }, { events: 1, last: '2025-10-03' });
 });
 
 test("a career read says whether a profile is hidden, over the events' flag", async () => {

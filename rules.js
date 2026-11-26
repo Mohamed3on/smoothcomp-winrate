@@ -66,6 +66,8 @@ globalThis.SCWRRules = (() => {
     return into;
   };
   function eventRecords(outcomes = [], entries = []) {
+    // An event their profile lists that they didn't show at (`absent`: no match, win or medal there) isn't theirs, unless the results say they fought.
+    outcomes = outcomes.filter((o) => !o.out?.absent);
     const listed = new Set(outcomes.map((o) => String(o.event)));
     const by = new Map();
     const at = (event, start) => by.get(event) ?? by.set(event, { event, start: start ?? null, types: {}, divisions: [] }).get(event);

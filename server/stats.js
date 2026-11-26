@@ -56,11 +56,14 @@ const KM = (lat, lng, at) => `(6371 * acos(min(1, max(-1, sin(radians(?${at})) *
 // The grappling sports' ids on Smoothcomp: Jiu-Jitsu (Gi); Jiu-Jitsu (NoGi), its ADCC and Submission Wrestling rules; Luta Livre.
 const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3', '24'] };
 
-// An event their profile lists (history row `h`) that they didn't show at: they registered, its results are read, and they had
-// no match there, with nothing won on their profile either (Smoothcomp lists the events registered for too).
-const missed = (h) => `(coalesce(${h}.wins, 0) = 0 AND EXISTS (SELECT 1 FROM reads r WHERE r.site = ${h}.site AND r.event = ${h}.event AND r.fought = 1)
-  AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user)
-  AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1))`;
+// An event their profile lists (history row `h`) that they didn't show at, with nothing won there on their profile (Smoothcomp lists the
+// events registered for too): they registered, its results are read, and they had no match there; or their profile's match lists
+// held no match, win or medal there (profile-model.js entry: `absent`). Results saying they fought there win.
+const missed = (h) => `(coalesce(${h}.wins, 0) = 0
+  AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1)
+  AND ((EXISTS (SELECT 1 FROM reads r WHERE r.site = ${h}.site AND r.event = ${h}.event AND r.fought = 1)
+      AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user))
+    OR EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ${h}.site AND o.user = ${h}.user AND o.event = ${h}.event AND o.out ->> '$.absent')))`;
 
 // Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
 // ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:

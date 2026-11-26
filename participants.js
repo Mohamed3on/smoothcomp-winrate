@@ -67,7 +67,8 @@ function tally(user) {
 // the bracket sizes. It ranks by the figure shown, one event counting like any
 // other, and a tie goes to the longer record. A career kept from before event
 // counts were read is read again for its count.
-const eventsOf = (user) => (fresh(user) ? careers[user].events : undefined);
+// Smoothcomp counts the events registered for too: those they didn't show at (Mat Stats' count) are left out.
+const eventsOf = (user) => (fresh(user) && careers[user].events != null ? Math.max(0, careers[user].events - (SCWRCareers.absent?.[user] ?? 0)) : undefined);
 const needsEvents = (user) => fresh(user) && !!careers[user].wins && careers[user].events == null;
 const perEvent = (user) => (tally(user) && eventsOf(user) ? [tally(user)[0] / eventsOf(user), eventsOf(user)] : [-1, -1]);
 // A hidden profile has no career, only how it went at the events whose results Mat
@@ -572,8 +573,8 @@ const PLACEHOLDER = '<div><div><i class="scwr-pulse"></i></div><div class="font-
 function draw(cell, user) {
   const t = user && tally(user);
   const medals = t && careers[user].medals;
-  const events = t && order === 'event' && careers[user].events;
-  const entered = t && careers[user].events;
+  const events = t && order === 'event' && eventsOf(user);
+  const entered = t && eventsOf(user);
   const lead = order === null;
   const record = lead && t ? recordOf(user) : null;
   const state = user === 'head' ? `head|${order === 'event' || lead}` : t ? `${t}|${medals}|${events}|${entered}|${lead}|${record}` : !user ? '' : fresh(user) ? `hidden|${SCWRCareers.seen[user] ?? ''}` : SCWRCareers.isReading(user) || pending.has(user) ? 'reading' : '';

@@ -83,13 +83,16 @@ const SCWRCareers = (() => {
 
   // The shared cache answers for the whole event at once, before any profile is read.
   // With it come the records results pages have seen: [wins, losses, events], each athlete's
-  // record by finish as the stats site rates them, and when each athlete's last event ended.
+  // record by finish as the stats site rates them, when each athlete's last event ended, and how many of the events their
+  // profile lists they didn't show at.
   let looked = Promise.resolve();
   const seen = {};
   const records = {};
+  const absent = {};
   const lookup = users => looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users })).then(kept => {
     Object.assign(seen, kept.seen);
     Object.assign(records, kept.records);
+    Object.assign(absent, kept.absent);
     Object.assign(over, kept.ended);
     merge(kept);
     const told = new Set([...Object.keys(kept.seen ?? {}), ...Object.keys(kept.records ?? {}), ...Object.keys(kept.ended ?? {})]);
@@ -244,7 +247,7 @@ const SCWRCareers = (() => {
     }
     return reading.get(key);
   }
-  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records,
+  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records, absent,
     fresh: user => current(careers[user], 'careers', String(user)),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),

@@ -46,6 +46,13 @@ test('each belt takes the events from its start, the current one shown even with
   assert.deepEqual(JSON.parse(JSON.stringify(split.map((b) => [b.belt, b.events]))), [['brown', 0], ['purple', 1], ['blue', 2]]);
 });
 
+test("an event their profile lists that they didn't show at isn't one of theirs, unless the results say they fought there", () => {
+  const { eventRecords } = globalThis.SCWRRules;
+  const absent = (event) => ({ event, start: '2026-08-01T09:00:00Z', out: { v: 2, types: {}, losses: [], faced: [], absent: true } });
+  assert.deepEqual(eventRecords([...outcomes, absent('5')], entries).map((r) => r.event), ['1', '2', '4']);
+  assert.deepEqual(eventRecords([...outcomes, absent('2')], entries).map((r) => r.event), ['1', '2', '4']);
+});
+
 test('a rival has beaten them twice, the furthest behind first', () => {
   const { rivalsOf } = globalThis.SCWRRules;
   const meetings = [

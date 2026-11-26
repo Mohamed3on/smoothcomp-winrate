@@ -526,7 +526,9 @@ export function AthletePage({ id }: { id: string }) {
   const { career, person: who, accounts = [] } = data;
   // An event where they had walkovers alone (rules.js noShow) isn't one they fought: it's left out whole.
   const skip = new Set(data.entries.filter(noShow).map(at));
-  for (const e of data.entries) if (!noShow(e)) skip.delete(at(e));
+  // So is one their profile lists that they didn't show at (rules.js eventRecords), unless the results say they fought there.
+  for (const o of data.outcomes ?? []) if (o.out.absent) skip.add(at(o));
+  for (const e of data.entries) if (!noShow(e) && (e.fought || !data.outcomes?.some((o) => o.out.absent && at(o) === at(e)))) skip.delete(at(e));
   const [entries, history, outcomes] = [data.entries.filter((e) => !skip.has(at(e))), data.history.filter((h) => !skip.has(at(h))), (data.outcomes ?? []).filter((o) => !skip.has(at(o)))];
   const a = { ...(who ?? {}), ...(career ?? {}), name: who?.name ?? career?.name ?? null, born: who?.born ?? career?.born ?? null } as Athlete & { hidden: number | null };
   // With no belt read for them, the highest one their divisions name.

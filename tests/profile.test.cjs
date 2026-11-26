@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 const context = vm.createContext({});
 for (const file of ['rules.js', 'profile-model.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
-const { outcomes, planBelts, clean, merge, share, scoresOf, fromCard } = vm.runInContext('SCWRProfile', context);
+const { outcomes, planBelts, clean, entry, merge, share, scoresOf, fromCard } = vm.runInContext('SCWRProfile', context);
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const DAY = 864e5;
 const NOW = Date.parse('2026-11-23T12:00:00Z');
@@ -48,6 +48,16 @@ test('each belt begins after the last event listed at the belt below, the curren
 test('a kept copy keeps only finishes, an older "escape" a fastest escape', () => {
   const out = clean({ types: { escape: [1, 0], walkover: [2, 0], points: [1, 1], junk: 'x' }, losses: [{ type: 'escape', opponent: 'A' }, { type: 'walkover' }, {}], faced: [{ name: 'A', won: true, type: 'escape' }, { won: false }], v: 2 });
   assert.deepEqual(plain(out), { types: { fastest_escape: [1, 0], points: [1, 1] }, losses: [{ type: 'fastest_escape', opponent: 'A' }], faced: [{ name: 'A', won: true, type: 'fastest_escape' }], v: 2 });
+});
+
+test("an event listed with no match, win or medal there is one they didn't show at; a bracket of one won isn't", () => {
+  const context = { name: 'Kim Lee', dated: new Map(), now: NOW };
+  const row = (wins, medals) => ({ id: 9, title: 'Open', start_date: '2026-10-01', wins, medals });
+  assert.equal(entry(row(0, { gold: 0, silver: 0, bronze: 0 }), undefined, context).out.absent, true);
+  assert.equal(entry(row(0, { gold: 1, silver: 0, bronze: 0 }), undefined, context).out.absent, undefined);
+  assert.equal(entry(row(1, {}), undefined, context).out.absent, undefined);
+  // The mark is kept with the copy.
+  assert.equal(clean(entry(row(0, {}), undefined, context).out).absent, true);
 });
 
 test('a visit keeps what it read and what was kept, leaving out what an unanswered page may hold', () => {
