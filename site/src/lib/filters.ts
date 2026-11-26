@@ -6,6 +6,9 @@ export const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqu
 export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'sex', 'age', 'weight', 'country', 'athletes', 'active', 'near', 'place', 'km'] as const;
 // A place to look around (near: "lat,lng", place: its name) and how far (km), shared by events and academies.
 const PLACE = ['near', 'place', 'km'];
+// Minimum wins and events count an academy's totals on the academies list and an athlete's everywhere else, so each keeps its own.
+const OWN = ['wins', 'events'];
+const stored = (key: string, path = window.location.pathname) => (OWN.includes(key) && path.startsWith('/academies') ? `academies.${key}` : key);
 // The kept keys each page reads: a link, and the page's own address, carry only those.
 export const usedBy = (path: string): readonly string[] =>
   // Events list both sites at once.
@@ -29,7 +32,7 @@ const listeners = new Set<() => void>();
 const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
 const save = (changes: Record<string, string | null>) => {
   const next = { ...saved };
-  for (const [k, v] of Object.entries(changes)) if ((KEPT as readonly string[]).includes(k)) { if (v == null || (v === '' && k !== 'off')) delete next[k]; else next[k] = v; }
+  for (const [k, v] of Object.entries(changes)) if ((KEPT as readonly string[]).includes(k)) { if (v == null || (v === '' && k !== 'off')) delete next[stored(k)]; else next[stored(k)] = v; }
   saved = next;
   try { localStorage.setItem(SAVED, JSON.stringify(saved)); } catch { /* private mode: the address still holds them */ }
   listeners.forEach((l) => l());
@@ -37,10 +40,10 @@ const save = (changes: Record<string, string | null>) => {
 
 export function useFilters() {
   const [params] = useSearchParams();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const kept = useSyncExternalStore(subscribe, () => saved);
-  const has = (key: string) => params.has(key) || key in kept;
-  const get = (key: string) => params.get(key) ?? kept[key] ?? '';
+  const has = (key: string) => params.has(key) || stored(key, location) in kept;
+  const get = (key: string) => params.get(key) ?? kept[stored(key, location)] ?? '';
   // Only walkovers start uncounted; nobody is filtered out until the reader sets a minimum.
   const off = new Set((has('off') ? get('off') : 'walkover').split(',').filter(Boolean));
   const site = get('site') === 'ajptour.com' ? 'ajptour.com' : 'smoothcomp.com';
@@ -70,7 +73,7 @@ export function useFilters() {
   const link = (path: string) => {
     const [base, own] = path.split('?');
     const keep = new URLSearchParams(own);
-    for (const k of usedBy(base)) if (params.has(k) && (params.get(k) || k === 'off')) keep.set(k, params.get(k)!);
+    for (const k of usedBy(base)) if (params.has(k) && (params.get(k) || k === 'off') && stored(k, base) === stored(k, location)) keep.set(k, params.get(k)!);
     return base + tidy(keep);
   };
   // A path on the given site's data, whatever site the reader is on: an event from the list of both.
