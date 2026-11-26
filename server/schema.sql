@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS crawls (
   tries INTEGER NOT NULL DEFAULT 0,
   next INTEGER NOT NULL DEFAULT 0,
   at INTEGER NOT NULL,
-  priority INTEGER NOT NULL DEFAULT 0, -- higher is read first (Berlin 2, the rest of Germany 1, set by hand)
+  priority INTEGER NOT NULL DEFAULT 0, -- higher is read first (viewed 3, Berlin 2, the rest of Germany 1 by hand, AJP -1)
   wrote INTEGER, -- when the crawler last wrote the event's results: reading it again replaces only its own copy
   PRIMARY KEY (site, event)
 );
