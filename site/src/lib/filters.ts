@@ -1,14 +1,14 @@
 import { useSyncExternalStore } from 'react';
 import { useLocation, useSearchParams } from 'wouter';
+import { ACADEMY_OWN } from '@/lib/rules';
 
 export const WIN_TYPES = ['submission', 'stoppage', 'points', 'decision', 'disqualification', 'walkover'] as const;
 // The keys that travel with every link, so following one keeps the ranking's terms.
 export const KEPT = ['site', 'off', 'belt', 'wins', 'events', 'agemin', 'agemax', 'sex', 'age', 'weight', 'country', 'athletes', 'active', 'near', 'place', 'km'] as const;
 // A place to look around (near: "lat,lng", place: its name) and how far (km), shared by events and academies.
 const PLACE = ['near', 'place', 'km'];
-// Minimum wins and events count an academy's totals on the academies list and an athlete's everywhere else, so each keeps its own.
-const OWN = ['wins', 'events'];
-const stored = (key: string, path = window.location.pathname) => (OWN.includes(key) && path.startsWith('/academies') ? `academies.${key}` : key);
+// The filters the academies list reads as an academy's own totals (rules.js ACADEMY_OWN) count an athlete's everywhere else, so each keeps its own.
+const stored = (key: string, path = window.location.pathname) => (ACADEMY_OWN.includes(key) && path.startsWith('/academies') ? `academies.${key}` : key);
 // The kept keys each page reads: a link, and the page's own address, carry only those.
 export const usedBy = (path: string): readonly string[] =>
   // Events list both sites at once.

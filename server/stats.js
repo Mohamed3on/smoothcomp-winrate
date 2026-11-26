@@ -390,7 +390,8 @@ export async function keepRecent(env, site) {
   return { academies: now.length, written: changed.length, gone: gone.length };
 }
 
-// Each academy's totals under the filters (filters()): ?wins= is the academy's own total, ?events= the events it has results at,
+// Each academy's totals under the filters (filters()): ?wins= is the academy's own total, ?events= the events it has results at
+// (rules.js ACADEMY_OWN, which the site keeps apart),
 // ?country= and ?near= where it is, ?q= its name; the finishes, belts, ages and Competed window choose its athletes. `least` the
 // fewest athletes, `clubs` these academies alone, `live` added up here even where they are kept (a test). The CTEs `with`, ending
 // in members (each counted athlete, careersOf's row) and totals (one row per academy: COLS, its podiums and place, and how many

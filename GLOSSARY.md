@@ -40,8 +40,8 @@ matches, their name settling a tie. Owner: `rules.js` `Outcome.fromMatchList`.
 **Match identity**: whether two records are the same match (a profile's match list, the results read, the schedule, a
 card read, a match Mat Stats keeps). By its id, else its division (or bracket, which decides over the division's name),
 round and either side, names spelt either way ("Hüseyin" is "Huseyin"); a round robin's numbered match by its number;
-one kept without its round by the two who fought it, only where they met once there. Owner: `rules.js` (`matchKeys`,
-`sameMatch`, `matchFinder`; `tests/match.test.cjs`).
+one kept without its round by the two who fought it, only where they met once there. Owner: `rules.js` `matchFinder`
+(`tests/match.test.cjs`).
 _Avoid_: the opponent alone: it names every match they fought there.
 
 **Place**: where an athlete finished a division. Published results give it; until then the
@@ -51,7 +51,7 @@ matches do, by the round each side went out in, a round robin by its record once
 agrees (`tests/results.test.cjs`).
 
 **Academy totals**: an academy's athletes added up (athletes, wins, submissions, points, medals, record), each
-athlete under the academy their latest event gave. The list's Min. wins and Min. events are the academy's own, Country where
+athlete under the academy their latest event gave. The list's Min. wins and Min. events are the academy's own (`rules.js` `ACADEMY_OWN`), Country where
 it is. Kept under the default filters (`club_board`, `club_recent`), else added up live; both give the same rows
 (`tests/server.test.cjs`). Owner: `server/stats.js` `academyTotals`.
 

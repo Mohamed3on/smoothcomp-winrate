@@ -217,7 +217,6 @@ globalThis.SCWRRules = (() => {
   // Where both give a bracket, it decides over the division's name (a results page may name a division as the schedule doesn't).
   const apart = (a, b) => ['event', 'bracket', 'stage', 'won'].some((k) => differ(a, b, k, (x, y) => String(x) === String(y)))
     || (!(a.bracket && b.bracket) && differ(a, b, 'division', (x, y) => fold(x) === fold(y)));
-  const sameMatch = (a, b) => (a.id && b.id ? Number(a.id) === Number(b.id) : !apart(a, b) && matchKeys(a).some((k) => matchKeys(b).includes(k)));
   // Finds a record's match among `list` by its keys, strongest first: a key naming more than one match there names none.
   function matchFinder(list) {
     const by = new Map();
@@ -633,5 +632,9 @@ globalThis.SCWRRules = (() => {
     return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
   }
 
-  return { unplaced, divisionResults, matchKeys, sameMatch, matchFinder, Outcome, photo, OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  // The list filters (Min. wins, Min. events) that an academies list reads as each academy's own totals, not its athletes'
+  // (server/stats.js academyTotals): the site keeps a reader's settings for them apart from the athletes' (site lib/filters.ts).
+  const ACADEMY_OWN = ['wins', 'events'];
+
+  return { unplaced, divisionResults, matchFinder, Outcome, photo, words, regOf, ACADEMY_OWN, overAt, overSql, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

@@ -6,7 +6,7 @@ import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
 import { PLACED, locate } from './crawl.js';
 
-const { BELTS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql, photo, Outcome, matchFinder } = globalThis.SCWRRules;
+const { BELTS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql, photo, words, regOf, Outcome, matchFinder } = globalThis.SCWRRules;
 
 // An event their profile lists with no match, win or medal they didn't show at (rules.js Outcome marks it too): marked
 // `absent` here as well, whatever install sent it. ?1 site, ?2 the athletes (JSON).
@@ -119,13 +119,12 @@ async function keep(env, body) {
 }
 
 // What an event page shows of the event and of each athlete, for the public site.
-// Strings are capped and finishes grouped by the rules (rules.js), so every source counts under the same switches.
-const text = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
+// Strings are capped (rules.js words) and finishes grouped by the rules (rules.js), so every source counts under the same switches.
 // An athlete's matches in a division, in order: won or lost, the finish (grouped, with its detail),
 // and who they met (name, user, academy) in which round.
 const bouts = (list) => (Array.isArray(list) && list.length ? JSON.stringify(list.slice(0, 40).filter((b) => b && typeof b === 'object').map((b) => ({
-  won: b.won === true, type: finishOf(b.type ?? ''), how: text(b.how, 60) ?? text(detailOf(b.type), 60), opponent: text(b.opponent, 120), user: validUser(String(b.user ?? '')) ? String(b.user) : null,
-  club: text(b.club, 160), stage: text(b.stage, 60), ...(regOf(b.bracket) ? { bracket: b.bracket } : {}), ...(regOf(b.match) ? { match: b.match } : {}),
+  won: b.won === true, type: finishOf(b.type ?? ''), how: words(b.how, 60) ?? words(detailOf(b.type), 60), opponent: words(b.opponent, 120), user: validUser(String(b.user ?? '')) ? String(b.user) : null,
+  club: words(b.club, 160), stage: words(b.stage, 60), ...(regOf(b.bracket) ? { bracket: b.bracket } : {}), ...(regOf(b.match) ? { match: b.match } : {}),
   // The score, theirs and their opponent's ([points, advantages, penalties]), and the clock ([ended at, left], seconds).
   ...(trio(b.us) && trio(b.them) ? { us: b.us, them: b.them } : {}),
   ...(Array.isArray(b.clock) && b.clock.length === 2 && b.clock.every((n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000)) ? { clock: b.clock } : {}),
@@ -152,7 +151,7 @@ export function upload(event, meta, athletes, now = Date.now()) {
   // A date decides whose academy and photo win, so none from the future.
   const start = typeof meta?.start === 'string' && ISO.test(meta.start) && Date.parse(meta.start) < now + 366 * 24 * 60 * 60 * 1000 ? meta.start : null;
   const ends = typeof meta?.end === 'string' && ISO.test(meta.end) && Date.parse(meta.end) < now + 366 * 24 * 60 * 60 * 1000 ? Date.parse(meta.end) : null;
-  const about = meta && typeof meta === 'object' ? { title: text(meta.title, 200), start, city: text(meta.city, 100), country: text(meta.country, 8), organiser: text(meta.organiser, 200), ends, lat: coord(meta.lat, 90), lng: coord(meta.lng, 180) } : null;
+  const about = meta && typeof meta === 'object' ? { title: words(meta.title, 200), start, city: words(meta.city, 100), country: words(meta.country, 8), organiser: words(meta.organiser, 200), ends, lat: coord(meta.lat, 90), lng: coord(meta.lng, 180) } : null;
   const people = [];
   const entries = [];
   const history = {};
@@ -161,19 +160,19 @@ export function upload(event, meta, athletes, now = Date.now()) {
   for (const [user, a] of Object.entries(athletes).slice(0, 5000)) {
     if (!validUser(user) || !a || typeof a !== 'object') continue;
     const hidden = typeof a.hidden === 'boolean' ? Number(a.hidden) : null;
-    const club = text(a.club, 160);
+    const club = words(a.club, 160);
     const clubId = /^\d{1,12}$/.test(a.clubId) ? a.clubId : null;
-    people.push({ user, name: text(a.name, 120), club, clubId, affiliation: text(a.affiliation, 120), country: typeof a.country === 'string' && /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
-      countryName: text(a.countryName, 80), photo: photo(a.photo), belt: beltOf(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
+    people.push({ user, name: words(a.name, 120), club, clubId, affiliation: words(a.affiliation, 120), country: typeof a.country === 'string' && /^[a-z-]{2,8}$/i.test(a.country) ? a.country.toLowerCase() : null,
+      countryName: words(a.countryName, 80), photo: photo(a.photo), belt: beltOf(a.belt), born: Number.isSafeInteger(a.age) && a.age > 2 && a.age < 100 ? year - a.age : null, hidden });
     // An install sends one athlete's list per career read, so a request carries a few lists at most.
     if (Array.isArray(a.history) && Object.keys(history).length < 20 && Object.values(history).flat().length + a.history.length <= 2000) history[user] = a.history.slice(0, 500).filter((e) => /^\d{1,9}$/.test(e?.event)).map((e) => ({
-      event: e.event, title: text(e.title, 200), start: typeof e.start === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(e.start) ? e.start : null, city: text(e.city, 100),
+      event: e.event, title: words(e.title, 200), start: typeof e.start === 'string' && /^\d{4}-\d{2}-\d{2}T[\d:.+-]+Z?$/.test(e.start) ? e.start : null, city: words(e.city, 100),
       wins: Number.isSafeInteger(e.wins) && e.wins >= 0 && e.wins < 100 ? e.wins : null,
       medals: [0, 1, 2].map((i) => (Number.isSafeInteger(e.medals?.[i]) && e.medals[i] >= 0 && e.medals[i] < 20 ? e.medals[i] : 0)),
       image: photo(e.image),
     }));
     for (const e of (event && Array.isArray(a.entries) ? a.entries : []).slice(0, 20)) {
-      const division = text(e?.division, 200);
+      const division = words(e?.division, 200);
       if (!division) continue;
       const place = Number.isSafeInteger(e.place) && e.place > 0 && e.place < 1000 ? e.place : null;
       entries.push({ user, division, club, clubId, place, wins: JSON.stringify(tally(e.wins)), losses: JSON.stringify(tally(e.losses)), bouts: bouts(e.bouts) });
@@ -295,7 +294,7 @@ async function size(env, { site, event, registered }) {
 async function place(env, { site, club, place: p }) {
   if (!SITES.includes(site) || !/^\d{1,12}$/.test(String(club ?? '')) || (p != null && typeof p !== 'object')) return json({ error: 'Bad place' }, 400);
   if (await env.DB.prepare('SELECT 1 FROM club_places WHERE site = ?1 AND club_id = ?2 AND checked >= ?3').bind(site, String(club), Date.now() - 182 * 864e5).first()) return json({});
-  const at = p && { lat: coord(p.lat, 90), lng: coord(p.lng, 180), city: text(p.city, 100), country: /^[A-Z]{2}$/.test(p.country ?? '') ? p.country : null, address: text(p.address, 200) };
+  const at = p && { lat: coord(p.lat, 90), lng: coord(p.lng, 180), city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country ?? '') ? p.country : null, address: words(p.address, 200) };
   if (at && (at.lat == null || at.lng == null || (!at.lat && !at.lng))) at.lat = at.lng = null;
   await env.DB.prepare(PLACED).bind(Date.now(), JSON.stringify([{ site, club_id: String(club), ...(await locate(env, at)) }])).run();
   return json({});
@@ -322,7 +321,7 @@ async function record(env, { site, event, records, meta, athletes, read, crawled
     const now = Date.now();
     await env.DB.prepare(`INSERT INTO crawls (site, event, state, start, title, city, next, at, wrote) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
       ON CONFLICT (site, event) DO UPDATE SET state = excluded.state, data = NULL, next = excluded.next, tries = 0, at = excluded.at, wrote = excluded.wrote, priority = min(priority, 3)`)
-      .bind(site, event, on ? 'queued' : 'done', text(meta?.start, 40), text(meta?.title, 200), text(meta?.city, 100), on ? now + 6 * 3600e3 : 0, now).run();
+      .bind(site, event, on ? 'queued' : 'done', words(meta?.start, 40), words(meta?.title, 200), words(meta?.city, 100), on ? now + 6 * 3600e3 : 0, now).run();
   } else if (!crawled) await env.DB.prepare(`DELETE FROM crawls WHERE site = ?1 AND event = ?2 AND state = 'queued'
     AND EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 AND bouts IS NOT NULL)`).bind(site, event).run();
   return json({});
@@ -330,7 +329,6 @@ async function record(env, { site, event, records, meta, athletes, read, crawled
 
 // An athlete's settled events, as profile pages read them from the match lists: kept as rules.js Outcome.clean shapes them.
 const SETTLED = 7 * 24 * 60 * 60 * 1000;
-const regOf = r => (Number.isSafeInteger(r) && r > 0 ? r : null);
 // An athlete's stored matches whose score was read, for the points their profile shows (profile.js readPoints): each
 // with its event, division, result, opponent, round and match id where kept; then the cards kept for the match ids
 // asked (`matches`) that they fought, theirs first. The profile reads only the rest's cards.
@@ -386,7 +384,7 @@ async function keepOutcomes(env, { site, user, events }) {
   if (!SITES.includes(site) || !validUser(user) || !Array.isArray(events) || events.length > 400) return json({ error: 'Bad outcomes' }, 400);
   // An event only a match list names may come undated; every other one must have started.
   const rows = events.filter(e => Number.isSafeInteger(e?.id) && e.id > 0 && (typeof e.start_date === 'string' ? Date.parse(e.start_date) < Date.now() : e.start_date == null && e.out?.extra === true))
-    .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(Outcome.clean(e.out))]);
+    .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, words(e.title, 200), JSON.stringify(Outcome.clean(e.out))]);
   // A copy taken in an event's first week, while its results can still change, gives way to any later
   // one. After that the event is settled, so the first copy of it stands and later ones cannot replace
   // it, except a copy from before v 3, which lacks the wins' details (v 2) or the match ids: a v 3 upload
@@ -417,14 +415,14 @@ async function belts(env, { site, user, worn, starts }) {
 // Each part sent replaces the last; each event's cover joins the athlete's event list.
 const id = (n) => (Number.isSafeInteger(n) && n > 0 ? n : null);
 const small = (n) => (Number.isSafeInteger(n) && n >= 0 && n < 1e7 ? n : null);
-const club = (c) => ({ id: id(c?.id), name: text(c?.name, 160), city: text(c?.city, 100), country: text(c?.country, 80), logo: photo(c?.logo) });
+const club = (c) => ({ id: id(c?.id), name: words(c?.name, 160), city: words(c?.city, 100), country: words(c?.country, 80), logo: photo(c?.logo) });
 async function profile(env, body) {
   const { site, user } = body;
   if (!SITES.includes(site) || !validUser(user)) return json({ error: 'Bad profile' }, 400);
   const entry = {};
-  if (Array.isArray(body.skills)) entry.skills = body.skills.slice(0, 30).map((s) => ({ name: text(s?.name, 80), belt: text(s?.belt, 40), degree: small(s?.degree), competed: small(s?.competed), order: small(s?.order) })).filter((s) => s.name && s.belt);
+  if (Array.isArray(body.skills)) entry.skills = body.skills.slice(0, 30).map((s) => ({ name: words(s?.name, 80), belt: words(s?.belt, 40), degree: small(s?.degree), competed: small(s?.competed), order: small(s?.order) })).filter((s) => s.name && s.belt);
   if (Array.isArray(body.rankings)) {
-    entry.rankings = body.rankings.slice(0, 10).map((r) => ({ placement: id(r?.placement), name: text(r?.name, 160), owner: text(r?.owner, 160), ownerId: id(r?.ownerId),
+    entry.rankings = body.rankings.slice(0, 10).map((r) => ({ placement: id(r?.placement), name: words(r?.name, 160), owner: words(r?.owner, 160), ownerId: id(r?.ownerId),
       type: ['federation', 'event'].includes(r?.type) ? r.type : null, toplist: id(r?.toplist) })).filter((r) => r.placement && r.name);
     entry.ranked = small(body.ranked) ?? entry.rankings.length;
   }
@@ -451,7 +449,7 @@ async function profile(env, body) {
 // already kept stays as first read: a finished match's score doesn't change, and a later upload can't overwrite it.
 async function scores(env, { site, event, matches }) {
   const time = (n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000);
-  const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => (text(m?.stage, 60) || regOf(m?.match)) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
+  const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => (words(m?.stage, 60) || regOf(m?.match)) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
     && Array.isArray(m.s) && m.s.length === 2 && m.s.every(trio) && (m.clock == null || (Array.isArray(m.clock) && m.clock.length === 2 && m.clock.every(time)))).map((m) => ({ ...m, users: m.users.map(String), group: m.group ? normalize(String(m.group)) : null })) : [];
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(String(event ?? '')) || !list.length) return json({ error: 'Bad scores' }, 400);
   const { results } = await env.DB.prepare('SELECT user, division, bouts FROM entries WHERE site = ?1 AND event = ?2 AND user IN (SELECT value FROM json_each(?3)) AND bouts IS NOT NULL')

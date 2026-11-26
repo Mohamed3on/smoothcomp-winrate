@@ -37,8 +37,6 @@ declare global {
     ): EventRecord[];
     noShow(entry: { wins?: Record<string, number> | null; losses?: Record<string, number> | null }): boolean;
     playedSql(alias: string): string;
-    matchKeys(match: MatchRecord): string[];
-    sameMatch(a: MatchRecord, b: MatchRecord): boolean;
     matchFinder<M extends MatchRecord>(list: M[]): (match: MatchRecord) => M | undefined;
     Outcome: {
       fromMatchList(event: { matches?: Record<string, unknown> } | null | undefined, name: unknown, listed: Listed): OutcomeOut;
@@ -46,10 +44,11 @@ declare global {
       clean(out: unknown): OutcomeOut;
     };
     photo(url: unknown): string | null;
-    OVER: number;
+    words(text: unknown, max: number): string | null;
+    regOf(id: unknown): number | null;
+    ACADEMY_OWN: readonly string[];
     overAt(event: { ends?: number | null; start?: string | null } | null | undefined): number | null;
     overSql(alias: string): string;
-    wonNothing(listed: Listed): boolean;
     wonNothingSql(alias: string): string;
     presentSql(alias: string): string;
     missedSql(alias: string): string;

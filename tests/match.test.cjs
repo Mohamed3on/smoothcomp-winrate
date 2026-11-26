@@ -1,10 +1,11 @@
-// Whether two records are the same match (rules.js matchKeys, sameMatch, matchFinder): the profile's match lists, the
+// Whether two records are the same match (rules.js matchFinder): the profile's match lists, the
 // results read, the schedule's matches, the cards read and the matches Mat Stats keeps each name a match differently.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('../rules.js');
 
-const { sameMatch, matchFinder } = globalThis.SCWRRules;
+const { matchFinder } = globalThis.SCWRRules;
+const sameMatch = (a, b) => matchFinder([b])(a) === b;
 const at = (stage, sides, more = {}) => ({ division: 'Adult / Blue / -76 kg', stage, sides, ...more });
 
 test('a match is found by its id, else its division (or bracket), round and either side, spelt either way', () => {
