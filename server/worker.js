@@ -6,7 +6,7 @@ import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
 import { PLACED, locate } from './crawl.js';
 
-const { BELTS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql, photo, Outcome } = globalThis.SCWRRules;
+const { BELTS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql, photo, Outcome, matchFinder } = globalThis.SCWRRules;
 
 // An event their profile lists with no match, win or medal they didn't show at (rules.js Outcome marks it too): marked
 // `absent` here as well, whatever install sent it. ?1 site, ?2 the athletes (JSON).
@@ -447,6 +447,8 @@ async function scores(env, { site, event, matches }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(String(event ?? '')) || !list.length) return json({ error: 'Bad scores' }, 400);
   const { results } = await env.DB.prepare('SELECT user, division, bouts FROM entries WHERE site = ?1 AND event = ?2 AND user IN (SELECT value FROM json_each(?3)) AND bouts IS NOT NULL')
     .bind(site, String(event), JSON.stringify([...new Set(list.flatMap((m) => m.users))])).all();
+  // Each stored match takes its card as Match identity finds it (rules.js matchFinder).
+  const find = matchFinder(list.map((x) => ({ id: x.match, division: x.group, stage: x.stage, sides: x.users, x })));
   const changed = [];
   for (const row of results) {
     let bouts;
@@ -454,9 +456,7 @@ async function scores(env, { site, event, matches }) {
     let filled = false;
     for (const b of bouts) {
       if (b.us || b.type === 'walkover') continue;
-      // A match kept without its round (an older results read) takes the one match between the two there.
-      const fits = list.filter((x) => x.users.includes(row.user) && (!b.user || x.users.includes(b.user)) && (!x.group || x.group === normalize(row.division)));
-      const m = fits.find((x) => x.stage === b.stage) ?? (!b.stage && b.user && fits.length === 1 ? fits[0] : undefined);
+      const m = find({ id: b.match, division: row.division, stage: b.stage, sides: [row.user, b.user] })?.x;
       if (!m) continue;
       const i = m.users.indexOf(row.user);
       Object.assign(b, { us: m.s[i], them: m.s[1 - i] }, m.clock ? { clock: m.clock } : {});

@@ -13,7 +13,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, matchFinder, normalize, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -77,11 +77,14 @@ const meetingsOfRow = (r: Row): Meeting[] => {
   if (!r.outcome) return boutsOf(r);
   const bouts = boutsOf(r);
   const ids = new Map(bouts.map((m) => [normalize(m.opponent), m.user]));
-  // Each takes from the read match against the same opponent, with the same result, in the same round where both name it,
-  // its score, and the finish and round a profile list from before v 2 leaves out.
+  // Each takes from the read match that is the same one (rules.js matchFinder: the same round and opponent, or where either
+  // names no round, the only one against them with that result) its score, and the finish and round a profile list from before v 2 leaves out.
+  const theirs = (m: Meeting) => ({ stage: m.stage, sides: [null, m.opponent], won: m.won });
+  const find = matchFinder(bouts.map((b) => ({ ...theirs(b), b })));
+  const taken = new Set<Meeting>();
   const out = meetingsOf(r.outcome).map((m) => {
-    const i = bouts.findIndex((b) => b.won === m.won && normalize(b.opponent) === normalize(m.opponent) && (!m.stage || !b.stage || b.stage === m.stage));
-    const b = i < 0 ? undefined : bouts.splice(i, 1)[0];
+    const found = find(theirs(m))?.b;
+    const b = found && !taken.has(found) ? (taken.add(found), found) : undefined;
     return { ...m, site: r.site, user: m.user ?? ids.get(normalize(m.opponent)), type: m.type ?? b?.type, how: m.how ?? b?.how, stage: m.stage ?? b?.stage, us: b?.us, them: b?.them, clock: b?.clock };
   });
   // The match list isn't in the order fought (a Final can come before the pool's last match): each

@@ -10,6 +10,8 @@ interface Read { matches: Match[]; over: boolean; ends: number | null; users: Re
 // An event of an athlete as rules.js Outcome makes and cleans it (site lib/api.ts Outcome is the kept shape).
 interface OutcomeOut { v?: number; types: Types; losses: Record<string, unknown>[]; faced: Record<string, unknown>[]; extra?: boolean; absent?: boolean }
 type Listed = { wins?: number | null; medals?: Record<string, number | null | undefined> | (number | null)[] | null } | null | undefined;
+// One record of a match, as Match identity compares them: each part where the record knows it.
+interface MatchRecord { id?: number | string | null; event?: number | string | null; division?: string | null; bracket?: number | null; stage?: string | null; sides?: unknown[]; won?: boolean | null }
 interface Seed { belt?: string | null; won?: number | null; lost?: number | null; wins?: number | null; events?: number | null; gold?: number | null; submission?: number | null; points?: number | null; born?: number | null }
 declare global {
   var SCWRRules: {
@@ -35,6 +37,9 @@ declare global {
     ): EventRecord[];
     noShow(entry: { wins?: Record<string, number> | null; losses?: Record<string, number> | null }): boolean;
     playedSql(alias: string): string;
+    matchKeys(match: MatchRecord): string[];
+    sameMatch(a: MatchRecord, b: MatchRecord): boolean;
+    matchFinder<M extends MatchRecord>(list: M[]): (match: MatchRecord) => M | undefined;
     Outcome: {
       fromMatchList(event: { matches?: Record<string, unknown> } | null | undefined, name: unknown, listed: Listed): OutcomeOut;
       fromBouts(divisions: { division: string; bouts?: Record<string, unknown>[] | null }[], listed: Listed): OutcomeOut;

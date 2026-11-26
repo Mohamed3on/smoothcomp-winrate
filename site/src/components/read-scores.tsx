@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Bout, Entry } from '@/lib/api';
-import { finishOf, normalize, SCORELESS } from '@/lib/rules';
+import { finishOf, matchFinder, SCORELESS } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { HOMES, read, reload, schedule, type Listed } from '@/lib/smoothcomp';
 
@@ -39,22 +39,16 @@ async function readEvent({ site, event, entries }: Target, tick: (n: number) => 
     if (!r.ok) throw new Error(String(r.status));
   }
 }
-// The finished matches the schedule lists that are still without a score: each found by its division (or bracket),
-// round and opponent (one kept without its round, by both who fought it), so a card already read is never read again;
-// none asked for, every division.
+// The finished matches the schedule lists that are still without a score, each found as Match identity finds it (rules.js
+// matchFinder: by its division or bracket, round and either side, one kept without its round by both who fought it), so a
+// card already read is never read again; none asked for, every division.
 async function listed(base: string, entries?: Target['entries']): Promise<Listed[]> {
-  const lists: Listed[] = (await schedule(base)).lists.flat();
-  // A pool's numbered match is the only one of its number there; a knockout round's is told apart by the opponent,
-  // spelt as either list spells them (a profile's "Hüseyin" is a registration's "Huseyin").
-  const fold = (name: unknown) => normalize(name).normalize('NFD').replace(/\p{M}/gu, '');
-  const key = (at: unknown, stage: string, name: unknown) => `${at}|${stage}|${/^Match \d+\//.test(stage) ? '' : fold(name)}`;
-  // The opponent alone would name every match they fought there.
-  const pair = (at: unknown, a: unknown, b: unknown) => `${at}||${[fold(a), fold(b)].sort().join('+')}`;
-  const want = new Set(entries?.flatMap((e) => (e.bouts ?? []).filter((b) => needsScore(b) && (b.stage || e.name))
-    .flatMap((b) => [normalize(e.division), ...(b.bracket ? [b.bracket] : [])].map((at) => (b.stage ? key(at, b.stage, b.opponent) : pair(at, e.name, b.opponent))))));
-  const asked = (m: Listed) => m.seats?.some((s) => [normalize(m.group), m.bracket_id].some((at) => want.has(key(at, m.name!, s.name)) || want.has(pair(at, s.name, m.seats!.find((o) => o !== s)?.name))));
   const seen = new Set<number>();
-  return lists.filter((m) => m?.state === 'finished' && m.name && !SCORELESS.includes(finishOf(m.wonBy)) && !seen.has(m.id) && seen.add(m.id) && (!entries || asked(m)));
+  const open = (await schedule(base)).lists.flat().filter((m) => m?.state === 'finished' && m.name && !SCORELESS.includes(finishOf(m.wonBy)) && !seen.has(m.id) && seen.add(m.id));
+  if (!entries) return open;
+  const find = matchFinder(open.map((m) => ({ division: m.group, bracket: m.bracket_id, stage: m.name, sides: (m.seats ?? []).map((s) => s.name), m })));
+  return [...new Set(entries.flatMap((e) => (e.bouts ?? []).filter(needsScore)
+    .map((b) => find({ division: e.division, bracket: b.bracket, stage: b.stage, sides: [e.name, b.opponent] })?.m).filter((m) => m !== undefined)))];
 }
 
 // Reads the events' scores on a click, then the page again, past the browser's copy.

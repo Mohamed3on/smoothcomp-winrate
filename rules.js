@@ -191,6 +191,44 @@ globalThis.SCWRRules = (() => {
     },
   };
 
+  // Match identity: whether two records are the same match. A match is { id, event, division, bracket, stage, sides, won },
+  // each part where the record knows it: `sides` the two who fought it (names, spelt either way, or users; null for the
+  // record's own athlete where it is theirs alone), `won` whether the first side won. Its keys, strongest first: its id; its
+  // division (or bracket) and round with either side (an athlete fights one match a round there), a round robin's numbered
+  // match by its number alone; the two alone there (with who won, where known); then the same where one names no division.
+  // Two records that both give an id, event, bracket (else division), round or result differ where it does.
+  const fold = (name) => normalize(name).normalize('NFD').replace(/\p{M}/gu, '');
+  const POOL = /^Match \d+\//;
+  function matchKeys({ id, event, division, bracket, stage, sides = [], won } = {}) {
+    const pre = event != null ? `${event}|` : '';
+    const named = sides.filter((x) => x != null && x !== '').map(fold);
+    const pair = sides.length === 2 ? sides.map(fold).sort().join('+') + (won == null ? '' : won ? '|w' : '|l') : null;
+    const ats = [division ? fold(division) : null, bracket ? `#${bracket}` : null].filter(Boolean);
+    const keys = id ? [`id:${id}`] : [];
+    for (const where of [ats, ['*']]) {
+      for (const a of where) if (stage) keys.push(...(POOL.test(stage) ? [`${pre}${a}|${stage}`] : named.map((n) => `${pre}${a}|${stage}|${n}`)));
+      for (const a of where) if (pair) keys.push(`${pre}${a}||${pair}`);
+    }
+    return keys;
+  }
+  const differ = (a, b, k, same = (x, y) => x === y) => a[k] != null && a[k] !== '' && b[k] != null && b[k] !== '' && !same(a[k], b[k]);
+  // Where both give a bracket, it decides over the division's name (a results page may name a division as the schedule doesn't).
+  const apart = (a, b) => ['event', 'bracket', 'stage', 'won'].some((k) => differ(a, b, k, (x, y) => String(x) === String(y)))
+    || (!(a.bracket && b.bracket) && differ(a, b, 'division', (x, y) => fold(x) === fold(y)));
+  const sameMatch = (a, b) => (a.id && b.id ? Number(a.id) === Number(b.id) : !apart(a, b) && matchKeys(a).some((k) => matchKeys(b).includes(k)));
+  // Finds a record's match among `list` by its keys, strongest first: a key naming more than one match there names none.
+  function matchFinder(list) {
+    const by = new Map();
+    for (const m of list) for (const k of new Set(matchKeys(m))) by.set(k, [...(by.get(k) ?? []), m]);
+    return (m) => {
+      for (const k of matchKeys(m)) {
+        const found = (by.get(k) ?? []).filter((x) => (k.startsWith('id:') ? true : !(m.id && x.id) && !apart(m, x)));
+        if (found.length === 1) return found[0];
+      }
+      return undefined;
+    };
+  }
+
   // Every event's [won, lost] by finish, summed.
   const totals = (records) => records.reduce((into, r) => {
     for (const [t, [w, l]] of Object.entries(r.types)) add(into, t, w, l);
@@ -363,16 +401,13 @@ globalThis.SCWRRules = (() => {
   // Sides Mat Stats already knows (`known`, as stats.js known gives an event's): a match it keeps names both sides, who
   // won it and whom they beat, with the score where one was read, so no card is read for them. `known` is { matches:
   // [[match, user, won, opponent, us, them, clock, division, stage, opponent's name]], people: { user: { name, club, ... } } }.
-  // A match is found by its id, else (a results page keeps none) by its division, round and the two who fought it, spelt
-  // as either list spells them; a round robin's numbered match is the only one of its number there.
-  const fold = (name) => normalize(name).normalize('NFD').replace(/\p{M}/gu, '');
-  const matchKey = (division, stage, a, b) => `${normalize(division)}|${stage}|${/^Match \d+\//.test(stage ?? '') ? '' : [fold(a), fold(b)].sort().join('+')}`;
+  // A match is found as Match identity finds it (matchFinder): by its id, else (a results page keeps none) its division, round
+  // and the two who fought it.
   function knownSides(data, { matches = [], people = {} } = {}) {
-    const by = new Map();
-    for (const k of matches) if (k[2] && k[3]) by.set(k[0] ?? matchKey(k[7], k[8], people[k[1]]?.name, k[9]), k);
+    const find = matchFinder(matches.filter((k) => k[2] && k[3]).map((k) => ({ id: k[0], division: k[7], stage: k[8], sides: [people[k[1]]?.name, k[9]], k })));
     data.cards ??= {};
     for (const m of data.matches) {
-      const k = by.get(m[0]) ?? (m[4].length === 2 ? by.get(matchKey(m[1], m[2], m[4][0][2], m[4][1][2])) : undefined);
+      const k = find({ id: m[0], division: m[1], stage: m[2], sides: m[4].map((s) => s[2]) })?.k;
       const won = m[4].findIndex((s) => s[1]);
       if (!k || !m[3] || m[4].length !== 2 || won < 0) continue;
       const ids = won ? [k[3], k[1]] : [k[1], k[3]];
@@ -556,5 +591,5 @@ globalThis.SCWRRules = (() => {
     return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
   }
 
-  return { Outcome, photo, OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  return { matchKeys, sameMatch, matchFinder, Outcome, photo, OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

@@ -37,6 +37,13 @@ they didn't show (Attendance). Kept on the browser and in D1 `outcomes`, cleaned
 **Seat**: which registration in a match list is the athlete's: the one in the most of a division's
 matches, their name settling a tie. Owner: `rules.js` `Outcome.fromMatchList`.
 
+**Match identity**: whether two records are the same match (a profile's match list, the results read, the schedule, a
+card read, a match Mat Stats keeps). By its id, else its division (or bracket, which decides over the division's name),
+round and either side, names spelt either way ("Hüseyin" is "Huseyin"); a round robin's numbered match by its number;
+one kept without its round by the two who fought it, only where they met once there. Owner: `rules.js` (`matchKeys`,
+`sameMatch`, `matchFinder`; `tests/match.test.cjs`).
+_Avoid_: the opponent alone: it names every match they fought there.
+
 **Place**: where an athlete finished a division. Published results give it; until then the
 matches do, by the round each side went out in, a round robin by its record. Owner: `rules.js`
 `placeOf`, `poolPlaces`.

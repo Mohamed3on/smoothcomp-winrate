@@ -2,7 +2,7 @@
 // what was kept (an event's Outcome is rules.js'). No DOM, no
 // network, no storage, so tests/profile.test.cjs holds them to the shapes Smoothcomp sends.
 const SCWRProfile = (() => {
-  const { BELTS, beltOf, eventRecords, totals, beltSplit, rivalsOf, usualDivision, normalize, SCORELESS, Outcome } = SCWRRules;
+  const { BELTS, beltOf, eventRecords, totals, beltSplit, rivalsOf, usualDivision, SCORELESS, Outcome, matchFinder } = SCWRRules;
   const WEEK = 7 * 864e5;
   const time = (e) => Date.parse(e.event_start ?? e.start_date);
 
@@ -76,17 +76,15 @@ const SCWRProfile = (() => {
 
   // Each of their matches with a score to read (not a walkover or a stoppage, rules.js SCORELESS) as
   // { id, event, type, division, stage, score }, score [theirs, the opponent's] points or null: kept on this
-  // browser by match id (`kept`), else one Mat Stats holds (`stored`, worker.js scored) by the match id, else
-  // by the same event, division, result, opponent and round, names spelt either way ("Hüseyin", "Huseyin").
+  // browser by match id (`kept`), else one Mat Stats holds (`stored`, worker.js scored) as Match identity finds it (rules.js
+  // matchFinder): by the match id, else the same event, division, round and opponent, with the same result.
   function scoresOf(events, kept, stored) {
-    const fold = (s) => normalize(s).normalize('NFD').replace(/\p{M}/gu, '');
-    const meeting = (event, division, won, opponent, stage) => `${event}|${fold(division)}|${!!won}|${fold(opponent)}|${stage ?? ''}`;
-    const byId = new Map(stored.filter(m => m.match).map(m => [Number(m.match), m]));
-    const byMeeting = new Map(stored.map(m => [meeting(m.event, m.division, m.won, m.opponent, m.stage), m]));
+    const theirs = (event, m) => ({ id: m.match, event: Number(event), division: m.division, stage: m.stage, sides: [null, m.opponent], won: !!m.won });
+    const find = matchFinder(stored.map(m => ({ ...theirs(m.event, m), m })));
     return events.flatMap(e => [...e.out.faced.filter(f => f.won).map(f => ({ ...f, opponent: f.name })), ...e.out.losses.map(l => ({ ...l, won: false }))]
       .filter(m => m.type && !SCORELESS.includes(m.type))
       .map((m) => {
-        const s = (m.match && byId.get(Number(m.match))) || byMeeting.get(meeting(e.id, m.division, m.won, m.opponent, m.stage));
+        const s = find(theirs(e.id, m))?.m;
         return { id: m.match ?? null, event: e.id, type: m.type, division: m.division ?? null, stage: m.stage ?? null,
           score: (m.match && kept[m.match]) || (s ? [s.us[0], s.them[0]] : null) };
       }));
