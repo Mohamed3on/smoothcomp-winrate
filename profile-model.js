@@ -10,12 +10,12 @@ const SCWRProfile = (() => {
 
   // The athlete's matches at one event, as [won, lost] by finish, and each loss with who beat
   // them, in what division and how; each win names the same, for a head-to-head. Walkovers left
-  // out. v 2 marks the wins' details. Each division registers them afresh: their seat is the
+  // out. v 3 marks the wins' details and every match's id. Each division registers them afresh: their seat is the
   // registration in the most of its matches (a round robin lists others' too), their name (as
   // the profile gives it) settling a tie.
   function outcomes(event, name) {
     name = String(name ?? '').trim().toLowerCase();
-    const out = { v: 2, types: {}, losses: [], faced: [] };
+    const out = { v: 3, types: {}, losses: [], faced: [] };
     for (const group of Object.values(event.matches ?? {})) {
       const matches = group.matches ?? [];
       const seen = new Map();
@@ -70,7 +70,7 @@ const SCWRProfile = (() => {
     }
     return { types, losses: (Array.isArray(out?.losses) ? out.losses : []).filter(l => finished(l?.type)).map(l => ({ ...l, type: finished(l.type) })),
       faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string').map(m => (m.type ? { ...m, type: finished(m.type) ?? undefined } : m)),
-      ...(out?.v === 2 ? { v: 2 } : {}), ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true ? { absent: true } : {}) };
+      ...([2, 3].includes(out?.v) ? { v: out.v } : {}), ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true ? { absent: true } : {}) };
   }
 
   // Everything shown, from the kept events, by the rules the stats site counts by too; newest
@@ -93,7 +93,7 @@ const SCWRProfile = (() => {
   // (`extra`), dated by the belt list (`dated`) where it names it. Settled a week after it started.
   function entry(listed, event, { name, dated, now }) {
     const start = listed ? listed.start_date : dated.get(event.id) ?? null;
-    const out = !event ? { v: 2, types: {}, losses: [], faced: [] } : listed ? outcomes(event, name) : { ...outcomes(event, name), extra: true };
+    const out = !event ? { v: 3, types: {}, losses: [], faced: [] } : listed ? outcomes(event, name) : { ...outcomes(event, name), extra: true };
     // Smoothcomp lists the events registered for too: one with no match, win or medal they didn't show at (`absent`), and isn't counted.
     if (listed && !Object.keys(out.types).length && !(listed.wins > 0) && !['gold', 'silver', 'bronze'].some(m => listed.medals?.[m] > 0)) out.absent = true;
     return { id: listed?.id ?? event.id, start_date: start, title: event?.title ?? listed?.title ?? null, out, settled: (!listed && !start) || now - Date.parse(start) > WEEK };

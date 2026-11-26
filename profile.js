@@ -80,17 +80,17 @@
     let kept = null;
     kept = await SCWRSite.store.load(key);
     const local = (kept?.events ?? []).map(e => ({ ...e, out: clean(e.out) }));
-    // A copy from before wins kept their details (v 2) isn't kept: the count then falls short of Smoothcomp's,
-    // so the whole history is read again once, and every event comes back with its wins' finish and round.
-    const known = new Map(local.filter(e => e.settled && e.out.v === 2).map(e => [e.id, e]));
+    // A copy from before every match kept its id (v 3) isn't kept: the count then falls short of Smoothcomp's,
+    // so the whole history is read again once, and every event comes back with its match ids, whose cards give the points.
+    const known = new Map(local.filter(e => e.settled && e.out.v === 3).map(e => [e.id, e]));
     // Nothing kept here, or the whole history read again: what any install already read
     // for this athlete.
     const site = ajp ? 'ajptour.com' : 'smoothcomp.com';
     const user = key.slice(STORE.length);
     const shared = new Set();
-    // Copies from before wins kept their details are read again, and replace the server's.
+    // Copies from before every match kept its id are read again, and replace the server's.
     const theirs = known.size && !whole ? [] : (await ask('/outcomes', { site, user }).catch(() => ({}))).events ?? [];
-    if (theirs.every(e => e?.out?.v === 2)) for (const e of theirs) {
+    if (theirs.every(e => e?.out?.v === 3)) for (const e of theirs) {
       if (!Number.isSafeInteger(e?.id) || !(Date.parse(e.start_date) || e.out?.extra === true)) continue;
       // An event under a week old is read again here, as its results can still change.
       if (Date.now() - Date.parse(e.start_date) <= WEEK) continue;

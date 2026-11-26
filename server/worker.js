@@ -339,12 +339,12 @@ export function cleanOut(out) {
     type: finished(l.type), how: text(l.how, 60) ?? '', opponent: text(l.opponent, 120), club: text(l.club, 160), division: text(l.division, 200),
     reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: text(l.stage, 60), match: regOf(l.match),
   }));
-  // A win names its finish, round and division too (from v 2), for a head-to-head.
+  // A win names its finish, round and division too (from v 2), for a head-to-head; v 3 keeps every match's id.
   const faced = (Array.isArray(out?.faced) ? out.faced : []).slice(0, 120).filter(m => text(m?.name, 120)).map(m => ({
     name: text(m.name, 120), club: text(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
     ...(m.won === true && finished(m.type) ? { type: finished(m.type), how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60), match: regOf(m.match) } : {}),
   }));
-  return { ...(out?.v === 2 ? { v: 2 } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true && !Object.keys(types).length ? { absent: true } : {}) };
+  return { ...([2, 3].includes(out?.v) ? { v: out.v } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true && !Object.keys(types).length ? { absent: true } : {}) };
 }
 // An athlete's stored matches whose score was read, for the points their profile shows (profile.js readPoints): each
 // with its event, division, result, opponent, round and match id where kept; then the cards kept for the match ids
@@ -385,12 +385,12 @@ async function crawled(env, { site, user, events }) {
   for (const [event, rows] of by) {
     const fought = rows.filter(r => r.division);
     if ((!fought.length || fought.some(r => !r.bouts)) && (rows[0].state !== 'done' || rows[0].wins)) continue;
-    const out = { v: 2, types: {}, losses: [], faced: [], ...(!fought.length && { absent: true }) };
+    const out = { v: 3, types: {}, losses: [], faced: [], ...(!fought.length && { absent: true }) };
     for (const r of fought) for (const b of JSON.parse(r.bouts ?? '[]')) {
       const type = finishOf(b.type);
       if (type === 'walkover') continue;
       (out.types[type] ??= [0, 0])[b.won ? 0 : 1]++;
-      const at = { how: b.how ?? LABELS[type], division: r.division, stage: b.stage };
+      const at = { how: b.how ?? LABELS[type], division: r.division, stage: b.stage, bracket: b.bracket, match: b.match };
       if (b.opponent) out.faced.push({ name: b.opponent, club: b.club, won: b.won, ...(b.won ? { type, ...at } : {}) });
       if (!b.won) out.losses.push({ type, opponent: b.opponent, club: b.club, ...at });
     }
@@ -408,14 +408,14 @@ async function keepOutcomes(env, { site, user, events }) {
     .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(cleanOut(e.out))]);
   // A copy taken in an event's first week, while its results can still change, gives way to any later
   // one. After that the event is settled, so the first copy of it stands and later ones cannot replace
-  // it, except a copy from before v 2, which lacks the wins' details: a v 2 upload with the same record
-  // and losses can add them, and change nothing else.
+  // it, except a copy from before v 3, which lacks the wins' details (v 2) or the match ids: a v 3 upload
+  // with the same record and number of losses can add them.
   if (rows.length) await env.DB.prepare(`INSERT INTO outcomes (site, user, event, start, title, out, at)
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, value ->> 3, ?3 FROM json_each(?4) WHERE true
     ON CONFLICT (site, user, event) DO UPDATE SET start = excluded.start, title = excluded.title, out = excluded.out, at = excluded.at
     WHERE outcomes.at < unixepoch(outcomes.start) * 1000 + ?5
-      OR (outcomes.out ->> '$.v' IS NOT 2 AND excluded.out ->> '$.v' = 2
-        AND excluded.out ->> '$.types' = outcomes.out ->> '$.types' AND excluded.out ->> '$.losses' = outcomes.out ->> '$.losses')`).bind(site, user, Date.now(), JSON.stringify(rows), SETTLED).run();
+      OR (outcomes.out ->> '$.v' IS NOT 3 AND excluded.out ->> '$.v' = 3
+        AND excluded.out ->> '$.types' = outcomes.out ->> '$.types' AND json_array_length(excluded.out, '$.losses') = json_array_length(outcomes.out, '$.losses'))`).bind(site, user, Date.now(), JSON.stringify(rows), SETTLED).run();
   if (rows.length) await retally(env, site, [user]);
   return json({ kept: rows.length });
 }
