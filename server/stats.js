@@ -129,6 +129,20 @@ const higher = (a, b) => `(SELECT value FROM json_each(${NAMED}) WHERE value = l
 const BOARD_COLS = `site, user, source, at, types, name, club, club_id, country, country_name, photo, born, hidden, belt, last, events, gold, silver, bronze,
     ${cols('w')}, ${cols('rw')}, ${cols('rl')}, ${cols('sl')}, sex, age, weight`;
 const BOARD_SET = BOARD_COLS.split(',').map((c) => c.trim()).filter((c) => c !== 'site' && c !== 'user');
+// D1 bills a written row for every index holding a column an UPDATE sets, even to the value it had (measured 2026-11-26).
+// So board's rows, new or changed, are written in two upserts: one setting everything where the academy or bracket changed
+// (board_club and board_bracket's columns, which seldom do), then one setting the rest where only that changed. A recount
+// then rewrites two indexes (board_ranked, board_counted) instead of four.
+const KEYED = ['club_id', 'belt', 'sex', 'age', 'weight'];
+const REST = BOARD_SET.filter((c) => !KEYED.includes(c));
+const upserts = (rows) => [
+  `${rows}
+  ON CONFLICT (site, user) DO UPDATE SET ${BOARD_SET.map((c) => `${c} = excluded.${c}`).join(', ')}, dup = 0
+  WHERE (${KEYED.map((c) => `board.${c}`).join(', ')}) IS NOT (${KEYED.map((c) => `excluded.${c}`).join(', ')})`,
+  `${rows}
+  ON CONFLICT (site, user) DO UPDATE SET ${REST.map((c) => `${c} = excluded.${c}`).join(', ')}, dup = 0
+  WHERE (${REST.map((c) => `board.${c}`).join(', ')}, board.dup) IS NOT (${REST.map((c) => `excluded.${c}`).join(', ')}, 0)`,
+];
 
 // Every athlete with something to rank, one row each, rebuilt with their tally. A career is
 // Smoothcomp's, the latest read however old; with none readable (a profile not public, or not read yet), an
@@ -140,7 +154,7 @@ const BOARD_SET = BOARD_COLS.split(',').map((c) => c.trim()).filter((c) => c !==
 export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
   AND NOT EXISTS (SELECT 1 FROM athletes c WHERE c.site = ?1 AND c.user = board.user AND c.kind = 'careers' AND c.at > ?3 AND c.entry ->> '$.wins' IS NOT NULL)
   AND NOT EXISTS (SELECT 1 FROM tallies t WHERE t.site = ?1 AND t.user = board.user AND t.events > 0)`,
-`INSERT INTO board (${BOARD_COLS})
+...upserts(`INSERT INTO board (${BOARD_COLS})
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
     SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last, t.absent,
@@ -169,9 +183,7 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[1]', 0)`).join(', ')},
     bracket ->> 0, bracket ->> 1, bracket ->> 2
-  FROM b WHERE true
-  ON CONFLICT (site, user) DO UPDATE SET ${BOARD_SET.map((c) => `${c} = excluded.${c}`).join(', ')}, dup = 0
-  WHERE (${BOARD_SET.map((c) => `board.${c}`).join(', ')}, board.dup) IS NOT (${BOARD_SET.map((c) => `excluded.${c}`).join(', ')}, 0)`];
+  FROM b WHERE true`)];
 
 // One person's accounts are the ones with their name as written (case and runs of spaces aside), birth year and
 // country, on either site: AJP keeps its own accounts, and both sites hold duplicates. people_ident reads them.
@@ -217,7 +229,9 @@ export const MERGE = [`DELETE FROM board_own WHERE site = ?1 AND user IN (SELECT
 // Each academy's latest name (as its athletes' latest events give it), its podiums and events
 // entered at the events read, and where it competes most: the city of the most events its athletes
 // entered (ties to the latest), at the mean of those events' coordinates. ?1 site, ?2 the academies (JSON).
-export const CLUBS = `INSERT OR REPLACE INTO clubs (site, club_id, club, podium_gold, podium_silver, podium_bronze, entered, lat, lng, city, country)
+// An upsert writing only the academies whose figures changed (a replace wrote each one twice over, changed or not).
+const CLUB_COLS = ['club', 'podium_gold', 'podium_silver', 'podium_bronze', 'entered', 'lat', 'lng', 'city', 'country'];
+export const CLUBS = `INSERT INTO clubs (site, club_id, club, podium_gold, podium_silver, podium_bronze, entered, lat, lng, city, country)
   WITH ids AS MATERIALIZED (SELECT DISTINCT value AS club_id FROM json_each(?2)),
   -- One pass over each academy's results, read through the academy index (CROSS JOIN keeps ids outer).
   podiums AS (SELECT e.club_id, sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, count(DISTINCT e.event) AS entered
@@ -229,7 +243,9 @@ export const CLUBS = `INSERT OR REPLACE INTO clubs (site, club_id, club, podium_
   SELECT ?1, ids.club_id,
     (SELECT club FROM people p WHERE p.site = ?1 AND p.club_id = ids.club_id AND p.club IS NOT NULL ORDER BY p.seen DESC LIMIT 1),
     podiums.gold, podiums.silver, podiums.bronze, podiums.entered, c.lat, c.lng, c.city, c.country
-  FROM ids LEFT JOIN podiums USING (club_id) LEFT JOIN cities c ON c.club_id = ids.club_id AND c.rank = 1`;
+  FROM ids LEFT JOIN podiums USING (club_id) LEFT JOIN cities c ON c.club_id = ids.club_id AND c.rank = 1 WHERE true
+  ON CONFLICT (site, club_id) DO UPDATE SET ${CLUB_COLS.map((c) => `${c} = excluded.${c}`).join(', ')}
+  WHERE (${CLUB_COLS.map((c) => `clubs.${c}`).join(', ')}) IS NOT (${CLUB_COLS.map((c) => `excluded.${c}`).join(', ')})`;
 
 // An event's athletes, divisions and academies, kept on it. ?1 site, ?2 event. The + keeps the
 // academy count on the event key, not the academy index, which reads every entry on the site.

@@ -16,7 +16,7 @@ export const ABSENT = `UPDATE outcomes SET out = json_set(out, '$.absent', json(
 
 // Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), each summed with
 // their person's other accounts (MERGE), a few hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
-async function retally(env, site, users) {
+export async function retally(env, site, users) {
   const all = [...new Set(users)].filter(validUser).slice(0, 5000);
   const chunks = [];
   for (let i = 0; i < all.length; i += 400) chunks.push(JSON.stringify(all.slice(i, i + 400)));
@@ -26,7 +26,7 @@ async function retally(env, site, users) {
     statements.push(env.DB.prepare(ABSENT).bind(site, some), env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some),
-      env.DB.prepare(BOARD[0]).bind(site, some, 0), env.DB.prepare(BOARD[1]).bind(site, some, 0, brackets[i]), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some)));
+      env.DB.prepare(BOARD[0]).bind(site, some, 0), ...BOARD.slice(1).map((sql) => env.DB.prepare(sql).bind(site, some, 0, brackets[i])), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some)));
   });
   if (statements.length) await env.DB.batch(statements);
 }
@@ -447,6 +447,8 @@ async function profile(env, body) {
 // round, by the only one the two fought there). Only rows that change are written. A card sent with its match id is kept
 // by it too (cards), whether or not the event's results were read; one sent by its id alone may name no round. A card
 // already kept stays as first read: a finished match's score doesn't change, and a later upload can't overwrite it.
+// The entries an UPDATE ... FROM json_each(?3) j names, [user, division, ...] at event ?2 of site ?1, found by their whole key.
+const BOUTS_KEY = '(entries.site, entries.event, entries.user, entries.division) IN (SELECT ?1, ?2, k.value ->> 0, k.value ->> 1 FROM json_each(?3) k)';
 async function scores(env, { site, event, matches }) {
   const time = (n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000);
   const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => (words(m?.stage, 60) || regOf(m?.match)) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
@@ -471,8 +473,10 @@ async function scores(env, { site, event, matches }) {
     }
     if (filled) changed.push([row.user, row.division, JSON.stringify(bouts)]);
   }
+  // Each row by the whole key (BOUTS_KEY): D1 keeps no table statistics, so matched on site and event alone it walked
+  // every entry of the event for each row sent (84k rows read a call, 241M a day).
   if (changed.length) await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 2 FROM json_each(?3) j
-    WHERE entries.site = ?1 AND entries.event = ?2 AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`).bind(site, String(event), JSON.stringify(changed)).run();
+    WHERE ${BOUTS_KEY} AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`).bind(site, String(event), JSON.stringify(changed)).run();
   const cards = list.filter((m) => regOf(m.match)).map((m) => [m.match, JSON.stringify(m.users), JSON.stringify(m.s), m.clock ? JSON.stringify(m.clock) : null]);
   if (cards.length) await env.DB.prepare(`INSERT INTO cards (site, match, users, s, clock, at) SELECT ?1, j.value ->> 0, j.value ->> 1, j.value ->> 2, j.value ->> 3, ?3 FROM json_each(?2) j WHERE true ON CONFLICT (site, match) DO NOTHING`)
     .bind(site, JSON.stringify(cards), Date.now()).run();
@@ -606,6 +610,6 @@ export async function addBouts(env, site, event, athletes) {
     .flatMap(([user, a]) => (a.entries ?? []).map((e) => [user, e.division, bouts(e.bouts)])).filter(([, division, list]) => division && list);
   if (!rows.length) return;
   await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 2 FROM json_each(?3) j
-    WHERE entries.site = ?1 AND entries.event = ?2 AND entries.fought = 1 AND (entries.bouts IS NULL OR instr(entries.bouts, '"us":') = 0) AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`)
+    WHERE ${BOUTS_KEY} AND entries.fought = 1 AND (entries.bouts IS NULL OR instr(entries.bouts, '"us":') = 0) AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1 AND entries.bouts IS NOT j.value ->> 2`)
     .bind(site, event, JSON.stringify(rows)).run();
 }
