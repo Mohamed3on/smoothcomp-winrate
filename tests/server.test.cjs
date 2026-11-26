@@ -39,7 +39,7 @@ function d1() {
 const athletes = {
   11: { name: '  Kim Lee ', club: 'Alpha BJJ', clubId: '501', country: 'NL', belt: 'Adult / Blue', age: 30, photo: 'https://evil.example/x.png', hidden: false,
     entries: [{ division: 'Adult / Blue / -76 kg', place: 1, wins: { submission: 2, forfeit: 1, 'submission_armbar': 1 }, losses: {},
-      bouts: [{ won: true, type: 'submission_armbar', opponent: 'Bo Sun', user: '12', stage: 'Final' }] }] },
+      bouts: [{ won: true, type: 'submission_armbar', opponent: 'Bo Sun', user: '12', stage: 'Final' }, { won: true, type: 'tko', opponent: 'Cy Dee', user: null, stage: 'Semifinals' }] }] },
   12: { name: 'Bo Sun', club: 'Beta', clubId: '502', belt: 'Purple/Brown', entries: [{ division: 'Adult / Blue / -76 kg', place: 2, wins: { points: 1 }, losses: { submission: 2 } }] },
   x: { name: 'Not a user' },
 };
@@ -75,7 +75,7 @@ test("a results page's upload reads back on the stats site", async () => {
   const event = await (await API.event(env, new URLSearchParams('site=smoothcomp.com&id=900'))).json();
   assert.equal(event.event.title, 'Berlin Open');
   assert.deepEqual(event.entries.map((e) => [e.user, e.place, e.wins]).sort(), [['11', 1, { submission: 3, walkover: 1 }], ['12', 2, { points: 1 }]]);
-  // Each result names its matches with no score read, for Read scores; one with none names none.
+  // Each result names its matches with no score read, for Read scores, bar a stoppage's; one with none names none.
   assert.deepEqual(event.entries.map((e) => [e.user, e.open]).sort(), [['11', [{ match: null, stage: 'Final', bracket: null, opponent: 'Bo Sun' }]], ['12', undefined]]);
   // An academy's page opens one event at a time, reading only its own athletes there.
   const club = await (await API.event(env, new URLSearchParams('site=smoothcomp.com&id=900&club=502'))).json();

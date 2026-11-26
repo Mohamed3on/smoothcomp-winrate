@@ -29,6 +29,8 @@ globalThis.SCWRRules = (() => {
     const w = String(code ?? '').toLowerCase();
     return MATCHERS.find(([, res]) => res.some((re) => re.test(w)))?.[0] ?? 'other';
   };
+  // The finishes whose score is never read: a walkover has none, and a stoppage ends a match its points don't settle.
+  const SCORELESS = ['walkover', 'stoppage'];
   // The same rule as a SQL expression over a column of codes.
   const finishSql = (column) => `CASE ${RULES.map(([finish, patterns]) => `WHEN ${patterns.map((p) => `${column} LIKE '${p}'`).join(' OR ')} THEN '${finish}'`).join(' ')} ELSE 'other' END`;
   // The detail a code gives: "submission_armbar" is "Submission (armbar)"; none for a bare one.
@@ -261,5 +263,5 @@ globalThis.SCWRRules = (() => {
     return (k[1] >= 0 || k[3] >= 0) && seeds.every((s, j) => j === i || seedKey(s).slice(0, 4).some((n, m) => n !== k[m]));
   };
 
-  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces };
+  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces };
 })();

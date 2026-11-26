@@ -14,6 +14,7 @@ declare global {
     LABELS: Readonly<Record<string, string>>;
     finishOf(code: unknown): string;
     finishSql(column: string): string;
+    SCORELESS: string[];
     detailOf(code: unknown): string | null;
     howOf(code: unknown): string;
     BELTS: readonly string[];

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { get, type Entry } from '@/lib/api';
-import { normalize } from '@/lib/rules';
+import { get, type Bout, type Entry } from '@/lib/api';
+import { finishOf, normalize, SCORELESS } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 
 const HOMES: Record<string, string> = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
@@ -26,15 +26,17 @@ const seconds = (t?: string) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t!.split(':
 interface Side { id?: number; score?: number; advantage?: number; penalty?: number }
 interface Card { left?: Side; right?: Side; matchInfo?: { time?: string; timeRemaining?: number } }
 interface Listed { id: number; name?: string; group?: string; state?: string; wonBy?: string; bracket_id?: number; seats?: { name?: string }[] }
-// An event to read: its divisions with a match still unscored, or (none named) every division.
-export interface Target { site: string; event: string; entries?: Entry[] }
+// A match whose score is still to read: none read yet, and not a walkover or a stoppage (rules.js SCORELESS).
+export const needsScore = (b: Bout) => !b.us && !SCORELESS.includes(finishOf(b.type));
+// An event to read: its results with a match still unscored (each with the athlete's name, where known), or (none named) every division.
+export interface Target { site: string; event: string; entries?: (Entry & { name?: string | null })[] }
 
 // An event's scores, read by this browser straight from the site (its JSON answers any page, no sign-in): each
-// finished match's card (a walkover has no score), by the match ids stored with the matches, else the schedule's.
+// finished match's card (walkovers and stoppages left out), by the match ids stored with the matches, else the schedule's.
 // What it reads goes to Mat Stats (worker.js scores), which fills the stored matches that have none, so everyone sees them.
 async function readEvent({ site, event, entries }: Target, tick: (n: number) => void) {
   const home = HOMES[site], base = `${home}/en/event/${event}`;
-  const open = entries?.flatMap((e) => (e.bouts ?? []).filter((b) => !b.us && b.type !== 'walkover').map((b) => ({ id: b.match!, name: b.stage ?? undefined, group: e.division })));
+  const open = entries?.flatMap((e) => (e.bouts ?? []).filter(needsScore).map((b) => ({ id: b.match!, name: b.stage ?? undefined, group: e.division })));
   const ours = open?.length && open.every((m) => m.id && m.name) ? [...new Map(open.map((m) => [m.id, m])).values()] : await listed(base, entries);
   tick(ours.length);
   const trio = (p: Side) => [p.score, p.advantage, p.penalty].map((n) => (Number.isSafeInteger(n) ? n! : 0));
@@ -52,20 +54,24 @@ async function readEvent({ site, event, entries }: Target, tick: (n: number) => 
   }
 }
 // The finished matches the schedule lists that are still without a score: each found by its division (or bracket),
-// round (where it was kept) and opponent, so a card already read is never read again; none asked for, every division.
-async function listed(base: string, entries?: Entry[]): Promise<Listed[]> {
+// round and opponent (one kept without its round, by both who fought it), so a card already read is never read again;
+// none asked for, every division.
+async function listed(base: string, entries?: Target['entries']): Promise<Listed[]> {
   // An organiser's event redirects to its own subdomain: the rest go there, not through the redirect again.
   const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`, (to) => { base = to.slice(0, to.indexOf('/schedule/')); });
   const mats: { id: number }[] = (await all(days, (d) => read(`${base}/schedule/new/mats.json/${d.id}`))).flat();
   const lists: Listed[] = (await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`))).flat();
   // A pool's numbered match is the only one of its number there; a knockout round's is told apart by the opponent,
   // spelt as either list spells them (a profile's "Hüseyin" is a registration's "Huseyin").
-  const key = (at: unknown, stage: string, name: unknown) => `${at}|${stage}|${/^Match \d+\//.test(stage) ? '' : normalize(name).normalize('NFD').replace(/\p{M}/gu, '')}`;
-  const want = new Set(entries?.flatMap((e) => (e.bouts ?? []).filter((b) => !b.us && b.type !== 'walkover')
-    .flatMap((b) => [normalize(e.division), ...(b.bracket ? [b.bracket] : [])].map((at) => key(at, b.stage ?? '', b.opponent)))));
-  const asked = (m: Listed) => m.seats?.some((s) => [normalize(m.group), m.bracket_id].some((at) => want.has(key(at, m.name!, s.name)) || want.has(key(at, '', s.name))));
+  const fold = (name: unknown) => normalize(name).normalize('NFD').replace(/\p{M}/gu, '');
+  const key = (at: unknown, stage: string, name: unknown) => `${at}|${stage}|${/^Match \d+\//.test(stage) ? '' : fold(name)}`;
+  // The opponent alone would name every match they fought there.
+  const pair = (at: unknown, a: unknown, b: unknown) => `${at}||${[fold(a), fold(b)].sort().join('+')}`;
+  const want = new Set(entries?.flatMap((e) => (e.bouts ?? []).filter((b) => needsScore(b) && (b.stage || e.name))
+    .flatMap((b) => [normalize(e.division), ...(b.bracket ? [b.bracket] : [])].map((at) => (b.stage ? key(at, b.stage, b.opponent) : pair(at, e.name, b.opponent))))));
+  const asked = (m: Listed) => m.seats?.some((s) => [normalize(m.group), m.bracket_id].some((at) => want.has(key(at, m.name!, s.name)) || want.has(pair(at, s.name, m.seats!.find((o) => o !== s)?.name))));
   const seen = new Set<number>();
-  return lists.filter((m) => m?.state === 'finished' && m.name && m.wonBy !== 'walkover' && !seen.has(m.id) && seen.add(m.id) && (!entries || asked(m)));
+  return lists.filter((m) => m?.state === 'finished' && m.name && !SCORELESS.includes(finishOf(m.wonBy)) && !seen.has(m.id) && seen.add(m.id) && (!entries || asked(m)));
 }
 
 // Reads the events' scores on a click, then the page again, past the browser's copy.

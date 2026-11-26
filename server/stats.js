@@ -2,7 +2,7 @@
 // the finish types counted, a belt, a country, and the fewest wins and events that count.
 import '../rules.js';
 
-const { BELTS, FINISHES, WEIGHTS, finishSql, playedSql } = globalThis.SCWRRules;
+const { BELTS, FINISHES, WEIGHTS, finishSql, playedSql, SCORELESS } = globalThis.SCWRRules;
 // The age groups a bracket names (rules.js bracketOf).
 const AGES = ['Kids', 'Teen', 'Juvenile', 'Adult', 'Master'];
 const SITES = ['smoothcomp.com', 'ajptour.com'];
@@ -597,9 +597,9 @@ async function event(env, params) {
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT e.user, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.at,
         p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt,
         c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold, c.silver AS career_silver, c.bronze AS career_bronze,
-        -- Its matches with no score read yet (walkovers have none), for the page's Read scores.
+        -- Its matches with no score read yet, bar walkovers and stoppages (rules.js SCORELESS), for the page's Read scores.
         (SELECT json_group_array(json_object('match', b.value ->> 'match', 'stage', b.value ->> 'stage', 'bracket', b.value ->> 'bracket', 'opponent', b.value ->> 'opponent'))
-          FROM json_each(CASE WHEN json_valid(e.bouts) THEN e.bouts END) b WHERE b.value ->> 'us' IS NULL AND b.value ->> 'type' IS NOT 'walkover') AS open
+          FROM json_each(CASE WHEN json_valid(e.bouts) THEN e.bouts END) b WHERE b.value ->> 'us' IS NULL AND ${finishSql("(b.value ->> 'type')")} NOT IN (${SCORELESS.map((f) => `'${f}'`).join(', ')})) AS open
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
       WHERE e.site = ?1 AND e.event = ?4 AND (?5 IS NULL OR +e.club_id = ?5) AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id, club),
     // When its registrations (0) and results (1) were last read: rows only change when what they say does.

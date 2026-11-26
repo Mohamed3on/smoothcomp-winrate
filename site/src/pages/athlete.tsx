@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
 import { ReadNow } from '@/components/read-now';
-import { ReadScores, type Target } from '@/components/read-scores';
+import { needsScore, ReadScores, type Target } from '@/components/read-scores';
 import { useRemember } from '@/lib/recent';
 
 // A bracket in words: "brown-belt master men at −85 kg", "adults at −70 kg", "teen girls at −53 kg".
@@ -210,7 +210,7 @@ function CareerStats({ career, f, points }: { career: Athlete | null; f: Filters
       {stats.length > 0 && <dl className="flex flex-wrap gap-x-10 gap-y-3" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career?.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
         {stats.map(([label, value]) => <Stat key={label} label={label} value={value} />)}
       </dl>}
-      {points.total > 0 && <dl className="flex items-center gap-x-6 gap-y-3 border-border sm:border-l sm:pl-10" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, over the finishes counted; walkovers have none">
+      {points.total > 0 && <dl className="flex items-center gap-x-6 gap-y-3 border-border sm:border-l sm:pl-10" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, over the finishes counted; walkovers and stoppages have none">
         <div className="flex flex-col gap-0.5">
           <dt className="text-xs text-muted-foreground">Points</dt>
           <dd className="text-lg tabular-nums"><Record w={points.for} l={points.against} /></dd>
@@ -539,12 +539,13 @@ export function AthletePage({ id }: { id: string }) {
   const lately = all.some((r) => r.start && Date.parse(r.start) <= Date.now() && Date.parse(r.start) >= Date.now() - 30 * 864e5 && !r.read?.some((e) => e.fought));
   // Their events with a match read but not its score, each with the divisions that have one.
   const unscored = past.flatMap((r) => {
-    const open = (r.read ?? []).filter((e) => e.bouts?.some((b) => !b.us && b.type !== 'walkover'));
-    return open.length ? [{ site: r.site ?? f.site, event: r.id, entries: open }] : [];
+    const open = (r.read ?? []).filter((e) => e.bouts?.some(needsScore));
+    return open.length ? [{ site: r.site ?? f.site, event: r.id, entries: open.map((e) => ({ ...e, name: a.name })) }] : [];
   });
   const counted = past.flatMap((r) => (r.read ?? []).flatMap((e) => e.bouts ?? [])).filter((b) => b.type !== 'walkover' && f.counted(finishOf(b.type)));
   const scored = counted.filter((b) => b.us && b.them);
-  const points: Points = { for: scored.reduce((n, b) => n + b.us![0], 0), against: scored.reduce((n, b) => n + b.them![0], 0), scored: scored.length, total: counted.length, unscored };
+  // Out of the matches with a score read or still to read: a stoppage's is never read (rules.js SCORELESS).
+  const points: Points = { for: scored.reduce((n, b) => n + b.us![0], 0), against: scored.reduce((n, b) => n + b.them![0], 0), scored: scored.length, total: counted.filter((b) => b.us || needsScore(b)).length, unscored };
   const age = ageOf(a.born);
   const rivals = rivalsIn(all.filter((r) => !isUpcoming(r.start) || r.read?.some((e) => e.fought)));
   const met = past.flatMap(meetingsOfRow);
