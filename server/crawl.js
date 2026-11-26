@@ -291,19 +291,19 @@ const other = (site, event) => `EXISTS (SELECT 1 FROM events o WHERE o.site = ${
   AND NOT EXISTS (SELECT 1 FROM json_each(o.sports) j WHERE j.value IN (${BJJ.map((x) => `'${x}'`).join(', ')})))`;
 
 // Every known event that has ended with no results, newest first; ids from profiles' event lists too.
-// Smoothcomp's before AJP's (priority -1). Those queued already are skipped before their entries are looked through.
+// Smoothcomp's before AJP's (0 vs -2), and on each site those an athlete we hold lists among their events (history) one ahead. Those queued already are skipped before their entries are looked through.
 export async function queue(env) {
   await env.DB.prepare(`DELETE FROM crawls WHERE state = 'queued' AND ${other('crawls.site', 'crawls.event')}`).run();
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at, priority)
-    SELECT k.site, k.event, 'queued', max(k.start), max(k.title), max(k.city), 0, ?1, iif(k.site = 'ajptour.com', -1, 0) FROM (
-      SELECT site, event, start, title, city FROM events UNION ALL SELECT site, event, start, title, city FROM history) k
+    SELECT k.site, k.event, 'queued', max(k.start), max(k.title), max(k.city), 0, ?1, iif(k.site = 'ajptour.com', -2, 0) + max(k.known) FROM (
+      SELECT site, event, start, title, city, 0 AS known FROM events UNION ALL SELECT site, event, start, title, city, 1 FROM history) k
     WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = k.site AND c.event = k.event) AND NOT ${other('k.site', 'k.event')}
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
     GROUP BY k.site, k.event`).bind(Date.now()).run();
   // Events a results page sent without matches: read for those alone. Event by event through the
   // event key, skipping those queued already, instead of walking every entry.
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at, priority)
-    SELECT v.site, v.event, 'queued', v.start, v.title, v.city, 0, ?1, iif(v.site = 'ajptour.com', -1, 0) FROM events v
+    SELECT v.site, v.event, 'queued', v.start, v.title, v.city, 0, ?1, iif(v.site = 'ajptour.com', -2, 0) FROM events v
     WHERE v.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = v.site AND c.event = v.event) AND NOT ${other('v.site', 'v.event')}
       AND EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1 AND e.bouts IS NOT NULL)`).bind(Date.now()).run();

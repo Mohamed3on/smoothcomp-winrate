@@ -252,6 +252,9 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
       WHERE (${past.map((c) => `history.${c}`).join(', ')}, history.image) IS NOT (${past.map((c) => `excluded.${c}`).join(', ')}, coalesce(excluded.image, history.image))
       RETURNING user`)
       .bind(site, user, now, JSON.stringify(rows)));
+    // An event a known athlete entered is read before the others of its site (crawl.js queue).
+    statements.push(env.DB.prepare(`UPDATE crawls SET priority = priority + 1 WHERE site = ?1 AND +state = 'queued' AND +priority IN (0, -2) AND event IN (SELECT value ->> 'event' FROM json_each(?2))`)
+      .bind(site, JSON.stringify(rows)));
   }
   const done = await env.DB.batch(statements);
   return [...new Set(returning.flatMap((i) => done[i].results.map((row) => row.user)))];
