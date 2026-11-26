@@ -436,7 +436,12 @@ const account = (env, f, site, user) => [
       AND NOT (e.fought = 0 AND v.fought = 1 AND coalesce(v.ends, unixepoch(v.start) * 1000 + 2 * 864e5) < unixepoch('now') * 1000)
     ORDER BY v.start DESC, e.event DESC`).bind(site, user),
   env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
-    FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(site, user),
+    FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2
+      -- Their profile lists events they registered for too: one they didn't show at (as above, with nothing won there) is left out.
+      AND NOT (coalesce(h.wins, 0) = 0 AND coalesce(v.fought, 0) = 1 AND coalesce(v.ends, unixepoch(v.start) * 1000 + 2 * 864e5) < unixepoch('now') * 1000
+        AND EXISTS (SELECT 1 FROM entries e WHERE e.site = h.site AND e.event = h.event AND e.user = h.user)
+        AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = h.site AND e.event = h.event AND e.user = h.user AND e.fought = 1))
+    ORDER BY h.start DESC`).bind(site, user),
   // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
   env.DB.prepare(`SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(site, user),
   // When each belt began, as their profile dates them.
