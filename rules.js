@@ -109,11 +109,11 @@ globalThis.SCWRRules = (() => {
   const wonNothingSql = (h) => `coalesce(${h}.wins, 0) + coalesce(${h}.gold, 0) + coalesce(${h}.silver, 0) + coalesce(${h}.bronze, 0) = 0`;
   // An outcomes row (o) they showed at: not absent.
   const presentSql = (o) => `coalesce(${o}.out ->> '$.absent', 0) = 0`;
-  // A history row (h) they didn't show at: nothing won there, no result of theirs, and either their registration with the
-  // results read, or an absent Outcome.
-  const missedSql = (h) => `(${wonNothingSql(h)}
-  AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1)
-  AND ((EXISTS (SELECT 1 FROM events v WHERE v.site = ${h}.site AND v.event = ${h}.event AND v.fought = 1)
+  // A history row (h) they didn't show at: no result of theirs where they fought someone, and either walkovers alone (noShow),
+  // nothing won there with their registration and the results read, or an absent Outcome (as showed has it).
+  const missedSql = (h) => `(NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1 AND ${playedSql('e')})
+  AND (EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1)
+    OR ${wonNothingSql(h)} AND (EXISTS (SELECT 1 FROM events v WHERE v.site = ${h}.site AND v.event = ${h}.event AND v.fought = 1)
       AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user))
     OR EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ${h}.site AND o.user = ${h}.user AND o.event = ${h}.event AND NOT ${presentSql('o')})))`;
   // Whether they showed at one event, from what is held of them there: their entries (results or registrations) and Outcome.

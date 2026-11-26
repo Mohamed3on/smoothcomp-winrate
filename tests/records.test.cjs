@@ -21,11 +21,12 @@ const entries = [
 ];
 
 // The same rows counted both ways: the server's TALLY over them in SQLite, and eventRecords. Each record by finish, as
-// [won, lost], the empty ones left out; and the events eventRecords counts.
+// [won, lost], the empty ones left out; the events eventRecords counts; and how many of the events their profile lists (every
+// event here, its wins as the results give them) count, in the rankings (tallies.listed) and on the athlete page (rules.js showed).
 const counted = (types) => Object.fromEntries(Object.entries(types).filter(([, [w, l]]) => w || l).sort());
 async function bothWays(outcomes, entries) {
   const { TALLY } = await import('../server/stats.js');
-  const { eventRecords, totals } = globalThis.SCWRRules;
+  const { eventRecords, totals, showed } = globalThis.SCWRRules;
   const db = new DatabaseSync(':memory:');
   db.exec(fs.readFileSync('server/schema.sql', 'utf8'));
   for (const o of outcomes) db.prepare('INSERT INTO outcomes (site, user, event, start, title, out, at) VALUES (?, ?, ?, ?, ?, ?, 0)').run(SITE, USER, o.event, o.start, null, JSON.stringify(o.out));
@@ -33,10 +34,17 @@ async function bothWays(outcomes, entries) {
     db.prepare('INSERT OR IGNORE INTO events (site, event, start, at) VALUES (?, ?, ?, 0)').run(SITE, e.event, e.start);
     db.prepare('INSERT INTO entries (site, event, user, division, wins, losses, fought, at) VALUES (?, ?, ?, ?, ?, ?, ?, 0)').run(SITE, e.event, USER, e.division, JSON.stringify(e.wins), JSON.stringify(e.losses), e.fought);
   }
+  const listed = [...new Set([...outcomes, ...entries].map((r) => r.event))];
+  for (const event of listed) {
+    const wins = entries.filter((e) => e.event === event).reduce((n, e) => n + Object.values(e.wins).reduce((a, b) => a + b, 0), 0);
+    db.prepare('INSERT INTO history (site, user, event, start, wins, at) VALUES (?, ?, ?, ?, ?, 0)').run(SITE, USER, event, [...outcomes, ...entries].find((r) => r.event === event).start, wins);
+  }
   db.prepare(TALLY).run({ 1: SITE, 2: JSON.stringify([USER]) }); // D1's ?1 and ?2, by number
-  const rec = JSON.parse(db.prepare('SELECT rec FROM tallies WHERE site = ? AND user = ?').get(SITE, USER)?.rec ?? '{}');
+  const row = db.prepare('SELECT rec, listed FROM tallies WHERE site = ? AND user = ?').get(SITE, USER);
+  const rec = JSON.parse(row?.rec ?? '{}');
   const records = eventRecords(outcomes, entries);
-  return { sql: counted(rec), js: counted(totals(records)), events: records.map((r) => r.event) };
+  const shown = listed.filter((k) => showed(entries.filter((e) => e.event === k), outcomes.find((o) => o.event === k))).length;
+  return { sql: counted(rec), js: counted(totals(records)), events: records.map((r) => r.event), listed: [row?.listed, shown] };
 }
 
 test('the rankings and the pages count one record', async () => {
@@ -57,14 +65,14 @@ test("an event they didn't show at isn't one of theirs, in the rankings as on th
   const absent = (event) => ({ event, start: '2026-08-01T09:00:00Z', out: { v: 2, types: {}, losses: [], faced: [], absent: true } });
   // Their profile lists event 5, with no match there: not theirs.
   const away = await bothWays([...outcomes, absent('5')], entries);
-  assert.deepEqual([away.sql, away.events], [away.js, ['1', '2', '4']]);
+  assert.deepEqual([away.sql, away.events, away.listed], [away.js, ['1', '2', '4'], [4, 4]]);
   // It lists event 2 with no match there, but the results read there say they fought: the results count.
   const fought = await bothWays([...outcomes, absent('2')], entries);
-  assert.deepEqual([fought.sql, fought.events], [fought.js, ['1', '2', '4']]);
+  assert.deepEqual([fought.sql, fought.events, fought.listed], [fought.js, ['1', '2', '4'], [4, 4]]);
   assert.deepEqual(fought.js, { fastest_escape: [1, 0], points: [2, 2], submission: [2, 2], walkover: [1, 1] });
-  // Walkovers alone at event 6 (rules.js noShow): they fought no one there.
+  // Walkovers alone at event 6 (rules.js noShow): they fought no one there, though their profile counts the walkover won.
   const walked = await bothWays(outcomes, [...entries, { event: '6', start: '2026-09-01T09:00:00Z', division: 'Adult / Blue / -76 kg', wins: { walkover: 1 }, losses: { walkover: 1 }, fought: 1 }]);
-  assert.deepEqual([walked.sql, walked.events], [walked.js, ['1', '2', '4']]);
+  assert.deepEqual([walked.sql, walked.events, walked.listed], [walked.js, ['1', '2', '4'], [4, 4]]);
 });
 
 test('a rival has beaten them twice, the furthest behind first', () => {
