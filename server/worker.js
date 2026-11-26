@@ -89,6 +89,11 @@ async function lookup(env, { site, users, clubs = [] }) {
     WHERE e.site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ${over} <= ?3 GROUP BY user`)
     .bind(site, JSON.stringify(users), Date.now()).all();
   kept.ended = Object.fromEntries(ended.results.map((row) => [row.user, row.ended]));
+  // How many events of each athlete's match lists are kept (outcomes, an event only a match list holds aside): a
+  // participants page reads the match lists of those its career counts more events for (careers.js readMatches).
+  const lists = await env.DB.prepare(`SELECT user, count(*) AS n FROM outcomes WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
+    AND out ->> '$.extra' IS NULL GROUP BY user`).bind(site, JSON.stringify(users)).all();
+  kept.lists = Object.fromEntries(lists.results.map((row) => [row.user, row.n]));
   // Each academy asked after, its athletes' [won, lost] (stats.js club_board): a bracket seeds the athletes their records
   // don't tell apart by it (rules.js seedKey).
   if (clubs.length) {

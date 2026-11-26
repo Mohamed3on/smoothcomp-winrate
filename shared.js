@@ -1,16 +1,16 @@
 // The isolated script performs authenticated reads and reports real failures;
 // page events cannot manufacture a cooldown for every organiser tab.
 const send = message => chrome.runtime.sendMessage({ ...message, channel: 'scwr' });
-const OPS = ['read', 'import', 'shared', 'record', 'roster', 'people', 'claim', 'renew', 'complete', 'peek', 'available', 'delay', 'cache-get', 'cache-set'];
+const OPS = ['read', 'import', 'shared', 'record', 'roster', 'people', 'claim', 'renew', 'complete', 'peek', 'available', 'delay', 'cache-get', 'cache-set', 'outcomes', 'keep-outcomes'];
 async function fetchAthlete(request, started) {
   const { resource, user, signed = {} } = request;
-  if (!['profile', 'career', 'events', 'skills'].includes(resource) || !/^\d{1,12}$/.test(user)) throw new Error('Invalid athlete request');
+  if (!['profile', 'career', 'events', 'matches', 'skills'].includes(resource) || !/^\d{1,12}$/.test(user)) throw new Error('Invalid athlete request');
   const { wait, paused } = await send({ op: resource === 'profile' ? 'slot' : 'delay' });
   if (wait) return { wait, paused };
   const home = location.hostname === 'ajptour.com' ? 'https://ajptour.com' : 'https://smoothcomp.com';
-  const path = resource === 'profile' ? `profile/${user}` : `athlete/${user}/${{ career: 'wins-and-medals', events: 'past-events' }[resource] ?? 'skills'}`;
+  const path = resource === 'profile' ? `profile/${user}` : `athlete/${user}/${{ career: 'wins-and-medals', events: 'past-events', matches: 'event-statistics' }[resource] ?? 'skills'}`;
   const url = new URL(`/en/${path}`, home);
-  if (resource === 'events' && Number.isSafeInteger(request.page) && request.page > 1 && request.page <= 100) url.searchParams.set('page', request.page);
+  if (['events', 'matches'].includes(resource) && Number.isSafeInteger(request.page) && request.page > 1 && request.page <= 200) url.searchParams.set('page', request.page);
   if (resource !== 'profile' && typeof signed.signature === 'string' && /^[\w-]{1,256}$/.test(signed.signature) && Number.isSafeInteger(signed.expires)) {
     url.searchParams.set('signature', signed.signature);
     url.searchParams.set('expires', signed.expires);

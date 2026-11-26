@@ -58,6 +58,7 @@
         "rules.js",
         "site.js",
         "career-cache.js",
+        "profile-model.js",
         "careers.js",
         "picks.js",
         "participants.js"

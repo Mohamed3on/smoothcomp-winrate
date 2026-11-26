@@ -90,12 +90,14 @@ const SCWRCareers = (() => {
   const records = {};
   const absent = {};
   const academies = {};
+  const lists = {}; // how many events of each athlete's match lists the shared cache keeps
   const lookup = (users, clubs = []) => looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users, clubs })).then(kept => {
     Object.assign(seen, kept.seen);
     Object.assign(records, kept.records);
     Object.assign(absent, kept.absent);
     Object.assign(over, kept.ended);
     Object.assign(academies, kept.academies);
+    for (const user of users) lists[user] = kept.lists?.[user] ?? 0;
     merge(kept);
     // Academies reseed every athlete asked after.
     const told = new Set(Object.keys(kept.academies ?? {}).length ? users : [...Object.keys(kept.seen ?? {}), ...Object.keys(kept.records ?? {}), ...Object.keys(kept.ended ?? {})]);
@@ -250,7 +252,59 @@ const SCWRCareers = (() => {
     }
     return reading.get(key);
   }
-  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records, absent, academies,
+  // Every athlete's match lists, as their profile page reads them (profile.js), for those whose events the shared cache keeps
+  // fewer of than their career counts, so their record (and the seed's win rate) is their whole career, not only the
+  // results read. Newest first, each list only until it reaches events already kept; each event sent as the profile
+  // sends it (rules.js Outcome), and their record asked for again. An event whose matches name no seat of theirs (their
+  // name differing there) isn't sent, so it can't count as one they didn't show at. A few athletes at a time.
+  const done = new Set();
+  const short = user => !done.has(user) && lists[user] != null && careers[user]?.events > lists[user] && !careers[user].hidden;
+  let running = 0;
+  const waiting = [];
+  async function readMatches(user, name) {
+    user = String(user);
+    if (!short(user)) return;
+    done.add(user);
+    while (running >= 3) await new Promise(go => waiting.push(go));
+    running++;
+    try {
+      const signed = await signature(user);
+      if (signed.hidden) return;
+      const json = (resource, page) => request(resource, user, signed, page).then(r => (r.ok ? r.json() : Promise.reject(new Error(resource))));
+      const kept = (await ask({ op: 'outcomes', user })).events ?? [];
+      const known = new Set(kept.filter(e => e?.out?.v === 3).map(e => e.id));
+      const listed = [];
+      for (let page = 1, last = 1; page <= last; page++) {
+        const body = await json('events', page);
+        listed.push(...(body.data ?? []));
+        last = Math.min(body.meta?.last_page ?? 1, 200);
+        if (known.size && (body.data ?? []).every(e => known.has(e.id))) break;
+      }
+      const news = listed.filter(e => !known.has(e.id));
+      if (!news.length) return;
+      const ids = new Set(news.map(e => e.id));
+      const found = new Map();
+      let failed = 0, whole = true;
+      const pages = Math.min(Math.ceil(careers[user].events / 3), 200);
+      for (let page = 1; page <= pages && news.some(e => !found.has(e.id)); page++) {
+        const body = await json('matches', page).catch(() => (failed++, null));
+        for (const event of body?.data ?? []) found.set(event.id, event);
+        if (known.size && body && !(body.data ?? []).some(event => ids.has(event.id))) { whole = false; break; }
+      }
+      const { fresh } = SCWRProfile.merge({ news, found, failed, known: new Map(), all: false }, { name, dated: new Map(), now: Date.now() });
+      // An event with no match list of theirs is one they didn't show at only when every page was read; one whose
+      // matches name no seat of theirs isn't sent.
+      const sure = (e) => (found.has(e.id) ? Object.keys(e.out.types).length || e.out.faced.length || !Object.values(found.get(e.id).matches ?? {}).some(g => g.matches?.length) : whole && !failed);
+      const events = fresh.filter(sure).map(e => ({ id: e.id, start_date: e.start_date, title: e.title, out: e.out }));
+      if (!events.length) return;
+      await ask({ op: 'keep-outcomes', user, events: events.slice(0, 400) });
+      lookup([user]);
+    } catch {} finally {
+      running--;
+      waiting.shift()?.();
+    }
+  }
+  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records, absent, academies, readMatches, short,
     fresh: user => current(careers[user], 'careers', String(user)),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),

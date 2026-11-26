@@ -11,7 +11,7 @@ function worker(storage = { local: {}, session: {} }, now = 1800000000000, share
   const posts = [];
   const fetch = async (url, { body }) => {
     posts.push({ url, ...JSON.parse(body) });
-    return new Response(JSON.stringify(url.endsWith('/lookup') ? shared : {}));
+    return new Response(JSON.stringify(url.endsWith('/lookup') ? shared : url.endsWith('/outcomes') ? shared.outcomes ?? {} : {}));
   };
   const storageListeners = [];
   const replies = [];
@@ -71,7 +71,7 @@ function page(w, fetcher, tab = 1, event) {
     location: { hostname: 'grapplingindustries.smoothcomp.com' }, fetch: async url => { fetched.push(url); return fetcher(url); },
     chrome: { runtime: { sendMessage: message => w.send(message, tab) }, storage: { onChanged: { addListener: w.onStorageChange } } } });
   vm.runInContext(fs.readFileSync('shared.js', 'utf8'), bridge);
-  for (const file of ['rules.js', 'career-cache.js', 'careers.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
+  for (const file of ['rules.js', 'career-cache.js', 'profile-model.js', 'careers.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context);
   return { api: vm.runInContext('SCWRCareers', context), fetched, context, document, CustomEvent };
 }
 const json = data => new Response(JSON.stringify({ data }), { headers: { 'Content-Type': 'application/json' } });
@@ -474,4 +474,36 @@ test("a page keeps big things in the extension's storage, per site, each kind ho
   assert.equal((await ajp.load('profile:12:1')).events.length, 300);
   assert.equal(await smoothcomp.load('event-matches:10'), null);
   assert.deepEqual(Object.keys((await w.send({ op: 'read' })).careers), ['7']);
+});
+
+test("a participants page sends the events of an athlete's match lists the shared cache lacks, as a profile page would", async () => {
+  // The shared cache keeps one of their four events (101).
+  const shared = { careers: {}, lists: { 1: 1 }, outcomes: { events: [{ id: 101, start_date: '2026-01-10', title: 'Old', out: { v: 3, types: { points: [1, 0] }, losses: [], faced: [] } }] } };
+  const w = worker(undefined, undefined, shared);
+  const seat = (reg, name, won) => ({ event_registration_id: reg, name, club: 'Alpha', isWinner: won, isLoser: !won });
+  const listed = [104, 103, 102, 101].map((id, i) => ({ id, title: `Open ${id}`, start_date: `2026-0${4 - i}-10`, wins: id === 104 ? 1 : 0, medals: {} }));
+  const lists = {
+    // Theirs: they won by submission.
+    104: { id: 104, title: 'Open 104', matches: { a: { group: 'Adult / Blue / -76 kg', matches: [{ id: 9, wonBy: 'submission', name: 'Final', seats: [seat(1, 'Kim Lee', true), seat(2, 'Bo Sun', false)] }] } } },
+    // One match, neither seat named as on this page: no seat of theirs to read, so it isn't sent.
+    103: { id: 103, title: 'Open 103', matches: { a: { group: 'Adult / Blue / -76 kg', matches: [{ id: 8, wonBy: 'points', name: 'Final', seats: [seat(3, 'K. Lee', false), seat(4, 'Cy Dee', true)] }] } } },
+    // Listed, no match of theirs, nothing won: they didn't show.
+    102: { id: 102, title: 'Open 102', matches: {} },
+  };
+  const p = page(w, (url) => {
+    if (url.includes('/profile/')) return profile(w);
+    if (url.includes('/past-events')) return new Response(JSON.stringify({ data: listed, meta: { total: 4, last_page: 1 } }));
+    if (url.includes('/event-statistics')) return new Response(JSON.stringify({ data: new URL(url).searchParams.get('page') ? [] : [lists[104], lists[103], lists[102]] }));
+    return career();
+  });
+  await p.api.lookup(['1']);
+  await p.api.readCareer('1', true);
+  assert.equal(p.api.short('1'), true);
+  await p.api.readMatches('1', 'Kim Lee');
+  const sent = w.posts.find((x) => x.url.endsWith('/keep-outcomes'));
+  assert.deepEqual(sent.events.map((e) => [e.id, e.start_date, Object.keys(e.out.types), !!e.out.absent]), [[104, '2026-04-10', ['submission'], false], [102, '2026-02-10', [], true]]);
+  // Read once a visit; their record is asked for again.
+  assert.equal(p.api.short('1'), false);
+  assert.ok(w.posts.filter((x) => x.url.endsWith('/lookup')).length >= 2);
+  assert.equal(p.fetched.filter((u) => u.includes('/event-statistics')).length, 1);
 });

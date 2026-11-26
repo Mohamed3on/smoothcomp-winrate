@@ -540,8 +540,28 @@ function drain() {
       draining = null;
       save();
       if (order !== null) show(); else if (stack) restack();
+      readLists();
     });
-  }
+  } else readLists();
+}
+
+// Once every career is read, the match lists of everyone whose events the shared cache keeps fewer of than their
+// career counts (careers.js readMatches), at the pace profile pages allow; careers still to read go first.
+const later = new Set();
+let listing = null;
+function readLists() {
+  if (listing || !vm) return;
+  const rows = vm.all.flatMap((g) => g.registrations).filter((r) => r.user_id);
+  for (const r of rows) if (SCWRCareers.short(String(r.user_id))) later.add(String(r.user_id));
+  if (!later.size) return;
+  const names = new Map(rows.map((r) => [String(r.user_id), `${r.firstname ?? ''} ${r.lastname ?? ''}`.trim()]));
+  listing = Promise.all(Array.from({ length: 2 }, async () => {
+    while (later.size && !pending.size) {
+      const user = await SCWRCareers.next(later, (u) => SCWRCareers.short(u));
+      if (!user) break;
+      await SCWRCareers.readMatches(user, names.get(user));
+    }
+  })).finally(() => { listing = null; });
 }
 
 // The registration column only repeats the bracket title, so the career takes
