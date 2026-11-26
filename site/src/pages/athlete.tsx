@@ -79,11 +79,12 @@ const meetingsOfRow = (r: Row): Meeting[] => {
   const ids = new Map(bouts.map((m) => [normalize(m.opponent), m.user]));
   // Each takes from the read match that is the same one (rules.js matchFinder: the same round and opponent, or where either
   // names no round, the only one against them with that result) its score, and the finish and round a profile list from before v 2 leaves out.
+  // One without its round against someone they met twice there with that result can't tell the two apart: it takes the first not taken.
   const theirs = (m: Meeting) => ({ stage: m.stage, sides: [null, m.opponent], won: m.won });
   const find = matchFinder(bouts.map((b) => ({ ...theirs(b), b })));
   const taken = new Set<Meeting>();
   const out = meetingsOf(r.outcome).map((m) => {
-    const found = find(theirs(m))?.b;
+    const found = find(theirs(m))?.b ?? (m.stage ? undefined : bouts.find((b) => !taken.has(b) && b.won === m.won && normalize(b.opponent) === normalize(m.opponent) && (!m.type || b.type === m.type)));
     const b = found && !taken.has(found) ? (taken.add(found), found) : undefined;
     return { ...m, site: r.site, user: m.user ?? ids.get(normalize(m.opponent)), type: m.type ?? b?.type, how: m.how ?? b?.how, stage: m.stage ?? b?.stage, us: b?.us, them: b?.them, clock: b?.clock };
   });
