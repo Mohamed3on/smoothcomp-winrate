@@ -101,6 +101,8 @@ globalThis.SCWRRules = (() => {
     const finishes = [...Object.keys(e.wins ?? {}), ...Object.keys(e.losses ?? {})];
     return finishes.length > 0 && finishes.every((t) => finishOf(t) === 'walkover');
   };
+  // A no-show the published results leave out: walkover losses alone, nothing won (a walkover won keeps them in, unlike noShow).
+  const unplaced = (e) => noShow(e) && !Object.keys(e.wins ?? {}).length;
   const playedSql = (e) => `(SELECT count(*) = 0 OR sum(${finishSql('key')} != 'walkover') > 0 FROM (SELECT key FROM json_each(${e}.wins) UNION ALL SELECT key FROM json_each(${e}.losses)))`;
   // An event their profile lists (`listed`: { wins, medals }, medals by name or place) with nothing won there; history row h in SQL.
   const wonNothing = (listed) => !(Number(listed?.wins) > 0) && !Object.values(listed?.medals ?? {}).some((n) => Number(n) > 0);
@@ -372,6 +374,49 @@ globalThis.SCWRRules = (() => {
   const isPool = (stages) => stages.length > 0 && stages.every((s) => /^Match \d+\/\d+$/.test(s ?? ''));
   const poolPlaces = (rows, beat) => new Map([...rows].sort((a, b) => b.wins - a.wins || b.subs - a.subs || (beat(a.key, b.key) ? -1 : beat(b.key, a.key) ? 1 : 0)).map((r, i) => [r.key, i + 1]));
 
+  // Results: one division's results built from its decided matches, as published results give them: each entry's wins and
+  // losses by finish (as `add` names them), and a place where the matches give one (placeOf: the round each side went out in;
+  // a round robin by its record once every match is fought, poolPlaces); a no-show (unplaced) stays unplaced. Two adapters
+  // feed it, the results page's tables and schedule (model.js build) and Smoothcomp's JSON (eventResults); tests/results.test.cjs
+  // sends one event through both. `stages` every match's round there, `placed` whether the matches place it (not once its
+  // results are published), `fought` whether every match there is decided. Entries are by the adapter's key; the matches
+  // count in the order fought (round, then match id), whatever order they came in, so a tie the record leaves stands the same.
+  function divisionResults(stages, { placed = true, fought = true } = {}) {
+    const bronze = stages.includes('Bronze match');
+    const seated = new Set();
+    const decided = [];
+    const sum = (bucket, only) => Object.entries(bucket).reduce((n, [t, c]) => n + (!only || finishOf(t) === only ? c : 0), 0);
+    return {
+      // One seated there, with no match decided yet.
+      of: (key) => seated.add(key),
+      // A decided match: its winner's and loser's keys (null where the side isn't known), its finish, round and id.
+      add: (winner, loser, finish, stage, id) => decided.push({ winner, loser, finish, stage, id }),
+      // Every entry's results, by key: a round robin fought out placed by its wins, then submissions, then who beat whom.
+      done() {
+        const by = new Map();
+        const beat = new Set();
+        const of = (key) => by.get(key) ?? by.set(key, { wins: {}, losses: {}, place: null }).get(key);
+        for (const { winner, loser, finish, stage } of decided.sort((a, b) => roundOf(a.stage) - roundOf(b.stage) || Number(a.id) - Number(b.id))) {
+          for (const [key, won] of [[winner, true], [loser, false]]) {
+            if (key == null) continue;
+            const e = of(key);
+            const bucket = won ? e.wins : e.losses;
+            bucket[finish] = (bucket[finish] ?? 0) + 1;
+            const place = placed && placeOf(stage, won, bronze);
+            if (place) e.place = place;
+          }
+          if (winner != null && loser != null) beat.add(`${winner}>${loser}`);
+        }
+        for (const key of seated) of(key);
+        if (placed && fought && isPool(stages)) {
+          const rows = [...by].filter(([, e]) => !unplaced(e)).map(([key, e]) => ({ key, wins: sum(e.wins), subs: sum(e.wins, 'submission') }));
+          for (const [key, place] of poolPlaces(rows, (a, b) => beat.has(`${a}>${b}`))) by.get(key).place = place;
+        }
+        return by;
+      },
+    };
+  }
+
   // An event's results read off Smoothcomp's JSON, which answers a server or any page without a sign-in: the
   // crawler (server/crawl.js) and the stats site's Read results now (site read-now.tsx) read the same way, each
   // fetching as suits it. First the schedule's mats (mats.json) and their match lists (mat/<id>/matches.json), kept
@@ -491,42 +536,34 @@ globalThis.SCWRRules = (() => {
     }
     for (const matches of divisions.values()) {
       const division = matches[0][1];
-      const entries = new Map();
-      const beat = new Set();
+      // This adapter's side of Results (divisionResults): each side by the user their registration names, else (no card named
+      // them) by the registration, so a round robin places everyone it held; the unnamed aren't sent.
+      const results = divisionResults(matches.map((m) => m[2]), { fought: matches.every((m) => m[3]) });
+      const users = new Map();
+      const bouts = new Map();
       const of = (s) => {
         const u = data.users[s[0]];
-        if (!u) return null;
-        if (!entries.has(u.id)) entries.set(u.id, { user: u, e: { division, place: null, wins: {}, losses: {}, bouts: [] }, w: 0, sub: 0, shown: false });
-        return entries.get(u.id);
+        const key = u ? u.id : `registration:${s[0]}`;
+        if (u) users.set(key, u);
+        results.of(key);
+        return key;
       };
-      const bronze = matches.some((m) => m[2] === 'Bronze match');
       for (const [id, , stage, finish, sides, bracket] of [...matches].sort((a, b) => roundOf(a[2]) - roundOf(b[2]) || a[0] - b[0])) {
         const card = data.cards?.[id];
         const seats = sides.map(of);
         if (!finish) continue;
         sides.forEach((s, i) => {
-          const x = seats[i];
-          if (!x) return;
+          if (!users.has(seats[i])) return;
           // Who they met: the other side, named as their bracket card names them where it was read.
           const k = 1 - i;
           const them = sides[k] && (data.users[sides[k][0]] ?? null);
-          if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage, bracket, match: id,
-            ...(card ? { us: card.s[i], them: card.s[k], clock: card.t } : {}) });
-          const bucket = s[1] ? x.e.wins : x.e.losses;
-          bucket[finish] = (bucket[finish] ?? 0) + 1;
-          if (s[1]) { x.w++; if (/^sub/.test(finish)) x.sub++; }
-          if (s[1] || finishOf(finish) !== 'walkover') x.shown = true;
-          const place = placeOf(stage, s[1], bronze);
-          if (place) x.e.place = place;
+          if (sides[k]) bouts.set(seats[i], [...(bouts.get(seats[i]) ?? []), { won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage, bracket, match: id,
+            ...(card ? { us: card.s[i], them: card.s[k], clock: card.t } : {}) }]);
         });
-        const [a, b] = seats;
-        if (a && b) beat.add(`${(sides[0][1] ? a : b).user.id}>${(sides[0][1] ? b : a).user.id}`);
+        const won = sides.findIndex((s) => s[1]);
+        if (sides.length === 2 && won >= 0) results.add(seats[won], seats[1 - won], finish, stage, id);
       }
-      const shown = [...entries.values()].filter((x) => x.shown || !Object.keys(x.e.losses).length);
-      if (isPool(matches.map((m) => m[2])) && matches.some((m) => m[3])) {
-        const places = poolPlaces(shown.map((x) => ({ key: x.user.id, wins: x.w, subs: x.sub })), (a, b) => beat.has(`${a}>${b}`));
-        for (const x of shown) x.e.place = places.get(x.user.id);
-      }
+      const shown = [...results.done()].filter(([key, r]) => users.has(key) && !unplaced(r)).map(([key, r]) => ({ user: users.get(key), e: { division, place: r.place, wins: r.wins, losses: r.losses, bouts: bouts.get(key) ?? [] } }));
       for (const { user: u, e } of shown) {
         const a = athletes[u.id] ??= { name: u.name, club: u.club, clubId: u.clubId, affiliation: u.affiliation, country: u.country, countryName: u.countryName, belt: division,
           age: u.age == null ? null : u.age - back, photo: u.photo, hidden: u.hidden, entries: [] };
@@ -591,5 +628,5 @@ globalThis.SCWRRules = (() => {
     return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
   }
 
-  return { matchKeys, sameMatch, matchFinder, Outcome, photo, OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  return { unplaced, divisionResults, matchKeys, sameMatch, matchFinder, Outcome, photo, OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

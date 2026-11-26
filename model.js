@@ -18,7 +18,8 @@ const SCWRModel = (() => {
     for (const result of results) {
       if (result.published === false || !result.bracket?.id) continue;
       const id = String(result.bracket.id);
-      const bracket = { id, name: result.group.name, size: Number(result.placements), entries: new Map(), names: new Map() };
+      // Its results are published: its matches add up wins and losses, and place nobody (rules.js divisionResults).
+      const bracket = { id, name: result.group.name, size: Number(result.placements), entries: new Map(), names: new Map(), results: SCWRRules.divisionResults([], { placed: false }) };
       for (const p of placements(result)) {
         const key = athleteKey(p, id);
         if (bracket.entries.has(key)) continue;
@@ -53,7 +54,7 @@ const SCWRModel = (() => {
     // placement, so their matches count. Pools and the playoff after them are
     // one division, as its results will be, filed under the bracket of its final.
     const finals = new Map(schedule.filter((m) => m.stage === 'Final').map((m) => [normalize(m.cat), m.bracketId]));
-    // Until it is published, its matches place it as the published results will (rules.js): the
+    // Until it is published, its matches place it as the published results will (rules.js divisionResults): the
     // playoff by round, a round robin by its record once every match is fought.
     const divisions = Map.groupBy(schedule, (m) => normalize(m.cat));
     const pending = new Map();
@@ -62,7 +63,7 @@ const SCWRModel = (() => {
       if (!match.sides.length || categories.has(name) || brackets.has(match.bracketId)) continue;
       const all = divisions.get(name);
       const bracket = pending.get(name) ?? { id: finals.get(name) ?? match.bracketId, name: match.cat, size: 0, entries: new Map(), names: new Map(), provisional: true,
-        bronze: all.some((m) => m.stage === 'Bronze match'), pool: SCWRRules.isPool(all.map((m) => m.stage)) && all.every((m) => m.finished) };
+        results: SCWRRules.divisionResults(all.map((m) => m.stage), { fought: all.every((m) => m.finished) }) };
       pending.set(name, bracket);
       const id = bracket.id;
       for (const side of match.sides) {
@@ -138,24 +139,22 @@ const SCWRModel = (() => {
         const entry = entryOf(bracket, side);
         if (!entry) continue;
         attached++;
-        const bucket = side === winners[0] ? entry.wins : entry.losses;
-        bucket[winners[0].won] = (bucket[winners[0].won] ?? 0) + 1;
-        const place = bracket.provisional && SCWRRules.placeOf(match.stage, side === winners[0], bracket.bronze);
-        if (place) entry.placement = place;
         entry.bouts.push({ id: match.id, won: side === winners[0], type: winners[0].won, how: match.how ?? null, opponent: match.sides.find((s) => s !== side), stage: match.stage });
       }
-      if (bracket.pool && attached === 2) (bracket.beat ??= new Set()).add(`${entryOf(bracket, winners[0]).key}>${entryOf(bracket, match.sides.find((s) => s !== winners[0])).key}`);
+      bracket.results.add(entryOf(bracket, winners[0])?.key, entryOf(bracket, match.sides.find((s) => s !== winners[0]))?.key, winners[0].won, match.stage, match.id);
       if (attached < 2) {
         if (isWalkover) noShows++;
         else unmatched++;
       }
     }
-    // A round robin fought out takes its places from its record; no-shows (walkover losses alone) stay unplaced.
+    // Each entry takes its results; one not yet published, the place its matches give it.
     for (const bracket of brackets.values()) {
-      if (!bracket.pool) continue;
-      const rows = [...bracket.entries.values()].filter((e) => Object.keys(e.wins).length || !Object.keys(e.losses).every((t) => t === 'walkover'))
-        .map((e) => ({ key: e.key, wins: Object.values(e.wins).reduce((n, c) => n + c, 0), subs: e.wins.submission ?? 0 }));
-      for (const [key, place] of SCWRRules.poolPlaces(rows, (a, b) => bracket.beat?.has(`${a}>${b}`))) bracket.entries.get(key).placement = place;
+      const done = bracket.results.done();
+      for (const entry of bracket.entries.values()) {
+        const r = done.get(entry.key);
+        if (!r) continue;
+        Object.assign(entry, { wins: r.wins, losses: r.losses }, bracket.provisional ? { placement: r.place } : {});
+      }
     }
     return { athletes, brackets, matches, unpublished, noShows, unmatched, unresolved, walkovers, fought: completed - walkovers };
   }

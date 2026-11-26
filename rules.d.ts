@@ -64,6 +64,12 @@ declare global {
     placeOf(stage: string | null | undefined, won: boolean, bronze: boolean): number | null;
     roundOf(stage: string | null | undefined): number;
     isPool(stages: (string | null | undefined)[]): boolean;
+    unplaced(entry: { wins?: Record<string, number> | null; losses?: Record<string, number> | null }): boolean;
+    divisionResults<K>(stages: (string | null | undefined)[], options?: { placed?: boolean; fought?: boolean }): {
+      of(key: K): void;
+      add(winner: K | null | undefined, loser: K | null | undefined, finish: string, stage: string | null | undefined, id: number | string): void;
+      done(): Map<K, { wins: Record<string, number>; losses: Record<string, number>; place: number | null }>;
+    };
     poolPlaces<K>(rows: { key: K; wins: number; subs: number }[], beat: (a: K, b: K) => boolean): Map<K, number>;
     scheduleOf(mats: unknown[], lists: unknown[]): { matches: Match[]; over: boolean; ends: number | null };
     knownSides(data: Read, known?: { matches?: [number | null, string, boolean, string, number[] | null, number[] | null, (number | null)[] | null, string?, string?, string?][]; people?: Record<string, Record<string, unknown>> }): void;

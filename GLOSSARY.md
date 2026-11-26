@@ -45,8 +45,10 @@ one kept without its round by the two who fought it, only where they met once th
 _Avoid_: the opponent alone: it names every match they fought there.
 
 **Place**: where an athlete finished a division. Published results give it; until then the
-matches do, by the round each side went out in, a round robin by its record. Owner: `rules.js`
-`placeOf`, `poolPlaces`.
+matches do, by the round each side went out in, a round robin by its record once every match is fought; a no-show
+(walkover losses alone, nothing won) is left out. Owner: `rules.js` `divisionResults` (with `placeOf`, `poolPlaces`,
+`unplaced`), fed by the results page (`model.js` `build`) and Smoothcomp's JSON (`eventResults`); one event through both
+agrees (`tests/results.test.cjs`).
 
 **Academy totals**: an academy's athletes added up (athletes, wins, submissions, points, medals, record), each
 athlete under the academy their latest event gave. The list's Min. wins and Min. events are the academy's own, Country where

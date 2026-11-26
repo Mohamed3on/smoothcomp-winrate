@@ -228,3 +228,25 @@ test('the record sorts by wins minus losses, opening on the worst performer when
   assert.equal(rows[0].wins, 0);
   assert.equal(rows[0].losses, winless[0][0]);
 });
+
+test("an unpublished division's results are the same read off the page as off Smoothcomp's JSON (the crawler's read)", async () => {
+  const page = replay('32979-live');
+  const { matches } = await page.SCWRMatches.loadEvent();
+  const bare = page.SCWRModel.build([], matches, page.participants);
+  // The crawler's read of the same schedule (rules.js eventResults), each registration with a user named by the list.
+  require('../rules.js');
+  const { scheduleOf, eventResults, finishOf, unplaced } = globalThis.SCWRRules;
+  const json = (re) => Object.entries(page.responses).filter(([url]) => re.test(url)).map(([, body]) => body);
+  const data = { ...scheduleOf(json(/mats\.json/).flat(), json(/\/mat\/\d+\/matches\.json/)), users: {}, tried: [] };
+  for (const r of page.participants.participants.flatMap((g) => g.registrations ?? [])) if (r.user_id) data.users[r.id] = { id: String(r.user_id), name: r.name ?? null };
+  const grouped = (bucket) => Object.entries(bucket).reduce((o, [t, n]) => ({ ...o, [finishOf(t)]: (o[finishOf(t)] ?? 0) + n }), {});
+  const sorted = (o) => Object.fromEntries(Object.entries(o).sort());
+  const row = (division, e) => `${division.toLowerCase().trim()} ${JSON.stringify([e.place ?? e.placement ?? null, sorted(grouped(e.wins)), sorted(grouped(e.losses))])}`;
+  const crawled = Object.entries(eventResults(data, null).athletes).flatMap(([id, a]) => a.entries.map((e) => `${id} ${row(e.division, e)}`)).sort();
+  // The page's (model.js build, nothing published), each athlete with a user, no-shows left out as the crawler leaves them out.
+  const paged = [...bare.brackets.values()].flatMap((b) => [...b.entries.values()].filter((e) => e.key.startsWith('user:') && !unplaced(e))
+    .map((e) => `${e.key.slice(5)} ${row(b.name, e)}`)).sort();
+  // Places too: pools, a playoff after them, and a round robin whose record leaves a tie.
+  assert.ok(crawled.length > 100);
+  assert.deepEqual(paged, crawled);
+});
