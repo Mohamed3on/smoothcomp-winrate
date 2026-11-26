@@ -401,6 +401,8 @@ async function crawled(env, { site, user, events }) {
     .bind(site, JSON.stringify(waiting)).run();
   return json({ events: found });
 }
+// A copy's losses with their match and bracket ids left out, in order, to compare two copies by.
+const LOSSES = (t) => `(SELECT json_group_array(json_remove(value, '$.match', '$.bracket')) FROM json_each(${t}.out, '$.losses'))`;
 async function keepOutcomes(env, { site, user, events }) {
   if (!SITES.includes(site) || !validUser(user) || !Array.isArray(events) || events.length > 400) return json({ error: 'Bad outcomes' }, 400);
   // An event only a match list names may come undated; every other one must have started.
@@ -409,13 +411,13 @@ async function keepOutcomes(env, { site, user, events }) {
   // A copy taken in an event's first week, while its results can still change, gives way to any later
   // one. After that the event is settled, so the first copy of it stands and later ones cannot replace
   // it, except a copy from before v 3, which lacks the wins' details (v 2) or the match ids: a v 3 upload
-  // with the same record and number of losses can add them.
+  // with the same record and losses (their match and bracket ids aside) can add them.
   if (rows.length) await env.DB.prepare(`INSERT INTO outcomes (site, user, event, start, title, out, at)
     SELECT ?1, ?2, value ->> 0, value ->> 1, value ->> 2, value ->> 3, ?3 FROM json_each(?4) WHERE true
     ON CONFLICT (site, user, event) DO UPDATE SET start = excluded.start, title = excluded.title, out = excluded.out, at = excluded.at
     WHERE outcomes.at < unixepoch(outcomes.start) * 1000 + ?5
       OR (outcomes.out ->> '$.v' IS NOT 3 AND excluded.out ->> '$.v' = 3
-        AND excluded.out ->> '$.types' = outcomes.out ->> '$.types' AND json_array_length(excluded.out, '$.losses') = json_array_length(outcomes.out, '$.losses'))`).bind(site, user, Date.now(), JSON.stringify(rows), SETTLED).run();
+        AND excluded.out ->> '$.types' = outcomes.out ->> '$.types' AND ${LOSSES('excluded')} = ${LOSSES('outcomes')})`).bind(site, user, Date.now(), JSON.stringify(rows), SETTLED).run();
   if (rows.length) await retally(env, site, [user]);
   return json({ kept: rows.length });
 }
