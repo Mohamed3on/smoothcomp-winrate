@@ -222,14 +222,43 @@ test("an athlete's accounts with their name, birth year and country read as one"
   assert.deepEqual(await ranked('smoothcomp.com'), [['11', 8, 8, 1], ['14', 4, 4, 0], ['12', 1, 1, 2]]);
   const unborn = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=13'))).json();
   assert.deepEqual(unborn.accounts.map((a) => [a.site, a.user]).sort(), [['ajptour.com', '77'], ['ajptour.com', '79'], ['smoothcomp.com', '11']]);
-  // Through every merge and recount, each academy's kept totals (club_board, the default list) are what adding up its
-  // athletes gives (?clubs= adds them up).
-  for (const site of ['smoothcomp.com', 'ajptour.com']) {
-    const list = async (q) => (await (await API.teams(env, new URLSearchParams(`site=${site}&athletes=1&${q}`))).json()).rows.map(({ total, ...t }) => t);
-    const kept = await list('top=0');
-    assert.ok(kept.length);
-    assert.deepEqual(await list(`top=0&clubs=${kept.map((t) => t.club_id)}`), kept);
-  }
+  // Through every merge and recount, each academy's kept totals (club_board, the default list) are what adding up its athletes gives.
+  for (const site of ['smoothcomp.com', 'ajptour.com']) assert.ok((await bothPaths(DB, `site=${site}&active=0`)).length);
+});
+
+// An academy's totals read both ways (stats.js academyTotals): kept (club_board, club_recent) and added up live, which must agree.
+async function bothPaths(DB, q) {
+  const { academyTotals, filters } = await import('../server/stats.js');
+  const read = async (live) => {
+    const t = academyTotals(filters(new URLSearchParams(q)), { least: 1, live });
+    return (await DB.prepare(`WITH ${t.with} SELECT * FROM totals ORDER BY club_id`).bind(...t.args).all()).results;
+  };
+  const [kept, live] = [await read(false), await read(true)];
+  assert.deepEqual(kept, live, q);
+  return kept;
+}
+
+test("an academy's totals are the same kept as added up, over everyone and over the last two years, under the academy's own filters", async () => {
+  const { keepRecent } = await import('../server/stats.js');
+  const { DB, db } = d1();
+  const counts = ['w', 'rw', 'rl', 'sl'].flatMap((p) => ['submission', 'points', 'walkover', 'decision', 'disqualification', 'stoppage', 'fastest_escape', 'other'].map((g) => `${p}_${g}`));
+  const lately = new Date(Date.now() - 100 * 864e5).toISOString().slice(0, 10);
+  // Two academies: a career athlete with no medals read (NULL), a results athlete with a record, one out of the window, one of a person's other accounts.
+  const add = (user, club, last, values, more = {}) => db.prepare(`INSERT INTO board (site, user, source, club_id, last, ${[...counts, ...Object.keys(more)]})
+    VALUES ('smoothcomp.com', '${user}', '${more.source ?? 'results'}', '${club}', '${last}', ${[...counts.map((c) => values[c] ?? 0), ...Object.values(more).map((v) => (typeof v === 'string' ? `'${v}'` : v))]})`).run();
+  add(1, '9', lately, { w_submission: 3, w_points: 2, w_walkover: 4, rw_submission: 3, rl_points: 1 }, { gold: 1, silver: 0, bronze: 2 });
+  add(2, '9', lately, { w_points: 5, w_decision: 1 }, { source: 'career' });
+  add(3, '10', '2020-01-01', { w_submission: 1, sl_points: 2 }, { silver: 1 });
+  add(4, '10', lately, { w_points: 2 }, { dup: 1 });
+  db.exec("INSERT INTO clubs (site, club_id, club, entered, country) VALUES ('smoothcomp.com', '9', 'Nine', 3, 'DE'), ('smoothcomp.com', '10', 'Ten', 1, 'NL')");
+  await keepRecent({ DB }, 'smoothcomp.com');
+  const figures = (rows) => rows.map((r) => [r.club_id, r.athletes, r.wins, r.submission, r.points, r.gold, r.silver, r.bronze, r.won, r.lost]);
+  // Over everyone: Nine's career athlete adds wins and no record, its results athlete their record.
+  assert.deepEqual(figures(await bothPaths(DB, 'site=smoothcomp.com&active=0')), [['10', 1, 1, 1, 0, 0, 1, 0, 1, 2], ['9', 2, 11, 3, 7, 1, 0, 2, 3, 1]]);
+  // The last two years leave Ten's only counted athlete out.
+  assert.deepEqual(figures(await bothPaths(DB, 'site=smoothcomp.com&active=24')), [['9', 2, 11, 3, 7, 1, 0, 2, 3, 1]]);
+  // The academy's own wins, events and country: each a filter on the academy, kept or not.
+  for (const q of ['wins=5', 'wins=12', 'events=2', 'country=nl', 'q=Ni']) await bothPaths(DB, `site=smoothcomp.com&active=0&${q}`);
 });
 
 test("an academy's kept totals follow its athletes in, changed, moved away and out", () => {

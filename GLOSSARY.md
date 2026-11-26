@@ -39,6 +39,11 @@ matches, their name settling a tie. Owner: `profile-model.js` `outcomes`.
 matches do, by the round each side went out in, a round robin by its record. Owner: `rules.js`
 `placeOf`, `poolPlaces`.
 
+**Academy totals**: an academy's athletes added up (athletes, wins, submissions, points, medals, record), each
+athlete under the academy their latest event gave. The list's Min. wins and Min. events are the academy's own, Country where
+it is. Kept under the default filters (`club_board`, `club_recent`), else added up live; both give the same rows
+(`tests/server.test.cjs`). Owner: `server/stats.js` `academyTotals`.
+
 **Rival**: someone who beat the athlete more than once, opponents known by name. Owner:
 `rules.js` `rivalsOf`.
 

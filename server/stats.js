@@ -15,7 +15,7 @@ const whole = (value, fallback, max = 1e6) => {
 
 // The finish types left out of a win count; walkovers unless the reader counts them.
 const TYPE = /^[\w -]{1,40}$/;
-function filters(params) {
+export function filters(params) {
   const off = params.has('off') ? params.get('off').split(',').filter((t) => TYPE.test(t)).slice(0, 20) : ['walkover'];
   return {
     site: SITES.includes(params.get('site')) ? params.get('site') : SITES[0],
@@ -355,6 +355,17 @@ const TEAM_SORTS = {
   winRate: 'won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, -(won + lost) ASC, wins DESC',
 };
 
+// Academy totals: each academy's athletes added up (COLS: athletes, their wins, submissions and points, medals, and
+// their records summed for the win rate), an athlete counting under the academy their latest event gave. Kept added up
+// under the default finishes and no athlete filter but the Competed window, over everyone (club_board, schema.sql's
+// board_counts adding each board row in as results arrive) or over the last RECENT months (club_recent, keepRecent);
+// otherwise added up here. academyTotals chooses; tests/server.test.cjs holds the kept and live paths to the same rows.
+const COLS = ['athletes', 'wins', 'submission', 'points', 'gold', 'silver', 'bronze', 'won', 'lost'];
+const SUMS = `count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
+  sum(coalesce(gold, 0)) AS gold, sum(coalesce(silver, 0)) AS silver, sum(coalesce(bronze, 0)) AS bronze, sum(coalesce(won, 0)) AS won, sum(coalesce(lost, 0)) AS lost`;
+// An academy's athletes: everyone at one with a counted win or loss (careersOf rows; the + keeps board_ranked off).
+const MEMBER = 'club_id IS NOT NULL AND (+wins > 0 OR lost > 0)';
+
 // The months the site's "Competed" filter starts at: the academies list keeps its totals for them (club_recent).
 export const RECENT = 24;
 // Each academy's totals over its athletes who competed in the last RECENT months, as club_board keeps them over everyone
@@ -362,13 +373,8 @@ export const RECENT = 24;
 // day, so no trigger can keep it. Read in club order through board_club (the + keeps board_ranked off, and the order
 // needs no sort: a sort over every athlete once reset D1); only academies whose totals changed are written.
 export async function keepRecent(env, site) {
-  const COLS = ['athletes', 'wins', 'submission', 'points', 'gold', 'silver', 'bronze', 'won', 'lost'];
   const [{ results: now }, { results: kept }] = await env.DB.batch([
-    env.DB.prepare(`WITH ${careersOf('["walkover"]', 'AND +dup = 0')}
-      SELECT club_id, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
-        sum(coalesce(gold, 0)) AS gold, sum(coalesce(silver, 0)) AS silver, sum(coalesce(bronze, 0)) AS bronze,
-        sum(coalesce(won, 0)) AS won, sum(coalesce(lost, 0)) AS lost
-      FROM careers WHERE club_id IS NOT NULL AND last >= ?2 AND (wins > 0 OR lost > 0) GROUP BY club_id`).bind(site, sinceOf(RECENT)),
+    env.DB.prepare(`WITH ${careersOf('["walkover"]', 'AND +dup = 0')} SELECT club_id, ${SUMS} FROM careers WHERE ${MEMBER} AND last >= ?2 GROUP BY club_id`).bind(site, sinceOf(RECENT)),
     env.DB.prepare(`SELECT club_id, ${COLS.join(', ')} FROM club_recent WHERE site = ?1`).bind(site),
   ]);
   const was = new Map(kept.map((r) => [r.club_id, COLS.map((c) => r[c]).join()]));
@@ -384,6 +390,34 @@ export async function keepRecent(env, site) {
   return { academies: now.length, written: changed.length, gone: gone.length };
 }
 
+// Each academy's totals under the filters (filters()): ?wins= is the academy's own total, ?events= the events it has results at,
+// ?country= and ?near= where it is, ?q= its name; the finishes, belts, ages and Competed window choose its athletes. `least` the
+// fewest athletes, `clubs` these academies alone, `live` added up here even where they are kept (a test). The CTEs `with`, ending
+// in members (each counted athlete, careersOf's row) and totals (one row per academy: COLS, its podiums and place, and how many
+// academies there are), for a query bound with `args` (?9 and ?10 the page's limit and offset).
+export function academyTotals(f, { clubs = [], least = 0, live = false } = {}) {
+  const recent = f.active === RECENT;
+  const kept = !live && !clubs.length && f.off === '["walkover"]' && f.belts === '[]' && f.bornFrom === 0 && f.bornTo === 9999 && (!f.since || recent);
+  const place = `p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km`;
+  const podium = 'coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered, count(*) OVER () AS total';
+  const where = `coalesce(p.entered, 0) >= ?5 AND (?11 = '' OR lower(p.country) = ?11) AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17)`;
+  return {
+    with: `${careersOf(f.off, 'AND +dup = 0')},
+    members AS (SELECT * FROM careers
+      WHERE ${MEMBER} AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)${clubs.length ? ' AND club_id IN (SELECT value FROM json_each(?18))' : ''}),
+    podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
+        iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, coalesce(o.country, c.country) AS country,
+        iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
+      FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1),
+    totals AS ${kept
+      ? `(SELECT k.club_id, ${place}, ${COLS.map((c) => `k.${c}`).join(', ')}, ${podium}
+      FROM ${recent ? 'club_recent' : 'club_board'} k LEFT JOIN podiums p USING (club_id) WHERE k.site = ?1 AND k.athletes >= ?8 AND k.wins >= ?4 AND ${where})`
+      : `(SELECT m.club_id, ${place}, ${SUMS}, ${podium}
+      FROM members m LEFT JOIN podiums p USING (club_id) WHERE ${where} GROUP BY m.club_id HAVING count(*) >= ?8 AND sum(wins) >= ?4)`}`,
+    args: [f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since, f.lat, f.lng, f.km, ...(clubs.length ? [JSON.stringify(clubs)] : [])],
+  };
+}
+
 // An academy is its athletes with a readable career, under the academy their latest event gave.
 async function teams(env, params) {
   const f = filters(params);
@@ -395,35 +429,13 @@ async function teams(env, params) {
   // ?clubs= these academies alone (the site reads each block of rows' top athletes as it scrolls into view); ?top=0 none.
   const clubs = (params.get('clubs') ?? '').split(',').filter((id) => /^\d{1,12}$/.test(id)).slice(0, 100);
   const top = params.get('top') !== '0';
-  // Under the default filters each academy's totals are kept added up: over everyone (club_board, kept as results arrive), or over
-  // those who competed in the last two years (club_recent, kept hourly by keepRecent); any other filter adds them up here (2–5 s).
-  const recent = f.active === RECENT;
-  // ?wins= is the academy's own total, ?events= the events it has results at, ?country= where it is: not each athlete's.
-  const kept = !clubs.length && f.off === '["walkover"]' && f.belts === '[]' && f.bornFrom === 0 && f.bornTo === 9999 && (!f.since || recent);
-  const { results } = await env.DB.prepare(`WITH ${careersOf(f.off, 'AND +dup = 0')},
-    members AS (SELECT * FROM careers
-      WHERE club_id IS NOT NULL AND (+wins > 0 OR lost > 0) AND (?6 = '[]' OR belt IN (SELECT value FROM json_each(?6))) AND ((?12 = 0 AND ?13 = 9999) OR born BETWEEN ?12 + 1 AND ?13) AND (?14 = '' OR last >= ?14)${clubs.length ? ' AND club_id IN (SELECT value FROM json_each(?18))' : ''}),
-    podiums AS (SELECT c.club_id, c.club, c.podium_gold, c.podium_silver, c.podium_bronze, c.entered,
-        iif(o.lat IS NULL, c.lat, o.lat) AS lat, iif(o.lat IS NULL, c.lng, o.lng) AS lng, iif(o.lat IS NULL, c.city, o.city) AS city, coalesce(o.country, c.country) AS country,
-        iif(o.lat IS NULL, iif(c.lat IS NULL, NULL, 'events'), o.source) AS placed
-      FROM clubs c LEFT JOIN club_places o ON o.site = c.site AND o.club_id = c.club_id WHERE c.site = ?1),
-    totals AS ${kept ? `(SELECT k.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, k.athletes, k.wins, k.submission, k.points,
-      k.gold, k.silver, k.bronze, k.won, k.lost,
-      coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
-      count(*) OVER () AS total
-    FROM ${recent ? 'club_recent' : 'club_board'} k LEFT JOIN podiums p USING (club_id)
-    WHERE k.site = ?1 AND k.athletes >= ?8 AND k.wins >= ?4 AND coalesce(p.entered, 0) >= ?5 AND (?11 = '' OR lower(p.country) = ?11) AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17))` : `(SELECT m.club_id, p.club, p.city, p.country AS club_country, p.placed, p.lat, p.lng, ${KM('p.lat', 'p.lng', 15)} AS km, count(*) AS athletes, sum(wins) AS wins, sum(submission) AS submission, sum(points) AS points,
-      sum(gold) AS gold, sum(silver) AS silver, sum(bronze) AS bronze, sum(coalesce(won, 0)) AS won, sum(coalesce(lost, 0)) AS lost,
-      coalesce(p.podium_gold, 0) AS podium_gold, coalesce(p.podium_silver, 0) AS podium_silver, coalesce(p.podium_bronze, 0) AS podium_bronze, coalesce(p.entered, 0) AS entered,
-      count(*) OVER () AS total
-    FROM members m LEFT JOIN podiums p USING (club_id)
-    WHERE coalesce(p.entered, 0) >= ?5 AND (?11 = '' OR lower(p.country) = ?11) AND (?7 = '' OR p.club LIKE '%' || ?7 || '%') AND (?17 = 0 OR ${KM('p.lat', 'p.lng', 15)} <= ?17)
-    GROUP BY m.club_id HAVING count(*) >= ?8 AND sum(wins) >= ?4)`},
+  const t = academyTotals(f, { clubs, least });
+  const { results } = await env.DB.prepare(`WITH ${t.with},
     shown AS (SELECT * FROM totals ORDER BY ${sort}, club_id LIMIT ?9 OFFSET ?10)
     SELECT *, ${top ? `(SELECT json_group_array(json_object('user', user, 'name', name, 'wins', wins, 'belt', belt, 'photo', photo, 'born', born))
         FROM (SELECT * FROM members t WHERE t.club_id = shown.club_id ORDER BY +wins DESC, user LIMIT 3))` : "'[]'"} AS top
     FROM shown ORDER BY ${sort}, club_id`)
-    .bind(f.site, f.off, Date.now() - KEPT, f.wins, f.events, f.belts, f.q, least, f.limit, f.offset, f.country, f.bornFrom, f.bornTo, f.since, f.lat, f.lng, f.km, ...(clubs.length ? [JSON.stringify(clubs)] : [])).all();
+    .bind(...t.args).all();
   return json({ total: results[0]?.total ?? 0, offset: f.offset, rows: results.map((r) => ({ ...r, top: JSON.parse(r.top) })) });
 }
 
