@@ -157,8 +157,12 @@ export async function locate(env, place) {
 export const PLACED = `INSERT OR REPLACE INTO club_places (site, club_id, lat, lng, city, country, address, source, checked)
   SELECT value ->> 'site', value ->> 'club_id', value ->> 'lat', value ->> 'lng', value ->> 'city', value ->> 'country', value ->> 'address', value ->> 'source', ?1 FROM json_each(?2)`;
 export async function placeClubs(env, take = 20, gap = 2500) {
+  // Finding the due ones walks every academy and its place (64k rows), so once a run finds fewer than it takes
+  // (all caught up) the next looks again an hour on (meta 'clubs:rest'), not every minute.
+  if (await env.DB.prepare("SELECT 1 FROM meta WHERE k = 'clubs:rest' AND v > ?1").bind(Date.now()).first()) return 0;
   const due = (await env.DB.prepare(`SELECT c.site, c.club_id FROM clubs c LEFT JOIN club_places p ON p.site = c.site AND p.club_id = c.club_id
     WHERE p.checked IS NULL OR p.checked < ?1 ORDER BY p.checked IS NOT NULL, p.checked, coalesce(c.entered, 0) DESC LIMIT ?2`).bind(Date.now() - 182 * DAY, take).all()).results;
+  if (due.length < take) await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('clubs:rest', ?1)").bind(Date.now() + 3600e3).run();
   // Each is kept as soon as it's read, so a run that overlaps the next minute's never reads it twice.
   let read = 0;
   for (const [i, { site, club_id }] of due.entries()) {
