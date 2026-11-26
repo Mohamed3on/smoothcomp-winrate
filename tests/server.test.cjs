@@ -272,6 +272,14 @@ test("an academy's kept totals follow its athletes in, changed, moved away and o
   db.prepare("UPDATE board SET dup = 1 WHERE user = '1'").run();
   assert.deepEqual(kept(), []);
   db.prepare("UPDATE board SET dup = 0 WHERE user = '1'").run();
+  assert.deepEqual(kept(), [['10', 1, 5, 2, 3, 1, 6, 2]]);
+  // One with nothing counted yet joins its academy's totals once they have, and leaves them when it's gone again.
+  db.prepare(`INSERT INTO board (site, user, source, club_id, gold, silver, bronze, ${counts}) VALUES ('s', '2', 'career', '10', 0, 0, 0, ${counts.map(() => 0)})`).run();
+  assert.deepEqual(kept(), [['10', 1, 5, 2, 3, 1, 6, 2]]);
+  db.prepare("UPDATE board SET w_decision = 2, gold = 1 WHERE user = '2'").run();
+  assert.deepEqual(kept(), [['10', 2, 7, 2, 3, 2, 6, 2]]);
+  db.prepare("UPDATE board SET w_decision = 0 WHERE user = '2'").run();
+  assert.deepEqual(kept(), [['10', 1, 5, 2, 3, 1, 6, 2]]);
   db.prepare("DELETE FROM board WHERE user = '1'").run();
   assert.deepEqual(kept(), []);
 });
