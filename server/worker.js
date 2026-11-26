@@ -274,8 +274,10 @@ async function size(env, { site, event, registered }) {
 
 // Where an academy's own page puts it (rules.js clubPlace; null for a private page), read by a browser opening the academy
 // on the stats site (site academy.tsx): kept as the crawler keeps what it reads there (crawl.js placeClubs), its town placed.
+// Only for an academy not read in half a year, as the page asks: one read since (by the crawler, Google Maps or a page) stands.
 async function place(env, { site, club, place: p }) {
   if (!SITES.includes(site) || !/^\d{1,12}$/.test(String(club ?? '')) || (p != null && typeof p !== 'object')) return json({ error: 'Bad place' }, 400);
+  if (await env.DB.prepare('SELECT 1 FROM club_places WHERE site = ?1 AND club_id = ?2 AND checked >= ?3').bind(site, String(club), Date.now() - 182 * 864e5).first()) return json({});
   const at = p && { lat: coord(p.lat, 90), lng: coord(p.lng, 180), city: text(p.city, 100), country: /^[A-Z]{2}$/.test(p.country ?? '') ? p.country : null, address: text(p.address, 200) };
   if (at && (at.lat == null || at.lng == null || (!at.lat && !at.lng))) at.lat = at.lng = null;
   await env.DB.prepare(PLACED).bind(Date.now(), JSON.stringify([{ site, club_id: String(club), ...(await locate(env, at)) }])).run();

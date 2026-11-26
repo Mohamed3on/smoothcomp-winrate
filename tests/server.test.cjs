@@ -453,7 +453,7 @@ test("an academy's own page places it, over where it competes most", async () =>
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
   const { clubPlace, PLACED } = await import('../server/crawl.js');
-  const { DB } = d1();
+  const { DB, db } = d1();
   const env = { DB };
   const page = (profile) => `<div data-profile="${JSON.stringify(profile).replaceAll('"', '&quot;')}"></div>`;
   assert.deepEqual(clubPlace(page({ id: 501, city: 'München', country_code: 'DE', address: 'Boschetsrieder Str. 60', location_lat: 48.1001095, location_long: 11.530871 })),
@@ -473,10 +473,15 @@ test("an academy's own page places it, over where it competes most", async () =>
   const placed = async () => (await (await API.team(env, new URLSearchParams('site=smoothcomp.com&id=502'))).json()).club.placed;
   const before = await placed();
   assert.equal((await post('/place', { site: 'smoothcomp.com', club: '502', place: 'x' })).status, 400);
+  db.prepare("UPDATE club_places SET checked = 1 WHERE club_id = '502'").run(); // read over half a year ago
   assert.equal((await post('/place', { site: 'smoothcomp.com', club: '502', place: clubPlace(page({ city: 'Potsdam', country_code: 'DE', location_lat: 52.4, location_long: 13.06 })) })).status, 200);
   assert.deepEqual(await near('near=52.4,13.06&km=10'), [['502', 'Potsdam', 'pin']]);
   assert.ok((await placed()) >= before);
-  // A private page (none) still counts as read.
+  // Read within half a year, it stands: a page read later changes nothing.
+  assert.equal((await post('/place', { site: 'smoothcomp.com', club: '502', place: null })).status, 200);
+  assert.deepEqual(await near('near=52.4,13.06&km=10'), [['502', 'Potsdam', 'pin']]);
+  // Older, a private page (none) counts as read.
+  db.prepare("UPDATE club_places SET checked = 1 WHERE club_id = '502'").run();
   assert.equal((await post('/place', { site: 'smoothcomp.com', club: '502', place: null })).status, 200);
   assert.deepEqual(await near('near=52.52,13.40&km=50'), [['502', 'Berlin', 'events']]);
 });
