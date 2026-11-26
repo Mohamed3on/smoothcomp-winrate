@@ -56,16 +56,22 @@ const KM = (lat, lng, at) => `(6371 * acos(min(1, max(-1, sin(radians(?${at})) *
 // The grappling sports' ids on Smoothcomp: Jiu-Jitsu (Gi); Jiu-Jitsu (NoGi), its ADCC and Submission Wrestling rules; Luta Livre.
 const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3', '24'] };
 
+// An event their profile lists (history row `h`) that they didn't show at: they registered, its results are read, and they had
+// no match there, with nothing won on their profile either (Smoothcomp lists the events registered for too).
+const missed = (h) => `(coalesce(${h}.wins, 0) = 0 AND EXISTS (SELECT 1 FROM reads r WHERE r.site = ${h}.site AND r.event = ${h}.event AND r.fought = 1)
+  AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user)
+  AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1))`;
+
 // Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
 // ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:
 // `rec` from the match lists of their profile where it was opened (with the results' walkovers there;
 // older lists name a fastest escape "escape", which the rules group) with the results read at every event those lists
 // don't hold (for an athlete whose profile nobody opened, every event read); `seen` from every
-// event read. Medals and events from the events read, `listed` the events their profile lists,
+// event read. Medals and events from the events read, `listed` the events their profile lists (`absent` those they didn't show at, left out),
 // `last` their latest event. ?1 site, ?2 the athletes (JSON).
 // Each recount writes only the rows it changes (D1 bills every row and index entry written).
-const TALLY_COLS = ['rec','seen','gold','silver','bronze','events','listed','last'];
-export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last)
+const TALLY_COLS = ['rec','seen','gold','silver','bronze','events','listed','last','absent'];
+export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last, absent)
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   -- CROSS JOIN keeps these athletes the outer loop, so each table is read by athlete, never whole.
   fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1 AND ${playedSql('e')}),
@@ -79,10 +85,11 @@ export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, 
   read AS (SELECT f.user, j.key AS t, j.value AS w, 0 AS l FROM fe f, json_each(f.wins) j UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j),
   seen AS (SELECT user, json_group_object(t, json_array(w, l)) AS seen FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM read GROUP BY user, t) GROUP BY user),
   med AS (SELECT user, sum(place = 1) AS gold, sum(place = 2) AS silver, sum(place = 3) AS bronze, count(DISTINCT event) AS events FROM fe GROUP BY user),
-  listed AS (SELECT h.user, count(*) AS listed, max(substr(h.start, 1, 10)) AS last FROM us CROSS JOIN history h WHERE h.site = ?1 AND h.user = us.user GROUP BY h.user),
+  listed AS (SELECT user, count(*) FILTER (WHERE NOT gone) AS listed, count(*) FILTER (WHERE gone) AS absent, max(substr(start, 1, 10)) FILTER (WHERE NOT gone) AS last
+    FROM (SELECT h.user, h.start, ${missed('h')} AS gone FROM us CROSS JOIN history h WHERE h.site = ?1 AND h.user = us.user) GROUP BY user),
   latest AS (SELECT f.user, max(substr(v.start, 1, 10)) AS last FROM fe f JOIN events v ON v.site = f.site AND v.event = f.event GROUP BY f.user)
   SELECT ?1, us.user, rec.rec, seen.seen, coalesce(med.gold, 0), coalesce(med.silver, 0), coalesce(med.bronze, 0), coalesce(med.events, 0), coalesce(listed.listed, 0),
-    nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), '')
+    nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), ''), coalesce(listed.absent, 0)
   FROM us LEFT JOIN rec USING (user) LEFT JOIN seen USING (user) LEFT JOIN med USING (user) LEFT JOIN listed USING (user) LEFT JOIN latest USING (user)
   WHERE rec.rec IS NOT NULL OR seen.seen IS NOT NULL OR med.events IS NOT NULL OR listed.listed IS NOT NULL
   ON CONFLICT (site, user) DO UPDATE SET ${TALLY_COLS.map((c) => `${c} = excluded.${c}`).join(', ')}
@@ -142,7 +149,7 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
 `INSERT INTO board (${BOARD_COLS})
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   src AS MATERIALIZED (
-    SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last,
+    SELECT us.user, c.at, c.entry, t.rec, t.seen, t.gold AS tg, t.silver AS ts, t.bronze AS tb, t.events AS te, t.listed, t.last, t.absent,
       bk.value AS bracket, p.name, p.club, p.club_id, p.country, p.country_name, p.photo, p.born, p.hidden, coalesce(bl.worn ->> '$[#-1]', r.entry ->> '$.belt', p.belt) AS grade, bl.worn ->> '$[#-1]' AS profile_belt,
       ${floorBelt('us.user')} AS least_belt
     FROM us
@@ -161,7 +168,7 @@ export const BOARD = [`DELETE FROM board WHERE site = ?1 AND user IN (SELECT val
     -- Their profile's belt list, where it was read, is the belt: a blue belt who entered purple divisions competed up.
     -- Else their divisions lift the belt their registrations name.
     coalesce(b.profile_belt, ${higher('b.grade', 'b.least_belt')}, b.grade, ${namedBelt('b.user')}), last,
-    iif(source = 'career', nullif(max(coalesce(entry ->> '$.events', 0), coalesce(listed, 0)), 0), max(te, coalesce(listed, 0))),
+    iif(source = 'career', nullif(max(coalesce(entry ->> '$.events', 0) - coalesce(absent, 0), coalesce(listed, 0)), 0), max(te, coalesce(listed, 0))),
     iif(source = 'career', coalesce(entry ->> '$.medals[0]', 0), tg), iif(source = 'career', coalesce(entry ->> '$.medals[1]', 0), ts), iif(source = 'career', coalesce(entry ->> '$.medals[2]', 0), tb),
     ${GROUPS.map((g) => `coalesce(types ->> '$.${g}', 0)`).join(', ')},
     ${GROUPS.map((g) => `coalesce(rec ->> '$.${g}[0]', 0)`).join(', ')},
@@ -437,10 +444,8 @@ const account = (env, f, site, user) => [
     ORDER BY v.start DESC, e.event DESC`).bind(site, user),
   env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
     FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2
-      -- Their profile lists events they registered for too: one they didn't show at (as above, with nothing won there) is left out.
-      AND NOT (coalesce(h.wins, 0) = 0 AND coalesce(v.fought, 0) = 1 AND coalesce(v.ends, unixepoch(v.start) * 1000 + 2 * 864e5) < unixepoch('now') * 1000
-        AND EXISTS (SELECT 1 FROM entries e WHERE e.site = h.site AND e.event = h.event AND e.user = h.user)
-        AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = h.site AND e.event = h.event AND e.user = h.user AND e.fought = 1))
+      -- One they didn't show at, once over (as above), is left out.
+      AND NOT (${missed('h')} AND coalesce(v.ends, unixepoch(v.start) * 1000 + 2 * 864e5) < unixepoch('now') * 1000)
     ORDER BY h.start DESC`).bind(site, user),
   // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
   env.DB.prepare(`SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(site, user),

@@ -289,8 +289,13 @@ async function record(env, { site, event, records, meta, athletes, read, crawled
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || typeof records !== 'object' || !records) return json({ error: 'Bad record' }, 400);
   const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
   if (rows.length > 5000) return json({ error: 'Too many' }, 413);
-  // Whoever this read adds, changes or drops is recounted.
-  await settle(env, site, event, await identify(env, site, event, meta, athletes, true, readAt(read)));
+  // Whoever this read adds, changes or drops is recounted, and with them those registered whose profile lists the event
+  // but who had no match in it: they didn't show (stats.js missed).
+  const users = await identify(env, site, event, meta, athletes, true, readAt(read));
+  if (users.length) users.push(...(await env.DB.prepare(`SELECT DISTINCT e.user FROM entries e WHERE e.site = ?1 AND e.event = ?2 AND e.fought = 0
+      AND EXISTS (SELECT 1 FROM history h WHERE h.site = e.site AND h.user = e.user AND h.event = e.event)
+      AND NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user AND x.fought = 1)`).bind(site, event).all()).results.map((r) => r.user));
+  await settle(env, site, event, users);
   // Results sent with their matches leave the crawler nothing to read: the event leaves its queue
   // (taken off, not marked done, so it never counts against the crawler's day). The crawler's own
   // results keep their row: it marks the read done, or still to come for an event still on.

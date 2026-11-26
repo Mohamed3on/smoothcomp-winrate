@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS tallies (
   events INTEGER NOT NULL DEFAULT 0,
   listed INTEGER NOT NULL DEFAULT 0,
   last TEXT,
+  -- The events their profile lists that they didn't show at (stats.js missed), left out of listed and last.
+  absent INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (site, user)
 );
 -- One row per athlete with everything a ranking shows (stats.js BOARD), rebuilt with their tally:

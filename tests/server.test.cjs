@@ -117,17 +117,22 @@ test("a results page's upload reads back on the stats site", async () => {
   assert.deepEqual(looked.records, { 11: { submission: [3, 0], walkover: [1, 0] }, 12: { points: [1, 0], submission: [0, 2] } });
 });
 
-test("an event their profile lists but they didn't show at, once read and over, isn't in their history", async () => {
+test("an event their profile lists but they didn't show at isn't theirs: not in their history, events or last event", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
   const { DB, db } = d1();
   const env = { DB };
   const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
-  await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
+  const listed = db.prepare("INSERT INTO history (site, user, event, title, start, wins, at) VALUES ('smoothcomp.com', '31', ?, 'Open', ?, ?, 0)");
+  listed.run('900', '2026-10-03', 0);
+  listed.run('800', '2025-10-03', 1);
+  // Their profile counts both events.
+  await post('/keep', { site: 'smoothcomp.com', careers: { 31: { at: Date.now(), wins: { points: 1 }, medals: [0, 0, 0], events: 2 } } });
   await post('/roster', { site: 'smoothcomp.com', event: '900', meta, athletes: { 31: { name: 'Max Roe', entries: [{ division: 'Adult / Blue / -76 kg' }] } }, read: Date.now() });
-  const listed = db.prepare("INSERT INTO history (site, user, event, title, start, wins, at) VALUES ('smoothcomp.com', '31', ?, 'Open', ?, 0, 0)");
-  listed.run('900', '2026-10-03');
-  listed.run('800', '2025-10-03');
+  assert.deepEqual({ ...db.prepare("SELECT events, last FROM board WHERE user = '31'").get() }, { events: 2, last: '2026-10-03' });
+  // The results come in without them.
+  await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
+  assert.deepEqual({ ...db.prepare("SELECT events, last FROM board WHERE user = '31'").get() }, { events: 1, last: '2025-10-03' });
   const page = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=31'))).json();
   assert.deepEqual(page.history.map((h) => h.event), ['800']);
 });
