@@ -431,7 +431,10 @@ const account = (env, f, site, user) => [
   env.DB.prepare(`WITH ${careersOf(f.off)} SELECT * FROM careers WHERE user = ?4`).bind(site, f.off, Date.now() - KEPT, user),
   env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(site, user),
   env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
-    FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()} ORDER BY v.start DESC, e.event DESC`).bind(site, user),
+    FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()}
+      -- A registration in an event whose results are read and that has ended (as the event page judges it): they didn't show.
+      AND NOT (e.fought = 0 AND v.fought = 1 AND coalesce(v.ends, unixepoch(v.start) * 1000 + 2 * 864e5) < unixepoch('now') * 1000)
+    ORDER BY v.start DESC, e.event DESC`).bind(site, user),
   env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
     FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2 ORDER BY h.start DESC`).bind(site, user),
   // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
