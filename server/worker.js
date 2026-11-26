@@ -363,7 +363,8 @@ async function crawled(env, { site, user, events }) {
     const fought = rows.filter(r => r.division);
     if ((!fought.length || fought.some(r => !r.bouts)) && (rows[0].state !== 'done' || rows[0].wins)) continue;
     const [h] = rows;
-    const out = Outcome.fromBouts(fought.map((r) => ({ division: r.division, bouts: JSON.parse(r.bouts ?? '[]') })), { wins: h.wins, medals: [h.gold, h.silver, h.bronze] });
+    // Results saying they fought there win (Attendance): only an event with none of theirs read can be one they didn't show at.
+    const out = Outcome.fromBouts(fought.map((r) => ({ division: r.division, bouts: JSON.parse(r.bouts ?? '[]') })), fought.length ? null : { wins: h.wins, medals: [h.gold, h.silver, h.bronze] });
     found.push({ id: Number(event), start_date: h.start, title: h.title, out: Outcome.clean(out) });
   }
   const waiting = [...by.keys()].filter(event => !found.some(e => e.id === Number(event)));

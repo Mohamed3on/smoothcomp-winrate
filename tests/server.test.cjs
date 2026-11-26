@@ -691,3 +691,15 @@ test("search finds both sites' athletes, academies and events, one person's acco
   // On AJP, the person is their AJP account.
   assert.deepEqual((await found('ajptour.com')).athletes.map((a) => [a.site, a.user]), [['ajptour.com', '7'], ['smoothcomp.com', '8']]);
 });
+
+test("an event a profile couldn't read comes from the crawled results: a bracket of one is theirs, an event with no result of theirs isn't", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { DB, db } = d1();
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), { DB }, {});
+  db.exec(`INSERT INTO crawls (site, event, state, at) VALUES ('smoothcomp.com', '901', 'done', 0), ('smoothcomp.com', '902', 'done', 0);
+    INSERT INTO entries (site, event, user, division, place, wins, losses, fought, at, bouts) VALUES ('smoothcomp.com', '901', '7', 'Adult / Blue / -76 kg', 1, '{}', '{}', 1, 0, '[]');
+    INSERT INTO history (site, user, event, start, wins, gold, at) VALUES ('smoothcomp.com', '7', '902', '2026-10-01', 0, 0, 0);`);
+  const { events } = await (await post('/crawled', { site: 'smoothcomp.com', user: '7', events: [901, 902] })).json();
+  // Gold in a bracket of one, its history row not read yet: no match, and theirs all the same.
+  assert.deepEqual(events.map((e) => [e.id, e.out.absent ?? false]).sort(), [[901, false], [902, true]]);
+});

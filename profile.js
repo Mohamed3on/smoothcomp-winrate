@@ -12,7 +12,7 @@
   const ajp = location.hostname === 'ajptour.com';
   if (ajp) document.documentElement.classList.add('scwr-ajp');
   const CARD = ajp ? '.user-statistics' : '.match-statistics-content';
-  // The rules apart from the page: profile-model.js.
+  // The rules apart from the page: profile-model.js, and an event's Outcome (rules.js).
   const { FINISHES, LABELS, finishOf, normalize: person } = SCWRRules;
   const { clean } = SCWRRules.Outcome;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
