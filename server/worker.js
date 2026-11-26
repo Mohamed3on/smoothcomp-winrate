@@ -271,7 +271,7 @@ async function size(env, { site, event, registered }) {
 }
 
 // A results page's records for its event; the latest read of an event replaces the last.
-async function record(env, { site, event, records, meta, athletes, read, crawled }) {
+async function record(env, { site, event, records, meta, athletes, read, crawled, asked, on }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || typeof records !== 'object' || !records) return json({ error: 'Bad record' }, 400);
   const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
   if (rows.length > 5000) return json({ error: 'Too many' }, 413);
@@ -280,7 +280,14 @@ async function record(env, { site, event, records, meta, athletes, read, crawled
   // Results sent with their matches leave the crawler nothing to read: the event leaves its queue
   // (taken off, not marked done, so it never counts against the crawler's day). The crawler's own
   // results keep their row: it marks the read done, or still to come for an event still on.
-  if (!crawled) await env.DB.prepare(`DELETE FROM crawls WHERE site = ?1 AND event = ?2 AND state = 'queued'
+  // Read by a visitor's browser on the stats site (site read-now.tsx), the event is read as the crawler reads it, and its
+  // row says so: written now (wrote), so the crawler's own later read replaces it, and still on, read again in six hours.
+  if (asked) {
+    const now = Date.now();
+    await env.DB.prepare(`INSERT INTO crawls (site, event, state, start, title, city, next, at, wrote) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+      ON CONFLICT (site, event) DO UPDATE SET state = excluded.state, data = NULL, next = excluded.next, tries = 0, at = excluded.at, wrote = excluded.wrote, priority = min(priority, 3)`)
+      .bind(site, event, on ? 'queued' : 'done', text(meta?.start, 40), text(meta?.title, 200), text(meta?.city, 100), on ? now + 6 * 3600e3 : 0, now).run();
+  } else if (!crawled) await env.DB.prepare(`DELETE FROM crawls WHERE site = ?1 AND event = ?2 AND state = 'queued'
     AND EXISTS (SELECT 1 FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1 AND bouts IS NOT NULL)`).bind(site, event).run();
   return json({});
 }
@@ -426,39 +433,6 @@ async function profile(env, body) {
   return json({});
 }
 
-// Someone on the site asks for an event's results now, or for an athlete's last three events of the month:
-// each that has started goes to the front of the crawl queue (priority 4: past the crawler's day, and read
-// while matches are still to fight), and a lane starts at once instead of at the next minute. One just read
-// is left alone for five minutes, a lane is started at most once a minute, and twenty wait at most.
-const NOW = 4;
-async function readNow(env, { site, event, user }, ctx) {
-  if (!SITES.includes(site) || !(validUser(String(user ?? '')) || /^\d{1,9}$/.test(String(event ?? '')))) return json({ error: 'Bad read' }, 400);
-  const now = Date.now(), started = new Date(now).toISOString();
-  const found = user != null
-    ? await env.DB.prepare(`SELECT event, max(start) AS start, max(title) AS title, max(city) AS city FROM (
-        SELECT event, start, title, city FROM history WHERE site = ?1 AND user = ?2
-        UNION ALL SELECT v.event, v.start, v.title, v.city FROM entries e JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2)
-      GROUP BY event HAVING max(start) <= ?3 AND max(start) >= ?4 ORDER BY max(start) DESC LIMIT 3`).bind(site, String(user), started, new Date(now - 30 * 864e5).toISOString().slice(0, 10)).all()
-    : await env.DB.prepare('SELECT event, start, title, city FROM events WHERE site = ?1 AND event = ?2 AND start <= ?3').bind(site, String(event), started).all();
-  if (!found.results.length) return json({ events: [] });
-  if (await env.DB.prepare(`SELECT count(*) AS n FROM crawls WHERE state IN ('queued', 'reading') AND priority >= ${NOW}`).first('n') >= 20) return json({ error: 'Busy, try again' }, 429);
-  // A lane holding one (next under ten minutes on) keeps it; a read put off for hours is brought forward.
-  const { results } = await env.DB.prepare(`INSERT INTO crawls (site, event, state, start, title, city, next, at, priority)
-    SELECT ?1, value ->> 'event', 'queued', value ->> 'start', value ->> 'title', value ->> 'city', 0, ?2, ${NOW} FROM json_each(?3) WHERE true
-    ON CONFLICT (site, event) DO UPDATE SET priority = ${NOW}, tries = 0, at = excluded.at,
-      next = iif(crawls.next BETWEEN ?2 AND ?2 + 600000, crawls.next, 0),
-      state = iif(crawls.state = 'reading', 'reading', 'queued'), data = iif(crawls.state = 'reading', crawls.data, NULL)
-    WHERE crawls.state IN ('queued', 'reading') OR crawls.at < ?2 - 300000
-    RETURNING event`).bind(site, now, JSON.stringify(found.results)).all();
-  const kicked = Number(await env.DB.prepare("SELECT v FROM meta WHERE k = 'kicked'").first('v') ?? 0);
-  if (results.length && env.CRAWLER && env.CRAWL_KEY && kicked < now - 60e3) {
-    await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('kicked', ?1)").bind(now).run();
-    // A short lane, ended inside the 30 seconds a response's work may outlive it; the cron's lanes go on from there.
-    ctx.waitUntil(env.CRAWLER.fetch('https://crawler/run?for=20000', { headers: { 'x-crawl-key': env.CRAWL_KEY } }).catch(() => {}));
-  }
-  return json({ events: results.map((r) => r.event), found: found.results.length });
-}
-
 // An event's scores, which a reader's browser read from its match cards (site read-scores.tsx, profile.js), filled into the
 // stored matches that have none: each by its division, round and the two users who fought it (a match kept without its
 // round, by the only one the two fought there). Only rows that change are written. A card sent with its match id is kept
@@ -496,8 +470,8 @@ async function scores(env, { site, event, matches }) {
   return json({ filled: changed.length, kept: cards.length });
 }
 
-const READS = new Set(['/lookup', '/outcomes', '/crawled', '/read-now', '/scored']);
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/size': size, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/read-now': readNow, '/scores': scores, '/scored': scored };
+const READS = new Set(['/lookup', '/outcomes', '/crawled', '/scored']);
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/size': size, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/scores': scores, '/scored': scored };
 
 // The site's reads, kept at Cloudflare's edge so most visits never reach the database. Seconds an
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy
@@ -527,9 +501,9 @@ async function cached(request, ctx, name, env, make) {
   const hit = await cache.match(key);
   const stored = Number(hit?.headers.get('X-Stored'));
   try {
-    // An event's or division's page also reads when that event's results last arrived.
+    // An event's or division's page also reads when that event's results last arrived (its row, and each read of it).
     const id = (name === 'event' || name === 'division') && new URL(request.url).searchParams.get('id');
-    const stamps = hit ? (await db.prepare(`SELECT k, v FROM meta WHERE k IN ('changed', 'reset')${id ? " UNION ALL SELECT 'event', max(at) FROM events WHERE site IN ('smoothcomp.com', 'ajptour.com') AND event = ?1" : ''}`)
+    const stamps = hit ? (await db.prepare(`SELECT k, v FROM meta WHERE k IN ('changed', 'reset')${id ? " UNION ALL SELECT 'event', max(at) FROM (SELECT at FROM events WHERE site IN ('smoothcomp.com', 'ajptour.com') AND event = ?1 UNION ALL SELECT at FROM reads WHERE site IN ('smoothcomp.com', 'ajptour.com') AND event = ?1)" : ''}`)
       .bind(...(id ? [id] : [])).all()).results : [];
     const stamp = (k) => Number(stamps.find((row) => row.k === k)?.v ?? 0);
     if (hit && stamp('reset') <= stored) {

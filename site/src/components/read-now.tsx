@@ -1,35 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { HOMES, read, reload, schedule } from '@/components/read-scores';
+import { eventResults, nameSides, scheduleOf } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 
-type State = 'idle' | 'asking' | 'reading' | 'none' | 'recent' | 'error';
-const SAY: Record<State, string> = { idle: '', asking: 'Asking…', reading: 'Reading…', none: 'Nothing started to read', recent: 'Read minutes ago', error: 'Didn’t go through, try again' };
+// An event to read, with what Mat Stats knows of it (kept with its results).
+export interface Asked { site: string; event: string; title?: string | null; start?: string | null; city?: string | null }
+const iso = (t?: string | number | null) => (t != null && !Number.isNaN(new Date(t).getTime()) ? new Date(t).toISOString() : null);
 
-// Has the server read results now (worker.js readNow): the event, or the athlete's last events of the month,
-// go to the front of the crawl queue and a crawler lane starts. The page then asks again every 35 seconds
-// (past the 30 the browser keeps a copy) for five minutes, as a big event arrives in parts.
-export function ReadNow({ site, event, user, route, label, size = 'sm' }: { site: string; event?: string; user?: string; route: string; label: string; size?: 'sm' | 'lg' }) {
+// An event's results, read by this browser straight from the site (its JSON answers any page, no sign-in) as the
+// crawler reads one (rules.js scheduleOf, nameSides, eventResults): the schedule, then a bracket card for enough
+// matches to name everyone, every card at once. They go to Mat Stats as a results page's do (worker.js record),
+// which stores them; false when the event has no match to read yet.
+async function readEvent({ site, event, title, start, city }: Asked, tick: (n: number) => void) {
+  const home = HOMES[site];
+  const { mats, lists } = await schedule(`${home}/en/event/${event}`);
+  const data = { ...scheduleOf(mats, lists), users: {}, tried: [] };
+  if (!data.matches.length) return false;
+  await nameSides(data, () => Infinity, (matches) => {
+    tick(matches.length);
+    return Promise.all(matches.map((m) => read(`${home}/en/getBracketMatchData/${m[0]}`).catch(() => null).finally(() => tick(-1))));
+  });
+  const { athletes, records } = eventResults(data, start);
+  const r = await fetch('/record', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    site, event, records, athletes, read: Date.now(), asked: true, on: !data.over, meta: { title, start: iso(start), end: iso(data.ends), city } }) });
+  if (!r.ok) throw new Error(String(r.status));
+  return true;
+}
+
+type State = 'idle' | 'reading' | 'none' | 'error';
+// Reads the events on a click, then the page again, past the browser's copy.
+export function ReadNow({ targets, route, label, size = 'sm' }: { targets: Asked[]; route: string; label: string; size?: 'sm' | 'lg' }) {
   const client = useQueryClient();
   const [state, setState] = useState<State>('idle');
-  useEffect(() => {
-    if (state !== 'reading') return;
-    const tick = setInterval(() => client.invalidateQueries({ queryKey: [route] }), 35e3);
-    const end = setTimeout(() => setState('idle'), 5 * 60e3);
-    return () => { clearInterval(tick); clearTimeout(end); };
-  }, [state, client, route]);
+  const [left, setLeft] = useState(0);
   const ask = async () => {
-    setState('asking');
-    const r = await fetch('/read-now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ site, event, user }) }).catch(() => null);
-    const body: { events: string[]; found?: number } | null = r?.ok ? await r.json().catch(() => null) : null;
-    setState(!body ? 'error' : body.events.length ? 'reading' : body.found ? 'recent' : 'none');
+    setState('reading');
+    setLeft(0);
+    const results = await Promise.allSettled(targets.map((t) => readEvent(t, (n) => setLeft((x) => x + n))));
+    await reload(client, route);
+    setState(results.some((r) => r.status === 'rejected') ? 'error' : results.some((r) => r.status === 'fulfilled' && r.value) ? 'idle' : 'none');
   };
-  const busy = state === 'asking' || state === 'reading';
   return (
-    <Button variant="outline" size={size} onClick={ask} disabled={busy} aria-live="polite"
-      title={state === 'reading' ? 'Results show here as they arrive, usually within a minute or two' : `Mat Stats reads ${event ? 'this event’s results' : 'their latest events'} from the site now, instead of waiting for its turn`}>
-      <RefreshCw className={cn(busy && 'animate-spin motion-reduce:animate-none')} />{SAY[state] || label}
+    <Button variant="outline" size={size} onClick={ask} disabled={state === 'reading'} aria-live="polite"
+      title={`Read ${targets.length > 1 ? 'their latest events’ results' : 'this event’s results'} from the site now`}>
+      <RefreshCw className={cn(state === 'reading' && 'animate-spin motion-reduce:animate-none')} />
+      {state === 'reading' ? (left ? `Reading ${left} matches…` : 'Reading schedule…') : state === 'error' ? 'Didn’t go through, try again' : state === 'none' ? 'No matches to read yet' : label}
     </Button>
   );
 }

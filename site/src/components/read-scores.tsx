@@ -1,17 +1,18 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { get, type Bout, type Entry } from '@/lib/api';
 import { finishOf, normalize, SCORELESS } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 
-const HOMES: Record<string, string> = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
-// Eight requests in flight at most, across every event read at once.
+export const HOMES: Record<string, string> = { 'smoothcomp.com': 'https://smoothcomp.com', 'ajptour.com': 'https://ajptour.com' };
+// Sixteen requests in flight at most, across every event read at once: past that Smoothcomp answers no faster
+// (about 40 cards a second to one reader).
 let open = 0;
 const waiting: (() => void)[] = [];
-async function read(url: string, moved?: (to: string) => void) {
-  if (open >= 8) await new Promise<void>((go) => waiting.push(go));
+export async function read(url: string, moved?: (to: string) => void) {
+  if (open >= 16) await new Promise<void>((go) => waiting.push(go));
   open++;
   try {
     const r = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -53,14 +54,24 @@ async function readEvent({ site, event, entries }: Target, tick: (n: number) => 
     if (!r.ok) throw new Error(String(r.status));
   }
 }
+// An event's schedule (`base` its page): each mat, and each mat's matches. An organiser's event redirects to its own
+// subdomain: the rest go there, not through the redirect again.
+export async function schedule(base: string) {
+  const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`, (to) => { base = to.slice(0, to.indexOf('/schedule/')); });
+  const mats: { id: number }[] = (await all(days, (d) => read(`${base}/schedule/new/mats.json/${d.id}`))).flat();
+  return { mats, lists: await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`)) as Listed[][] };
+}
+// Each query of the routes asked for, fetched again past the browser's copy, so the page shows what was just sent.
+export const reload = (client: QueryClient, route: string | string[]) => Promise.all(client.getQueryCache().findAll({ predicate: (q) => [route].flat().includes(q.queryKey[0] as string) }).map((q) => {
+  const [name, query] = q.queryKey as [string, Record<string, string>];
+  return client.fetchQuery({ queryKey: q.queryKey, queryFn: () => get(name, query, { cache: 'reload' }), staleTime: 0 }).catch(() => {});
+}));
+
 // The finished matches the schedule lists that are still without a score: each found by its division (or bracket),
 // round and opponent (one kept without its round, by both who fought it), so a card already read is never read again;
 // none asked for, every division.
 async function listed(base: string, entries?: Target['entries']): Promise<Listed[]> {
-  // An organiser's event redirects to its own subdomain: the rest go there, not through the redirect again.
-  const days: { id: number }[] = await read(`${base}/schedule/new/matcategories.json`, (to) => { base = to.slice(0, to.indexOf('/schedule/')); });
-  const mats: { id: number }[] = (await all(days, (d) => read(`${base}/schedule/new/mats.json/${d.id}`))).flat();
-  const lists: Listed[] = (await all(mats, (m) => read(`${base}/schedule/new/mat/${m.id}/matches.json`))).flat();
+  const lists: Listed[] = (await schedule(base)).lists.flat();
   // A pool's numbered match is the only one of its number there; a knockout round's is told apart by the opponent,
   // spelt as either list spells them (a profile's "Hüseyin" is a registration's "Huseyin").
   const fold = (name: unknown) => normalize(name).normalize('NFD').replace(/\p{M}/gu, '');
@@ -83,10 +94,7 @@ export function ReadScores({ targets, route, size = 'sm' }: { targets: Target[];
     setState('reading');
     setLeft(0);
     const results = await Promise.allSettled(targets.map((t) => readEvent(t, (n) => setLeft((x) => x + n))));
-    await Promise.all(client.getQueryCache().findAll({ predicate: (q) => [route].flat().includes(q.queryKey[0] as string) }).map((q) => {
-      const [name, query] = q.queryKey as [string, Record<string, string>];
-      return client.fetchQuery({ queryKey: q.queryKey, queryFn: () => get(name, query, { cache: 'reload' }), staleTime: 0 }).catch(() => {});
-    }));
+    await reload(client, route);
     setState(results.some((r) => r.status === 'rejected') ? 'error' : 'idle');
   };
   return (

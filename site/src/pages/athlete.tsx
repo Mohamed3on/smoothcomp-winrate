@@ -535,8 +535,9 @@ export function AthletePage({ id }: { id: string }) {
   const all = rows(entries, history, outcomes);
   const upcoming = all.filter((r) => isUpcoming(r.start) && !r.read?.some((e) => e.fought));
   const past = all.filter((r) => !upcoming.includes(r));
-  // An event begun in the last 30 days with no results read yet, which the server reads now on asking (worker.js readNow).
-  const lately = all.some((r) => r.start && Date.parse(r.start) <= Date.now() && Date.parse(r.start) >= Date.now() - 30 * 864e5 && !r.read?.some((e) => e.fought));
+  // An event begun in the last 30 days with no results read yet: their last three of the month are read on asking (read-now.tsx).
+  const month = all.filter((r) => r.start && Date.parse(r.start) <= Date.now() && Date.parse(r.start) >= Date.now() - 30 * 864e5);
+  const lately = month.some((r) => !r.read?.some((e) => e.fought));
   // Their events with a match read but not its score, each with the divisions that have one.
   const unscored = past.flatMap((r) => {
     const open = (r.read ?? []).filter((e) => e.bouts?.some(needsScore));
@@ -595,7 +596,7 @@ export function AthletePage({ id }: { id: string }) {
           </p>}
         </div>
         <div className="flex shrink-0 gap-2">
-          {lately && <ReadNow site={f.site} user={id} route="athlete" label="Read latest events" size="lg" />}
+          {lately && <ReadNow targets={month.slice(0, 3).map((r) => ({ site: r.site ?? f.site, event: r.id, title: r.title, start: r.start, city: r.city }))} route="athlete" label="Read latest events" size="lg" />}
           {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>{plural(data.profile!.videos!, 'match video')}<ExternalLink /></a>}
           <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ size: 'lg' })}>Profile on {SITE_NAME(f.site)}<ExternalLink /></a>
         </div>

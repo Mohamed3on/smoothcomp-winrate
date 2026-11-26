@@ -234,6 +234,153 @@ globalThis.SCWRRules = (() => {
   const isPool = (stages) => stages.length > 0 && stages.every((s) => /^Match \d+\/\d+$/.test(s ?? ''));
   const poolPlaces = (rows, beat) => new Map([...rows].sort((a, b) => b.wins - a.wins || b.subs - a.subs || (beat(a.key, b.key) ? -1 : beat(b.key, a.key) ? 1 : 0)).map((r, i) => [r.key, i + 1]));
 
+  // An event's results read off Smoothcomp's JSON, which answers a server or any page without a sign-in: the
+  // crawler (server/crawl.js) and the stats site's Read results now (site read-now.tsx) read the same way, each
+  // fetching as suits it. First the schedule's mats (mats.json) and their match lists (mat/<id>/matches.json), kept
+  // small: [id, division, stage, finish (one winner, finished), sides, bracket], a side being [registration, won,
+  // name, club, country, affiliation]. Whether every match is finished, and when the last mat ends.
+  function scheduleOf(mats, lists) {
+    const seen = new Map();
+    let over = true;
+    for (const m of lists.flatMap((l) => (Array.isArray(l) ? l : []))) {
+      const sides = (m?.seats ?? []).filter((s) => s.type === 'registration' && s.event_registration_id);
+      if (!sides.length || seen.has(m.id)) continue;
+      const winners = sides.filter((s) => s.isWinner);
+      const finish = m.state === 'finished' && sides.length === 2 && winners.length === 1 && m.wonBy ? String(m.wonBy) : null;
+      if (m.state !== 'finished') over = false;
+      seen.set(m.id, [m.id, m.group ?? '', m.name ?? '', finish, sides.map((s) => [s.event_registration_id, !!s.isWinner, s.name ?? null, s.club || null, s.country || null, s.affiliation || null]), Number(m.bracket_id) || null]);
+    }
+    const ends = Math.max(0, ...mats.map((m) => Date.parse(m?.estimated_end) || 0));
+    return { matches: [...seen.values()], over, ends: ends || null };
+  }
+
+  // Then each match's bracket card (getBracketMatchData/<id>): who each side is (their user, academy, affiliation, age,
+  // photo), and the score, kept for the matches whose card is read. Cards are read only to name everyone (a card for
+  // every match would be about 2.5 times the requests), `room` at a time: matches naming two unknown sides first.
+  // `read(matches)` gives each one's card (null or an Error where it failed), whose sides are left to another match.
+  // `data` is { matches, users: {}, tried: [] } and keeps what is read, so a read cut off goes on where it stopped;
+  // those no card named stay unnamed (`missed`).
+  const scored = (m) => m[3] && finishOf(m[3]) !== 'walkover' && m[4].length === 2;
+  const seconds = (t) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t.split(':')[0]) * 60 + Number(t.split(':')[1]) : null);
+  async function nameSides(data, room, read) {
+    const users = data.users;
+    data.cards ??= {};
+    const tried = new Set(data.tried);
+    const open = (reg) => !(reg in users) && !(data.missed ?? []).includes(reg);
+    for (;;) {
+      const space = room();
+      const want = new Set(data.matches.flatMap((m) => m[4].map((s) => s[0])).filter(open));
+      const out = [];
+      const taken = new Set();
+      // Of two matches naming as many, a scored one first, so more matches keep their score.
+      const rank = data.matches.filter((m) => !tried.has(m[0])).map((m) => [m, m[4].filter((s) => want.has(s[0])).length]).sort((a, b) => b[1] - a[1] || scored(b[0]) - scored(a[0]));
+      for (const [m] of rank) {
+        if (out.length >= space) break;
+        const fresh = m[4].filter((s) => want.has(s[0]) && !taken.has(s[0]));
+        if (!fresh.length) continue;
+        fresh.forEach((s) => taken.add(s[0]));
+        out.push(m);
+      }
+      if (!out.length) {
+        // Nothing left to try for these: they stay unnamed.
+        data.missed = [...new Set([...(data.missed ?? []), ...want])];
+        return;
+      }
+      const cards = await read(out);
+      out.forEach((m, i) => {
+        tried.add(m[0]);
+        const card = cards[i];
+        if (!card || card instanceof Error) return;
+        const people = [card.left, card.right].filter((p) => p?.id);
+        // Each card side to its seat by name, else in order.
+        const score = [];
+        for (const [k, s] of m[4].entries()) {
+          const p = people.find((x) => normalize(`${x.first_name} ${x.last_name}`) === normalize(s[2])) ?? (people.length === m[4].length ? people[k] : null);
+          if (!p) continue;
+          users[s[0]] = { id: String(p.id), name: `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() || s[2], club: p.club || s[3], clubId: p.club_id ? String(p.club_id) : null,
+            affiliation: p.affiliation || s[5] || null,
+            country: p.country_flag || (s[4] ? String(s[4]).toLowerCase() : null), countryName: p.country || null, age: Number.isSafeInteger(p.age) ? p.age : null,
+            photo: /^https:/.test(p.profile_image ?? '') ? p.profile_image : null,
+            // The card's `public` is true for hidden profiles too (2268210), so it can only ever say hidden.
+            hidden: p.public === false || null };
+          score[k] = [p.score, p.advantage, p.penalty].map((n) => (Number.isSafeInteger(n) ? n : 0));
+        }
+        // The score per seat ([points, advantages, penalties]) and the clock: when the match ended and the seconds left
+        // (the card gives those in milliseconds).
+        if (scored(m) && score[0] && score[1]) data.cards[m[0]] = { s: score, t: [seconds(card.matchInfo?.time), Number.isSafeInteger(card.matchInfo?.timeRemaining) ? Math.round(card.matchInfo.timeRemaining / 1000) : null] };
+      });
+      data.tried = [...tried];
+    }
+  }
+
+  // The event as a results page would send it (/record): each athlete's divisions, wins and losses by finish, and a
+  // place where the matches give one (placeOf, poolPlaces), in the order fought, its medals from the final and bronze
+  // match, as the extension counts a division not yet published. No-shows (walkover losses alone) are left out, as
+  // published results leave them out. `start` is the event's, for the age the server keeps a birth year from.
+  function eventResults(data, start) {
+    const athletes = {};
+    const records = {};
+    // An age is the athlete's now; the event's is what the server keeps a birth year from.
+    const back = start ? new Date().getUTCFullYear() - new Date(start).getUTCFullYear() : 0;
+    const divisions = new Map();
+    for (const m of data.matches) {
+      const key = normalize(m[1]);
+      if (!divisions.has(key)) divisions.set(key, []);
+      divisions.get(key).push(m);
+    }
+    for (const matches of divisions.values()) {
+      const division = matches[0][1];
+      const entries = new Map();
+      const beat = new Set();
+      const of = (s) => {
+        const u = data.users[s[0]];
+        if (!u) return null;
+        if (!entries.has(u.id)) entries.set(u.id, { user: u, e: { division, place: null, wins: {}, losses: {}, bouts: [] }, w: 0, sub: 0, shown: false });
+        return entries.get(u.id);
+      };
+      const bronze = matches.some((m) => m[2] === 'Bronze match');
+      for (const [id, , stage, finish, sides, bracket] of [...matches].sort((a, b) => roundOf(a[2]) - roundOf(b[2]) || a[0] - b[0])) {
+        const card = data.cards?.[id];
+        const seats = sides.map(of);
+        if (!finish) continue;
+        sides.forEach((s, i) => {
+          const x = seats[i];
+          if (!x) return;
+          // Who they met: the other side, named as their bracket card names them where it was read.
+          const k = 1 - i;
+          const them = sides[k] && (data.users[sides[k][0]] ?? null);
+          if (sides[k]) x.e.bouts.push({ won: s[1], type: finish, opponent: them?.name ?? sides[k][2], user: them?.id ?? null, club: them?.club ?? sides[k][3], stage, bracket, match: id,
+            ...(card ? { us: card.s[i], them: card.s[k], clock: card.t } : {}) });
+          const bucket = s[1] ? x.e.wins : x.e.losses;
+          bucket[finish] = (bucket[finish] ?? 0) + 1;
+          if (s[1]) { x.w++; if (/^sub/.test(finish)) x.sub++; }
+          if (s[1] || finishOf(finish) !== 'walkover') x.shown = true;
+          const place = placeOf(stage, s[1], bronze);
+          if (place) x.e.place = place;
+        });
+        const [a, b] = seats;
+        if (a && b) beat.add(`${(sides[0][1] ? a : b).user.id}>${(sides[0][1] ? b : a).user.id}`);
+      }
+      const shown = [...entries.values()].filter((x) => x.shown || !Object.keys(x.e.losses).length);
+      if (isPool(matches.map((m) => m[2])) && matches.some((m) => m[3])) {
+        const places = poolPlaces(shown.map((x) => ({ key: x.user.id, wins: x.w, subs: x.sub })), (a, b) => beat.has(`${a}>${b}`));
+        for (const x of shown) x.e.place = places.get(x.user.id);
+      }
+      for (const { user: u, e } of shown) {
+        const a = athletes[u.id] ??= { name: u.name, club: u.club, clubId: u.clubId, affiliation: u.affiliation, country: u.country, countryName: u.countryName, belt: division,
+          age: u.age == null ? null : u.age - back, photo: u.photo, hidden: u.hidden, entries: [] };
+        a.entries.push(e);
+      }
+    }
+    for (const [id, a] of Object.entries(athletes)) {
+      const count = (b) => Object.entries(b).reduce((n, [t, c]) => n + (finishOf(t) === 'walkover' ? 0 : c), 0);
+      const w = a.entries.reduce((n, e) => n + count(e.wins), 0);
+      const l = a.entries.reduce((n, e) => n + count(e.losses), 0);
+      if (w + l) records[id] = [w, l];
+    }
+    return { athletes, records };
+  }
+
   // A bracket's seeding, best first, which points to its medals: the higher belt (only a bracket of
   // mixed belts tells them apart), then the best win rate where their record is known, then wins per
   // event, the most wins, most by submission, most on points, and the younger athlete; any figure
@@ -263,5 +410,5 @@ globalThis.SCWRRules = (() => {
     return (k[1] >= 0 || k[3] >= 0) && seeds.every((s, j) => j === i || seedKey(s).slice(0, 4).some((n, m) => n !== k[m]));
   };
 
-  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces };
+  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, nameSides, eventResults };
 })();

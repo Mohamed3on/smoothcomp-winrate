@@ -2,6 +2,11 @@
 type Types = Record<string, [number, number]>;
 interface EventRecord { event: string; start: string | null; types: Types; divisions: string[] }
 interface Rival { key: string; name: string; w: number; l: number }
+// An event's schedule as rules.js scheduleOf keeps it, and what reading it gives (nameSides, eventResults).
+type Side = [registration: number, won: boolean, name: string | null, club: string | null, country: string | null, affiliation: string | null];
+type Match = [id: number, division: string, stage: string, finish: string | null, sides: Side[], bracket: number | null];
+interface Card { left?: Record<string, unknown> | null; right?: Record<string, unknown> | null; matchInfo?: { time?: string; timeRemaining?: number } }
+interface Read { matches: Match[]; over: boolean; ends: number | null; users: Record<string, unknown>; tried: number[]; missed?: number[]; cards?: Record<string, unknown> }
 interface Seed { belt?: string | null; won?: number | null; lost?: number | null; wins?: number | null; events?: number | null; gold?: number | null; submission?: number | null; points?: number | null; born?: number | null }
 declare global {
   var SCWRRules: {
@@ -38,6 +43,9 @@ declare global {
     roundOf(stage: string | null | undefined): number;
     isPool(stages: (string | null | undefined)[]): boolean;
     poolPlaces<K>(rows: { key: K; wins: number; subs: number }[], beat: (a: K, b: K) => boolean): Map<K, number>;
+    scheduleOf(mats: unknown[], lists: unknown[]): { matches: Match[]; over: boolean; ends: number | null };
+    nameSides(data: Read, room: () => number, read: (matches: Match[]) => Promise<(Card | Error | null)[]>): Promise<void>;
+    eventResults(data: Read, start?: string | null): { athletes: Record<string, unknown>; records: Record<string, [number, number]> };
     rivalsOf<M extends { name: string; won: boolean }>(meetings: M[]): (Omit<M, 'won'> & Rival)[];
   };
 }

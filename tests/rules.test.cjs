@@ -61,6 +61,33 @@ test('a division is placed by the round each side went out in, a round robin by 
   assert.deepEqual(JSON.parse(JSON.stringify([...places])), [['b', 1], ['c', 2], ['a', 3]]);
 });
 
+test("an event's schedule and cards give its results as a results page would (the crawler's read and the site's)", async () => {
+  const { scheduleOf, nameSides, eventResults } = context.SCWRRules;
+  const seat = (reg, name, win) => ({ type: 'registration', event_registration_id: reg, name, isWinner: win });
+  const match = (id, name, wonBy, [a, b], group = 'Adult / Blue / Open') => ({ id, group, name, state: 'finished', wonBy, seats: [seat(a[0], a[1], true), seat(b[0], b[1], false)] });
+  const [ann, bea, cat] = [[1, 'Ann A'], [2, 'Bea B'], [3, 'Cat C']];
+  // A round robin of three, each with a win; the last match listed on two mats. And a bracket nobody's card names.
+  const pool = [match(10, 'Match 1/3', 'submission_armbar', [ann, bea]), match(11, 'Match 2/3', 'points', [bea, cat]), match(12, 'Match 3/3', 'points', [cat, ann])];
+  const lone = match(20, 'Final', 'points', [[5, 'Dee D'], [6, 'Eve E']], 'Adult / Blue / -60 kg');
+  const read = scheduleOf([{ estimated_end: '2026-10-04T18:00:00Z' }, {}], [[...pool, { id: 30, seats: [{ type: 'bye' }] }], [pool[2], lone]]);
+  assert.deepEqual([read.matches.length, read.over, read.ends], [4, true, Date.parse('2026-10-04T18:00:00Z')]);
+  const person = (id, first) => ({ id, first_name: first, last_name: first[0], club: 'Alpha', score: id });
+  const cards = { 10: new Error('500'), 11: { left: person(102, 'Bea'), right: person(103, 'Cat') }, 12: { left: person(103, 'Cat'), right: person(101, 'Ann') }, 20: null };
+  const data = { ...read, users: {}, tried: [] };
+  const asked = [];
+  // Two cards at a time: the first round's card for Ann fails, so the next reads another match she fought.
+  await nameSides(data, () => 2, async (matches) => (asked.push(matches.map((m) => m[0])), matches.map((m) => cards[m[0]])));
+  assert.deepEqual(JSON.parse(JSON.stringify(asked)), [[10, 11], [20, 12]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(data.missed)), [5, 6]);
+  const { athletes, records } = eventResults(data, null);
+  // Level on wins: Ann's submission first, then Bea, who beat Cat.
+  assert.deepEqual(Object.fromEntries(Object.entries(athletes).map(([id, a]) => [id, [a.name, a.entries[0].place]])), { 101: ['Ann A', 1], 102: ['Bea B', 2], 103: ['Cat C', 3] });
+  assert.deepEqual(JSON.parse(JSON.stringify(records)), { 101: [1, 1], 102: [1, 1], 103: [1, 1] });
+  // A match whose card was read keeps its score, each side's own; one whose card failed keeps none.
+  const bouts = JSON.parse(JSON.stringify(athletes[102].entries[0].bouts));
+  assert.deepEqual(bouts.map((b) => [b.match, b.opponent, b.user, b.us?.[0] ?? null, b.them?.[0] ?? null]), [[10, 'Ann A', '101', null, null], [11, 'Cat C', '103', 102, 103]]);
+});
+
 test('a bracket seeds by win rate where a record is known, then wins per event', () => {
   const { bySeed, sureSeed } = context.SCWRRules;
   const seeds = {
