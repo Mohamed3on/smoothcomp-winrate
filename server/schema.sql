@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS crawls (
   tries INTEGER NOT NULL DEFAULT 0,
   next INTEGER NOT NULL DEFAULT 0,
   at INTEGER NOT NULL,
-  priority INTEGER NOT NULL DEFAULT 0, -- higher is read first (viewed 3, Berlin 2, the rest of Germany 1 by hand; Smoothcomp 0, AJP -2, +1 where a known athlete entered it)
+  priority INTEGER NOT NULL DEFAULT 0, -- higher is read first (viewed 3, then crawl.js RANK: nearest Berlin, known athletes, Smoothcomp; 0 to -23)
   wrote INTEGER, -- when the crawler last wrote the event's results: reading it again replaces only its own copy
   PRIMARY KEY (site, event)
 );
