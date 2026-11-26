@@ -85,7 +85,7 @@ export function Search({ f }: { f: Filters }) {
           <CommandInput value={q} onValueChange={setQ} loading={pending} placeholder="Search athletes, academies, events" />
           {(live || !!recent.length) && (
             <CommandList aria-busy={pending} className="max-h-[50vh] overscroll-contain">
-              {live && !pending && <CommandEmpty>Nothing matches “{debounced}”.</CommandEmpty>}
+              {live && !pending && <CommandEmpty>{debounced.split(/\s+/).some((w) => [...w].length >= 3) ? <>Nothing matches “{debounced}”.</> : 'Type 3 letters of a name to find athletes and academies.'}</CommandEmpty>}
               {!!recent.length && <CommandGroup heading="Recent">{recent.map((r) => (
                 <CommandItem key={rowOf(r)} value={rowOf(r)} onSelect={() => go(PATH[r.kind] + r.id, r.site)} aria-keyshortcuts="Shift+Backspace Shift+Delete">
                   <Mark r={r} /><span className="truncate">{r.name}</span><Site site={r.site} /><span className="ml-auto truncate text-xs text-muted-foreground">{r.sub}</span>

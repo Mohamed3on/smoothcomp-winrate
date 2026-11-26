@@ -735,16 +735,20 @@ async function search(env, params) {
   const on = counted(f.off);
   const wins = `coalesce((SELECT ${on.length ? on.map((g) => `w_${g}`).join(' + ') : '0'} FROM board b WHERE b.site = people.site AND b.user = people.user), 0)`;
   const sites = SITES.map(() => '?').join(', ');
+  // Athletes and academies need a word of 3 letters or more: without one the trigram index can't help, and the
+  // LIKE walks all 350k people (3 s, enough to leave D1 overloaded for everyone). Events are few enough to scan.
+  const indexed = a.site === '+site';
+  const none = { results: [] };
   const [people, clubs, found] = await env.DB.batch([
-    env.DB.prepare(`SELECT site, user, name, club, country, born, photo, hidden, ${wins} AS wins FROM people WHERE ${a.site} IN (${sites}) AND ${a.filter} ORDER BY ${a.tier}, wins DESC, seen DESC LIMIT 16`)
+    ...(indexed ? [env.DB.prepare(`SELECT site, user, name, club, country, born, photo, hidden, ${wins} AS wins FROM people WHERE ${a.site} IN (${sites}) AND ${a.filter} ORDER BY ${a.tier}, wins DESC, seen DESC LIMIT 16`)
       .bind(...SITES, ...a.filterBinds, ...a.tierBinds),
     // min() makes the bare club the name of the best-matching athlete's row. Academy ids are each site's own.
     env.DB.prepare(`SELECT site, club_id, club, athletes FROM (SELECT site, club_id, club, count(*) AS athletes, min(${t.tier}) AS tier FROM people
       WHERE ${t.site} IN (${sites}) AND club_id IS NOT NULL AND ${t.filter} GROUP BY site, club_id) ORDER BY tier, athletes DESC LIMIT 6`)
-      .bind(...t.tierBinds, ...SITES, ...t.filterBinds),
+      .bind(...t.tierBinds, ...SITES, ...t.filterBinds)] : []),
     env.DB.prepare(`SELECT site, event, title, start, city FROM events WHERE ${e.site} IN (${sites}) AND ${e.filter} ORDER BY ${e.tier}, start DESC LIMIT 6`)
       .bind(...SITES, ...e.filterBinds, ...e.tierBinds),
-  ]);
+  ]).then((got) => (indexed ? got : [none, none, ...got]));
   // One person's accounts (IDENT: the same name, birth year and country) show once, where the best of them ranks,
   // as the account on the reader's site when they have one there. Their wins are the group's either way (MERGE).
   const seen = new Map();
