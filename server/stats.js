@@ -505,7 +505,7 @@ async function team(env, params) {
   const f = filters(params);
   const club = params.get('id') ?? '';
   if (!/^\d{1,12}$/.test(club)) return json({ error: 'Bad team' }, 400);
-  const [members, events] = await env.DB.batch([
+  const [members, events, placed] = await env.DB.batch([
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT p.user, p.name, p.club, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt, p.seen,
         c.wins, c.losses, c.source, c.walkovers, c.submission, c.points, c.types, c.gold, c.silver, c.bronze, c.events
       FROM people p LEFT JOIN careers c ON c.user = p.user WHERE p.site = ?1 AND p.club_id = ?4 AND coalesce(c.dup, 0) = 0`).bind(f.site, f.off, Date.now() - KEPT, club),
@@ -514,11 +514,13 @@ async function team(env, params) {
         sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, json_group_array(json_object('wins', json(e.wins), 'losses', json(e.losses))) AS records
       FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.club_id = ?2 AND ${playedSql('e')}
       GROUP BY +e.event ORDER BY v.start DESC, e.event DESC`).bind(f.site, club),
+    // When its own page was last read for where it is (crawl.js placeClubs, or the site on opening it).
+    env.DB.prepare('SELECT checked FROM club_places WHERE site = ?1 AND club_id = ?2').bind(f.site, club),
   ]);
   const named = members.results.filter((m) => m.club).sort((a, b) => b.seen.localeCompare(a.seen))[0];
   if (!members.results.length && !events.results.length) return json({ error: 'Not found' }, 404);
   return json({
-    club: { id: club, name: named?.club ?? null },
+    club: { id: club, name: named?.club ?? null, placed: placed.results[0]?.checked ?? null },
     members: members.results.map((m) => ({ ...m, types: m.types ? JSON.parse(m.types) : null })),
     events: events.results.map((e) => ({ ...e, records: JSON.parse(e.records) })),
   });
@@ -636,6 +638,28 @@ async function division(env, params) {
   });
 }
 
+// An event's kept matches, each as its winner's ([match id where kept, user, won, opponent, us, them, clock, division, stage,
+// opponent's name]), and who fought them: a browser reading the event again names those sides from here (rules.js knownSides), and reads cards
+// only for the rest (site read-now.tsx).
+async function known(env, params) {
+  const f = filters(params);
+  const id = params.get('id') ?? '';
+  if (!/^\d{1,9}$/.test(id)) return json({ error: 'Bad event' }, 400);
+  const [matches, people] = await env.DB.batch([
+    env.DB.prepare(`SELECT b.value ->> 'match' AS match, e.user, b.value ->> 'user' AS opponent, b.value -> 'us' AS us, b.value -> 'them' AS them, b.value -> 'clock' AS clock,
+        e.division, b.value ->> 'stage' AS stage, b.value ->> 'opponent' AS name
+      FROM entries e, json_each(CASE WHEN json_valid(e.bouts) THEN e.bouts END) b
+      WHERE e.site = ?1 AND e.event = ?2 AND e.fought = 1 AND b.value ->> 'won' = 1 AND b.value ->> 'user' IS NOT NULL`).bind(f.site, id),
+    env.DB.prepare(`SELECT user, name, club, club_id, affiliation, country, country_name, photo, hidden, born FROM people
+      WHERE site = ?1 AND user IN (SELECT user FROM entries WHERE site = ?1 AND event = ?2 AND fought = 1)`).bind(f.site, id),
+  ]);
+  const parse = (v) => (v == null ? null : JSON.parse(v));
+  return json({
+    matches: matches.results.map((m) => [m.match == null ? null : Number(m.match), m.user, true, m.opponent, parse(m.us), parse(m.them), parse(m.clock), m.division, m.stage, m.name]),
+    people: Object.fromEntries(people.results.map(({ user, ...p }) => [user, p])),
+  });
+}
+
 // Which rows a search matches (`filter`) and how well (`tier`: 0 the whole text, then starting with
 // the query, then a word starting with it, then containing its words in any order), each with its
 // binds. Words of 3 letters or more go through the table's trigram index (accents folded); a query
@@ -719,4 +743,4 @@ async function summary(env, params) {
   return json(row);
 }
 
-export const API = { athletes, teams, athlete, team, events, event, division, search, summary, countries, places };
+export const API = { athletes, teams, athlete, team, events, event, known, division, search, summary, countries, places };

@@ -25,7 +25,8 @@ const DAY = 864e5;
 // writes stay under the day's share of the plan (budget.js dayShare) taken evenly over the day, so the
 // crawler gets whatever uploads leave.
 const ROWS = 7000;
-const { scheduleOf, nameSides, eventResults } = globalThis.SCWRRules;
+const { scheduleOf, nameSides, eventResults, registeredIn, clubPlace } = globalThis.SCWRRules;
+export { clubPlace };
 
 class Gone extends Error {}
 class Busy extends Error {}
@@ -136,21 +137,9 @@ export const LISTED = `INSERT INTO events (site, event, title, start, city, coun
 // Read daily, as servers may: every upcoming event on both sites (one page each), so the site can find
 // one near you, and both sites' past events (40 a page, newest first) of the last year (and ARCHIVE pages more), so the queue
 // holds those nobody opened too. Then a few thousand academies with no place yet look for one.
-// An academy's page says where it is when the academy set it (data-profile): its map pin, its town and street.
-const unescape = (s) => s.replace(/&(quot|amp|#0?39|lt|gt);/g, (_, e) => ({ quot: '"', amp: '&', '#039': "'", '#39': "'", lt: '<', gt: '>' })[e]);
-const words = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
-export function clubPlace(html) {
-  let p;
-  try { p = JSON.parse(unescape(html.match(/data-profile="(\{[^"]*\})"/)?.[1] ?? 'null')); } catch { return null; }
-  if (!p || typeof p !== 'object') return null;
-  const lat = coord(p.location_lat, 90), lng = coord(p.location_long, 180);
-  const pinned = lat != null && lng != null && (lat !== 0 || lng !== 0);
-  return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
-}
-
 // Where an academy's page puts it: its pin ('pin'); else its town ('town'), where another academy's page
 // placed that town, else Open-Meteo's geocoder; else nowhere, and it keeps where it competes most (stats.js CLUBS).
-async function locate(env, place) {
+export async function locate(env, place) {
   if (!place) return { source: null };
   if (place.lat != null) return { ...place, source: 'pin' };
   if (!place.city) return { ...place, source: null };
@@ -183,13 +172,6 @@ export async function placeClubs(env, take = 20, gap = 2500) {
   return read;
 }
 
-// How many athletes an event's pages count: the badge on the Athletes link of the menu each one shows.
-// None (null) while the organiser keeps the list hidden, or nobody has entered.
-export function registered(html) {
-  const n = html.match(/Athletes\s*<span class="badge">([^<]*)<\/span>/)?.[1].replace(/\D/g, '');
-  return n ? Number(n) : null;
-}
-
 // Every upcoming grappling event's size, read a few each minute and again a day on, so events nobody opened
 // still show how big they are. Read from its accommodations page: the event's other pages challenge a server
 // (Cloudflare's "Just a moment"), that one doesn't, and its menu counts the athletes the same. A busy site
@@ -205,7 +187,7 @@ export async function sizeEvents(env, take = 10, gap = 2500) {
     const page = await fetch(`${url ? new URL(url).origin : HOSTS[site]}/en/event/${event}/accommodations`, { headers: { 'User-Agent': UA } }).catch(() => null);
     if (!page || page.status === 429 || page.status >= 500) break;
     const html = page.ok ? await page.text() : '';
-    await env.DB.prepare(SIZED).bind(site, event, registered(html), html.includes('/participants"') ? 1 : 0, Date.now()).run();
+    await env.DB.prepare(SIZED).bind(site, event, registeredIn(html), html.includes('/participants"') ? 1 : 0, Date.now()).run();
     read++;
   }
   return read;

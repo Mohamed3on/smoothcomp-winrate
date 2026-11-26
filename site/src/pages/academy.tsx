@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import NumberFlow from '@number-flow/react';
 import { Link } from 'wouter';
 import { ExternalLink } from 'lucide-react';
@@ -12,12 +13,13 @@ import { useApi, type Athlete, type EventEntry, type Types } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { beltAt, date, plural, rate, winsOf } from '@/lib/format';
 import { useRemember } from '@/lib/recent';
+import { once, placeClub } from '@/lib/smoothcomp';
 import { DivisionLink } from '@/pages/division';
 import { ATHLETE_SORTS, athleteColumns, resetAction } from '@/pages/athletes';
 
 type Event = { event: string; title: string | null; start: string | null; athletes: number; fought: number; gold: number; silver: number; bronze: number; records: { wins: Types; losses: Types }[] };
 interface Data {
-  club: { id: string; name: string | null };
+  club: { id: string; name: string | null; placed: number | null };
   members: (Athlete & { seen: string })[];
   events: Event[];
 }
@@ -55,6 +57,11 @@ export function AcademyPage({ id }: { id: string }) {
   // Opened here, so search offers it again first.
   useRemember(data?.club.name && !isPlaceholderData ? { site: f.site, kind: 'academy', id, name: data.club.name, sub: plural(data.members.length, 'athlete') } : null);
   const ranked = useApi<{ rows: Athlete[]; total: number }>('athletes', { ...f.query, limit: 2000, club: id });
+  // Where it is, from its own page as it is opened, when that wasn't read in half a year (lib/smoothcomp.ts placeClub).
+  const unplaced = !!data && !isPlaceholderData && !((data.club.placed ?? 0) > Date.now() - 182 * 864e5);
+  useEffect(() => {
+    if (unplaced && once(`place:${f.site}:${id}`)) placeClub(f.site, id).catch(() => {});
+  }, [unplaced, f.site, id]);
   if (isLoading) return <Skeleton className="h-9 w-80" />;
   if (!data) return <Empty title="No academy here" text="Mat Stats has nothing under this academy on this site. It may be on the other site, or nobody has read it yet." />;
   const name = data.club.name ?? `Academy ${id}`;

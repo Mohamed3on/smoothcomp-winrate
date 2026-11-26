@@ -337,7 +337,7 @@ test('listed events are found by place, date, sport and size, and academies wher
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
   const { listed, LISTED } = await import('../server/crawl.js');
-  const { DB } = d1();
+  const { DB, db } = d1();
   const env = { DB };
   const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
   const at = (id, start, city, lat, lng, sports, url) => ({ id, title: `${city} ${id}`, startdate: start, location_city: city, location_country: 'DE', location_lat: lat, location_long: lng, categoryGroups: sports, url });
@@ -382,6 +382,13 @@ test('listed events are found by place, date, sport and size, and academies wher
   assert.equal((await send({ event: '1', registered: null })).status, 200);
   assert.equal((await send({ event: '2', registered: -3 })).status, 400);
   assert.deepEqual((await find('min=1&sort=athletes')).map((e) => [e.event, e.registered]), [['4', 1500]]);
+  // The same count sent a day after it was read stamps the read, so the crawler leaves it; within the day it writes nothing.
+  db.prepare("UPDATE events SET sized = 1 WHERE event = '4'").run();
+  await send({ event: '4', registered: 1500 });
+  const sized = db.prepare("SELECT sized FROM events WHERE site = 'smoothcomp.com' AND event = '4'").get().sized;
+  assert.ok(sized > Date.now() - 60e3);
+  await send({ event: '4', registered: 1500 });
+  assert.equal(db.prepare("SELECT sized FROM events WHERE site = 'smoothcomp.com' AND event = '4'").get().sized, sized);
   assert.deepEqual(await find('when=past'), []);
   // An academy sits where it competes most, and a radius finds it.
   const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
@@ -462,6 +469,16 @@ test("an academy's own page places it, over where it competes most", async () =>
   await DB.prepare(PLACED).bind(Date.now(), JSON.stringify([{ site: 'smoothcomp.com', club_id: '501', lat: 48.1, lng: 11.53, city: 'München', country: 'DE', source: 'pin' }, { site: 'smoothcomp.com', club_id: '502', source: null }])).run();
   assert.deepEqual(await near('near=52.52,13.40&km=50'), [['502', 'Berlin', 'events']]);
   assert.deepEqual(await near('near=48.14,11.58&km=50'), [['501', 'München', 'pin']]);
+  // A browser opening the academy reads its page the same way (site lib/smoothcomp.ts placeClub); the academy says when.
+  const placed = async () => (await (await API.team(env, new URLSearchParams('site=smoothcomp.com&id=502'))).json()).club.placed;
+  const before = await placed();
+  assert.equal((await post('/place', { site: 'smoothcomp.com', club: '502', place: 'x' })).status, 400);
+  assert.equal((await post('/place', { site: 'smoothcomp.com', club: '502', place: clubPlace(page({ city: 'Potsdam', country_code: 'DE', location_lat: 52.4, location_long: 13.06 })) })).status, 200);
+  assert.deepEqual(await near('near=52.4,13.06&km=10'), [['502', 'Potsdam', 'pin']]);
+  assert.ok((await placed()) >= before);
+  // A private page (none) still counts as read.
+  assert.equal((await post('/place', { site: 'smoothcomp.com', club: '502', place: null })).status, 200);
+  assert.deepEqual(await near('near=52.52,13.40&km=50'), [['502', 'Berlin', 'events']]);
 });
 
 test('Google Maps places an academy whose page names no place, only on a matching name nearby', async () => {
@@ -504,7 +521,7 @@ test("an event a visitor's browser reads goes in as the crawler's read would: re
   const worker = (await import('../server/worker.js')).default;
   const { addBouts, record } = await import('../server/worker.js');
   const { crawl } = await import('../server/crawl.js');
-  const { scheduleOf, nameSides, eventResults } = globalThis.SCWRRules;
+  const { scheduleOf, knownSides, nameSides, eventResults } = globalThis.SCWRRules;
   const { DB, db } = d1();
   const env = { DB };
   const today = new Date().toISOString().slice(0, 10);
@@ -543,6 +560,22 @@ test("an event a visitor's browser reads goes in as the crawler's read would: re
   try { await crawl(env, record, addBouts, 5000); } finally { globalThis.fetch = real; }
   assert.deepEqual(places(), [['11', 1], ['12', 2], ['13', null], ['14', 3]]);
   assert.equal(db.prepare("SELECT state FROM crawls WHERE event = '950'").get().state, 'done');
+  // Read again: the matches Mat Stats keeps name every side (stats.js known), so no card is read, and the scores stand.
+  const { API } = await import('../server/stats.js');
+  const known = await (await API.known(env, new URLSearchParams('site=smoothcomp.com&id=950'))).json();
+  const again = { ...scheduleOf([await get('mats.json/1')].flat(), [await get('mat/7/matches.json')]), users: {}, tried: [] };
+  knownSides(again, known);
+  const cards = [];
+  await nameSides(again, () => Infinity, async (matches) => (cards.push(...matches), []));
+  assert.deepEqual(cards, []);
+  // The same results as reading every card.
+  const fresh = { ...scheduleOf([await get('mats.json/1')].flat(), [await get('mat/7/matches.json')]), users: {}, tried: [] };
+  await nameSides(fresh, () => Infinity, (matches) => Promise.all(matches.map((m) => get(`getBracketMatchData/${m[0]}`))));
+  const second = eventResults(again, today), first = eventResults(fresh, today);
+  const placed = (r) => Object.fromEntries(Object.entries(r.athletes).map(([id, a]) => [id, a.entries.map((e) => [e.division, e.place, e.wins, e.losses])]));
+  assert.deepEqual([second.records, placed(second)], [first.records, placed(first)]);
+  assert.deepEqual(Object.keys(second.athletes).sort(), ['11', '12', '13', '14']);
+  assert.deepEqual(second.athletes[12].entries[0].bouts[0], { won: false, type: 'submission_armbar', opponent: 'Kim Lee', user: '11', club: null, stage: 'Final', bracket: null, match: 70, us: [0, 0, 0], them: [2, 0, 0], clock: [192, 108] });
 });
 
 test("an event's scores a browser read fill its stored matches that have none, each side's its own, in its own division", async () => {

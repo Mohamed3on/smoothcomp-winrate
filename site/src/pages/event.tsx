@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link } from 'wouter';
 import NumberFlow from '@number-flow/react';
 import { ExternalLink } from 'lucide-react';
@@ -15,6 +16,7 @@ import { ReadNow } from '@/components/read-now';
 import { ReadScores } from '@/components/read-scores';
 import { resetAction } from '@/pages/athletes';
 import { cn } from '@/lib/utils';
+import { once, sizeEvent } from '@/lib/smoothcomp';
 import { DivisionLink } from '@/pages/division';
 import { beltOf, bySeed, rated, sureSeed } from '@/lib/rules';
 
@@ -86,6 +88,12 @@ export function EventPage({ id }: { id: string }) {
   const { data, isLoading, isPlaceholderData } = useApi<{ event: EventMeta; entries: EventEntry[]; reads?: Partial<Record<0 | 1, number>> }>('event', { site: f.site, off: f.query.off, id });
   // Opened here, so search offers it again first.
   useRemember(data?.event.title && !isPlaceholderData ? { site: f.site, kind: 'event', id, name: data.event.title, sub: data.event.start ? date(data.event.start) : null } : null);
+  // An upcoming event's size, read from its page as it is opened, at most once a day (lib/smoothcomp.ts sizeEvent).
+  const ahead = !isPlaceholderData && data?.event.start && data.event.start.slice(0, 10) >= new Date().toISOString().slice(0, 10) && !((data.event.sized ?? 0) > Date.now() - 864e5);
+  const url = data?.event.url;
+  useEffect(() => {
+    if (ahead && once(`size:${f.site}:${id}`)) sizeEvent(f.site, id, url).catch(() => {});
+  }, [ahead, f.site, id, url]);
   if (isLoading) return <Skeleton className="h-9 w-96" />;
   if (!data) return <Empty title="No event here" text="Mat Stats has nothing under this event on this site. Nobody has opened it with Mat Stats yet." />;
   const { event } = data;
@@ -260,7 +268,7 @@ export function EventPage({ id }: { id: string }) {
             {fought && <>Results as of {stamp(read(results, 1))}</>}{fought && live && ' · '}{(!fought || live) && registered.length > 0 && <>Entrants as of {stamp(read(registered, 0))}</>}
           </span>
           <a href={`${f.home}/en/event/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
-          {readable && <ReadNow targets={[{ site: f.site, event: id, title: event.title, start: event.start, city: event.city }]} route="event" label={fought ? 'Read results again' : 'Read results now'} />}
+          {readable && <ReadNow targets={[{ site: f.site, event: id, title: event.title, start: event.start, city: event.city }]} route="event" auto={!fought} label={fought ? 'Read results again' : 'Read results now'} />}
           {unscored.length > 0 && <ReadScores targets={[{ site: f.site, event: id, entries: unscored }]} route={['event', 'division']} />}
         </div>
       </header>

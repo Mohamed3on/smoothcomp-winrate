@@ -44,8 +44,11 @@ declare global {
     isPool(stages: (string | null | undefined)[]): boolean;
     poolPlaces<K>(rows: { key: K; wins: number; subs: number }[], beat: (a: K, b: K) => boolean): Map<K, number>;
     scheduleOf(mats: unknown[], lists: unknown[]): { matches: Match[]; over: boolean; ends: number | null };
+    knownSides(data: Read, known?: { matches?: [number | null, string, boolean, string, number[] | null, number[] | null, (number | null)[] | null, string?, string?, string?][]; people?: Record<string, Record<string, unknown>> }): void;
     nameSides(data: Read, room: () => number, read: (matches: Match[]) => Promise<(Card | Error | null)[]>): Promise<void>;
     eventResults(data: Read, start?: string | null): { athletes: Record<string, unknown>; records: Record<string, [number, number]> };
+    registeredIn(html: string): number | null;
+    clubPlace(html: string): { lat: number | null; lng: number | null; city: string | null; country: string | null; address: string | null } | null;
     rivalsOf<M extends { name: string; won: boolean }>(meetings: M[]): (Omit<M, 'won'> & Rival)[];
   };
 }

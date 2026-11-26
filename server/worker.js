@@ -4,6 +4,7 @@
 import '../rules.js';
 import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
+import { PLACED, locate } from './crawl.js';
 
 const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize, noShow, eventRecords, usualDivision, bracketOf } = globalThis.SCWRRules;
 
@@ -266,7 +267,18 @@ async function roster(env, { site, event, meta, athletes, read }) {
 // of its pages; null while the list is hidden. Kept when it changes, for an event the events lists hold.
 async function size(env, { site, event, registered }) {
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(event) || !(registered === null || (Number.isSafeInteger(registered) && registered >= 0 && registered < 1e5))) return json({ error: 'Bad size' }, 400);
-  await env.DB.prepare('UPDATE events SET registered = ?3, sized = ?4 WHERE site = ?1 AND event = ?2 AND registered IS NOT ?3').bind(site, event, registered, Date.now()).run();
+  // Kept when it changes, and its read time once a day, so the crawler (crawl.js sizeEvents) leaves an event opened today.
+  await env.DB.prepare('UPDATE events SET registered = ?3, sized = ?4 WHERE site = ?1 AND event = ?2 AND (registered IS NOT ?3 OR sized IS NULL OR sized < ?4 - 86400000)').bind(site, event, registered, Date.now()).run();
+  return json({});
+}
+
+// Where an academy's own page puts it (rules.js clubPlace; null for a private page), read by a browser opening the academy
+// on the stats site (site academy.tsx): kept as the crawler keeps what it reads there (crawl.js placeClubs), its town placed.
+async function place(env, { site, club, place: p }) {
+  if (!SITES.includes(site) || !/^\d{1,12}$/.test(String(club ?? '')) || (p != null && typeof p !== 'object')) return json({ error: 'Bad place' }, 400);
+  const at = p && { lat: coord(p.lat, 90), lng: coord(p.lng, 180), city: text(p.city, 100), country: /^[A-Z]{2}$/.test(p.country ?? '') ? p.country : null, address: text(p.address, 200) };
+  if (at && (at.lat == null || at.lng == null || (!at.lat && !at.lng))) at.lat = at.lng = null;
+  await env.DB.prepare(PLACED).bind(Date.now(), JSON.stringify([{ site, club_id: String(club), ...(await locate(env, at)) }])).run();
   return json({});
 }
 
@@ -471,7 +483,7 @@ async function scores(env, { site, event, matches }) {
 }
 
 const READS = new Set(['/lookup', '/outcomes', '/crawled', '/scored']);
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/size': size, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/scores': scores, '/scored': scored };
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/size': size, '/place': place, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/scores': scores, '/scored': scored };
 
 // The site's reads, kept at Cloudflare's edge so most visits never reach the database. Seconds an
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy

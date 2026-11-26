@@ -260,6 +260,32 @@ globalThis.SCWRRules = (() => {
   // `read(matches)` gives each one's card (null or an Error where it failed), whose sides are left to another match.
   // `data` is { matches, users: {}, tried: [] } and keeps what is read, so a read cut off goes on where it stopped;
   // those no card named stay unnamed (`missed`).
+  // Sides Mat Stats already knows (`known`, as stats.js known gives an event's): a match it keeps names both sides, who
+  // won it and whom they beat, with the score where one was read, so no card is read for them. `known` is { matches:
+  // [[match, user, won, opponent, us, them, clock, division, stage, opponent's name]], people: { user: { name, club, ... } } }.
+  // A match is found by its id, else (a results page keeps none) by its division, round and the two who fought it, spelt
+  // as either list spells them; a round robin's numbered match is the only one of its number there.
+  const fold = (name) => normalize(name).normalize('NFD').replace(/\p{M}/gu, '');
+  const matchKey = (division, stage, a, b) => `${normalize(division)}|${stage}|${/^Match \d+\//.test(stage ?? '') ? '' : [fold(a), fold(b)].sort().join('+')}`;
+  function knownSides(data, { matches = [], people = {} } = {}) {
+    const by = new Map();
+    for (const k of matches) if (k[2] && k[3]) by.set(k[0] ?? matchKey(k[7], k[8], people[k[1]]?.name, k[9]), k);
+    data.cards ??= {};
+    for (const m of data.matches) {
+      const k = by.get(m[0]) ?? (m[4].length === 2 ? by.get(matchKey(m[1], m[2], m[4][0][2], m[4][1][2])) : undefined);
+      const won = m[4].findIndex((s) => s[1]);
+      if (!k || !m[3] || m[4].length !== 2 || won < 0) continue;
+      const ids = won ? [k[3], k[1]] : [k[1], k[3]];
+      m[4].forEach((s, i) => {
+        const p = people[ids[i]] ?? {};
+        data.users[s[0]] ??= { id: String(ids[i]), name: p.name ?? s[2], club: p.club ?? s[3], clubId: p.club_id ?? null, affiliation: p.affiliation ?? s[5],
+          country: p.country ?? (s[4] ? String(s[4]).toLowerCase() : null), countryName: p.country_name ?? null, age: p.born ? new Date().getUTCFullYear() - p.born : null,
+          photo: p.photo ?? null, hidden: p.hidden ? true : null };
+      });
+      if (k[4] && k[5]) data.cards[m[0]] = { s: won ? [k[5], k[4]] : [k[4], k[5]], t: k[6] ?? [null, null] };
+    }
+  }
+
   const scored = (m) => m[3] && finishOf(m[3]) !== 'walkover' && m[4].length === 2;
   const seconds = (t) => (/^\d+:\d\d$/.test(t ?? '') ? Number(t.split(':')[0]) * 60 + Number(t.split(':')[1]) : null);
   async function nameSides(data, room, read) {
@@ -410,5 +436,25 @@ globalThis.SCWRRules = (() => {
     return (k[1] >= 0 || k[3] >= 0) && seeds.every((s, j) => j === i || seedKey(s).slice(0, 4).some((n, m) => n !== k[m]));
   };
 
-  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, nameSides, eventResults };
+  // Two of Smoothcomp's pages (which answer a server or any page, no sign-in) read by the crawler and by the stats site when
+  // one is opened. An event's (its accommodations page, unchallenged): how many athletes its menu counts, the badge on its
+  // Athletes link; none (null) while the organiser keeps the list hidden, or nobody has entered.
+  const registeredIn = (html) => {
+    const n = String(html).match(/Athletes\s*<span class="badge">([^<]*)<\/span>/)?.[1].replace(/\D/g, '');
+    return n ? Number(n) : null;
+  };
+  // An academy's (/en/club/<id>): where it says it is, when it set that (data-profile): its map pin, its town and street.
+  const coord = (v, max) => { const n = v == null || v === '' ? NaN : Number(v); return Number.isFinite(n) && Math.abs(n) <= max ? n : null; };
+  const unescape = (s) => s.replace(/&(quot|amp|#0?39|lt|gt);/g, (_, e) => ({ quot: '"', amp: '&', '#039': "'", '#39': "'", lt: '<', gt: '>' })[e]);
+  const words = (s, max) => (typeof s === 'string' && s.trim() ? s.trim().slice(0, max) : null);
+  function clubPlace(html) {
+    let p;
+    try { p = JSON.parse(unescape(String(html).match(/data-profile="(\{[^"]*\})"/)?.[1] ?? 'null')); } catch { return null; }
+    if (!p || typeof p !== 'object') return null;
+    const lat = coord(p.location_lat, 90), lng = coord(p.location_long, 180);
+    const pinned = lat != null && lng != null && (lat !== 0 || lng !== 0);
+    return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
+  }
+
+  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

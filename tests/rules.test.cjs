@@ -86,6 +86,16 @@ test("an event's schedule and cards give its results as a results page would (th
   // A match whose card was read keeps its score, each side's own; one whose card failed keeps none.
   const bouts = JSON.parse(JSON.stringify(athletes[102].entries[0].bouts));
   assert.deepEqual(bouts.map((b) => [b.match, b.opponent, b.user, b.us?.[0] ?? null, b.them?.[0] ?? null]), [[10, 'Ann A', '101', null, null], [11, 'Cat C', '103', 102, 103]]);
+  // Read again, the matches Mat Stats keeps (each as its winner's, whoever sat where) name the sides and keep the scores.
+  const { knownSides } = context.SCWRRules;
+  const again = { ...scheduleOf([], [[match(12, 'Match 3/3', 'points', [cat, ann]), { ...match(11, 'Match 2/3', 'points', [cat, bea]), seats: [seat(3, 'Cat C', false), seat(2, 'Bea B', true)] }]]), users: {}, tried: [] };
+  knownSides(again, { matches: [[11, '102', true, '103', [4, 0, 0], [1, 0, 0], [300, 0]], [null, '103', true, '101', null, null, null, 'Adult / Blue / Open', 'Match 3/3', 'Ann A'], [99, '1', true, '2']], people: { 102: { name: 'Bea B', club: 'Alpha', born: 2000 } } });
+  // A knockout match kept without its id is found by the two who fought it, as either list spells them.
+  const final = { ...scheduleOf([], [[match(40, 'Final', 'points', [[7, 'Hüseyin K'], [8, 'Ola N']])]]), users: {}, tried: [] };
+  knownSides(final, { matches: [[null, '107', true, '108', null, null, null, 'adult / blue / open', 'Final', 'Ola N']], people: { 107: { name: 'Huseyin K' } } });
+  assert.deepEqual([final.users[7]?.id, final.users[8]?.id], ['107', '108']);
+  assert.deepEqual(JSON.parse(JSON.stringify([again.users[3].id, again.users[2].id, again.users[1].id, again.users[2].club, again.users[3].name, again.cards])),
+    ['103', '102', '101', 'Alpha', 'Cat C', { 11: { s: [[1, 0, 0], [4, 0, 0]], t: [300, 0] } }]);
 });
 
 test('a bracket seeds by win rate where a record is known, then wins per event', () => {
