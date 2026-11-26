@@ -119,6 +119,12 @@ test('a bracket seeds by win rate where a record is known, then wins per event',
   // A short perfect record doesn't outrank a long strong one.
   assert.ok(bySeed({ won: 9, lost: 2 }, { won: 2, lost: 0 }) < 0);
   assert.ok(bySeed({ won: 20, lost: 2 }, { won: 9, lost: 2 }) < 0);
+  // Athletes nothing else tells apart seed by their academy's win rate; it never lifts one above a record, nor makes a call sure.
+  const strong = { academy: [300, 100] }, weak = { academy: [100, 300] };
+  assert.ok(bySeed(strong, weak) < 0);
+  assert.ok(bySeed(strong, {}) < 0);
+  assert.ok(bySeed({ won: 0, lost: 3, wins: 0 }, strong) < 0);
+  assert.deepEqual([strong, weak].map((_, i, list) => sureSeed(list, i)), [false, false]);
 });
 
 const pick = ({ age, weight }) => ({ age, weight });

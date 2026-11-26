@@ -593,8 +593,13 @@ globalThis.SCWRRules = (() => {
   // doesn't seed below an 0–1; never fewer losses than the partial read shows. A seed's gold is their career golds.
   const rated = ({ won, lost, wins }) => won + lost > 0 && !(wins > 2 * won);
   const rateOf = (won, lost) => [(won + 10) / (won + lost + 20), won + lost];
-  const seedKey = ({ belt, won, lost, wins, events, gold, submission, points, born }) => [
+  // Next comes their academy's win rate (academy: its athletes' [won, lost], stats.js club_board), which
+  // settles athletes nothing above tells apart, chiefly those with no record: two such debutants are a
+  // coin flip by record, 51.8% by academy (a backtest over 295k of their matches, 2026-11). It never lifts
+  // an athlete above anyone with a record.
+  const seedKey = ({ belt, won, lost, wins, events, gold, submission, points, born, academy }) => [
     BELTS.indexOf(belt), ...(rated({ won, lost, wins }) ? rateOf(won, lost) : wins != null && events ? rateOf(wins, Math.max(lost ?? 0, 1.4 * (events - (gold ?? 0)))) : [-1, -1]), wins != null && events ? wins / events : -1,
+    academy && academy[0] + academy[1] > 0 ? rateOf(academy[0], academy[1])[0] : -1,
     wins ?? -1, submission ?? -1, points ?? -1, born ?? -Infinity,
   ];
   const bySeed = (a, b) => {

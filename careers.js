@@ -84,18 +84,21 @@ const SCWRCareers = (() => {
   // The shared cache answers for the whole event at once, before any profile is read.
   // With it come the records results pages have seen: [wins, losses, events], each athlete's
   // record by finish as the stats site rates them, when each athlete's last event ended, and how many of the events their
-  // profile lists they didn't show at.
+  // profile lists they didn't show at; and, for the academies asked after (clubs), each one's athletes' [won, lost].
   let looked = Promise.resolve();
   const seen = {};
   const records = {};
   const absent = {};
-  const lookup = users => looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users })).then(kept => {
+  const academies = {};
+  const lookup = (users, clubs = []) => looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users, clubs })).then(kept => {
     Object.assign(seen, kept.seen);
     Object.assign(records, kept.records);
     Object.assign(absent, kept.absent);
     Object.assign(over, kept.ended);
+    Object.assign(academies, kept.academies);
     merge(kept);
-    const told = new Set([...Object.keys(kept.seen ?? {}), ...Object.keys(kept.records ?? {}), ...Object.keys(kept.ended ?? {})]);
+    // Academies reseed every athlete asked after.
+    const told = new Set(Object.keys(kept.academies ?? {}).length ? users : [...Object.keys(kept.seen ?? {}), ...Object.keys(kept.records ?? {}), ...Object.keys(kept.ended ?? {})]);
     if (told.size) changed(told);
   }).catch(() => {})]);
 
@@ -247,7 +250,7 @@ const SCWRCareers = (() => {
     }
     return reading.get(key);
   }
-  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records, absent,
+  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records, absent, academies,
     fresh: user => current(careers[user], 'careers', String(user)),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),

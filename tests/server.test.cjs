@@ -105,8 +105,10 @@ test("a results page's upload reads back on the stats site", async () => {
   const after = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=11'))).json();
   assert.deepEqual(after.entries.map((e) => [e.event, e.fought]), [['900', 1]]);
   // A participants page's lookup gets each athlete's record by finish, to seed brackets by win rate.
-  const looked = await (await post('/lookup', { site: 'smoothcomp.com', users: ['11', '12', '13'] })).json();
+  const looked = await (await post('/lookup', { site: 'smoothcomp.com', users: ['11', '12', '13'], clubs: ['501', '999'] })).json();
   assert.deepEqual(looked.records, { 11: { submission: [3, 0], walkover: [1, 0] }, 12: { points: [1, 0], submission: [0, 2] } });
+  // And each academy asked after, its athletes' [won, lost], which breaks the seed's ties; one nobody ranks for, nothing.
+  assert.deepEqual(looked.academies, { 501: [3, 0] });
 });
 
 test("an event their profile lists but they didn't show at isn't theirs: not in their history, events or last event", async () => {

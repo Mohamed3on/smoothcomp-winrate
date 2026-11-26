@@ -60,7 +60,7 @@ export function Seed({ r, row = false }: { r: EventEntry & { career: number | nu
   );
   return r.career != null
     ? <span className="shrink-0 text-xs text-muted-foreground" title="No full match record read, so they seed by wins per event, after everyone with one">{plural(r.career, 'win')}</span>
-    : <span className="shrink-0 text-xs text-muted-foreground" title="Mat Stats hasn’t read their career, so they seed last">Not read</span>;
+    : <span className="shrink-0 text-xs text-muted-foreground" title="Mat Stats hasn’t read their career, so they seed last, by their academy’s win rate">Not read</span>;
 }
 
 // Counted career wins, by submission and on points; null with no career read.
@@ -69,7 +69,8 @@ const tallyOf = (e: EventEntry, f: Filters) => {
   const t: Record<string, number> = JSON.parse(e.career_types ?? '{}');
   return [winsOf(t, f.counted), f.counted('submission') ? Number(t.submission) || 0 : 0, f.counted('points') ? Number(t.points) || 0 : 0];
 };
-const seedOf = (r: Ranked) => ({ belt: beltOf(r.division) ?? r.belt, won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, gold: r.career_gold, submission: r.tally?.[1], points: r.tally?.[2], born: r.born });
+const seedOf = (r: Ranked) => ({ belt: beltOf(r.division) ?? r.belt, won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, gold: r.career_gold, submission: r.tally?.[1], points: r.tally?.[2], born: r.born,
+  academy: r.club_won != null && r.club_lost != null ? [r.club_won, r.club_lost] as [number, number] : null });
 const byCareer = (a: Ranked, b: Ranked) => bySeed(seedOf(a), seedOf(b)) || a.user.localeCompare(b.user);
 // One bracket's athletes in seed order, or by place once decided; while undecided and still to fight
 // (open), the top three carry the medal their seed points to.

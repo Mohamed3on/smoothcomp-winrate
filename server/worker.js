@@ -56,8 +56,9 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods
 const json = (body, status = 200) => Response.json(body, { status, headers: CORS });
 const validUser = user => /^\d{1,12}$/.test(user);
 
-async function lookup(env, { site, users }) {
+async function lookup(env, { site, users, clubs = [] }) {
   if (!SITES.includes(site) || !Array.isArray(users) || users.length > 5000 || !users.every(u => typeof u === 'string' && validUser(u))) return json({ error: 'Bad lookup' }, 400);
+  if (!Array.isArray(clubs) || clubs.length > 5000 || !clubs.every((c) => typeof c === 'string' && /^\d{1,12}$/.test(c))) return json({ error: 'Bad lookup' }, 400);
   const { results } = await env.DB.prepare('SELECT user, kind, entry FROM athletes WHERE site = ?1 AND at > ?2 AND user IN (SELECT value FROM json_each(?3))')
     .bind(site, Date.now() - KEPT, JSON.stringify(users)).all();
   const kept = { careers: {}, ranks: {}, seen: {} };
@@ -88,6 +89,13 @@ async function lookup(env, { site, users }) {
     WHERE e.site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ${over} <= ?3 GROUP BY user`)
     .bind(site, JSON.stringify(users), Date.now()).all();
   kept.ended = Object.fromEntries(ended.results.map((row) => [row.user, row.ended]));
+  // Each academy asked after, its athletes' [won, lost] (stats.js club_board): a bracket seeds the athletes their records
+  // don't tell apart by it (rules.js seedKey).
+  if (clubs.length) {
+    const academies = await env.DB.prepare('SELECT club_id, won, lost FROM club_board WHERE site = ?1 AND club_id IN (SELECT value FROM json_each(?2))')
+      .bind(site, JSON.stringify(clubs)).all();
+    kept.academies = Object.fromEntries(academies.results.map((row) => [row.club_id, [row.won, row.lost]]));
+  }
   return json(kept);
 }
 

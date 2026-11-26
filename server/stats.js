@@ -617,11 +617,12 @@ async function event(env, params) {
     env.DB.prepare('SELECT * FROM events WHERE site = ?1 AND event = ?2').bind(f.site, id),
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT e.user, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.at,
         p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt,
-        c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold, c.silver AS career_silver, c.bronze AS career_bronze,
+        c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold, k.won AS club_won, k.lost AS club_lost, c.silver AS career_silver, c.bronze AS career_bronze,
         -- Its matches with no score read yet, bar walkovers and stoppages (rules.js SCORELESS), for the page's Read scores.
         (SELECT json_group_array(json_object('match', b.value ->> 'match', 'stage', b.value ->> 'stage', 'bracket', b.value ->> 'bracket', 'opponent', b.value ->> 'opponent'))
           FROM json_each(CASE WHEN json_valid(e.bouts) THEN e.bouts END) b WHERE b.value ->> 'us' IS NULL AND ${finishSql("(b.value ->> 'type')")} NOT IN (${SCORELESS.map((f) => `'${f}'`).join(', ')})) AS open
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
+        LEFT JOIN club_board k ON k.site = e.site AND k.club_id = e.club_id
       WHERE e.site = ?1 AND e.event = ?4 AND (?5 IS NULL OR +e.club_id = ?5) AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id, club),
     // When its registrations (0) and results (1) were last read: rows only change when what they say does.
     env.DB.prepare('SELECT fought, at FROM reads WHERE site = ?1 AND event = ?2').bind(f.site, id),
@@ -644,8 +645,9 @@ async function division(env, params) {
     env.DB.prepare('SELECT * FROM events WHERE site = ?1 AND event = ?2').bind(f.site, id),
     env.DB.prepare(`WITH ${careersOf(f.off)} SELECT e.user, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, e.at,
         p.name, p.country, p.country_name, p.photo, p.hidden, p.born, coalesce(c.belt, p.belt) AS belt,
-        c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold
+        c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold, k.won AS club_won, k.lost AS club_lost
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
+        LEFT JOIN club_board k ON k.site = e.site AND k.club_id = e.club_id
       WHERE e.site = ?1 AND e.event = ?4 AND trim(e.division) = ?5
         AND ${shown(' AND x.division = e.division')}`)
       .bind(f.site, f.off, Date.now() - KEPT, id, name),

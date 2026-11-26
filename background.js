@@ -183,19 +183,22 @@ function record({ op, event, records, meta, athletes, read, registered }, sender
 }
 
 // A lookup waits on the network, so only its write joins the serial line.
-async function lookup({ users }, sender) {
+async function lookup({ users, clubs }, sender) {
   const site = siteFor(sender);
   users = Array.isArray(users) ? users.filter(validUser).slice(0, 5000) : [];
+  clubs = Array.isArray(clubs) ? clubs.filter((c) => /^\d{1,12}$/.test(c)).slice(0, 5000) : [];
   if (!site || !users.length) return {};
-  const response = await fetch(`${SERVER}/lookup`, { method: 'POST', body: JSON.stringify({ site, users }), signal: AbortSignal.timeout(10000) });
+  const response = await fetch(`${SERVER}/lookup`, { method: 'POST', body: JSON.stringify({ site, users, clubs }), signal: AbortSignal.timeout(10000) });
   const given = response.ok ? await response.json() : {};
-  const kept = { careers: {}, ranks: {}, seen: {}, ended: {}, records: {}, absent: {} };
+  const kept = { careers: {}, ranks: {}, seen: {}, ended: {}, records: {}, absent: {}, academies: {} };
   for (const [id, seen] of Object.entries(given.seen ?? {})) if (validUser(id) && Array.isArray(seen) && seen.length === 3 && seen.every(Number.isSafeInteger)) kept.seen[id] = seen;
   // A record is [won, lost] by finish.
   const pair = (p) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isSafeInteger(n) && n >= 0);
   for (const [id, record] of Object.entries(given.records ?? {})) {
     if (validUser(id) && record && typeof record === 'object') kept.records[id] = Object.fromEntries(Object.entries(record).filter(([type, p]) => /^[\w -]{1,40}$/.test(type) && pair(p)));
   }
+  // Each academy's athletes' [won, lost].
+  for (const [id, p] of Object.entries(given.academies ?? {})) if (/^\d{1,12}$/.test(id) && pair(p)) kept.academies[id] = p;
   // How many of the events their profile lists they didn't show at.
   for (const [id, n] of Object.entries(given.absent ?? {})) if (validUser(id) && Number.isSafeInteger(n) && n > 0) kept.absent[id] = n;
   for (const [id, end] of Object.entries(given.ended ?? {})) if (validUser(id) && Number.isSafeInteger(end) && end <= Date.now()) kept.ended[id] = end;

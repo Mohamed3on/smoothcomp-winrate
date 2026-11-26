@@ -40,6 +40,8 @@ export interface EventRow extends EventMeta { site: 'smoothcomp.com' | 'ajptour.
 export interface EventEntry extends Entry {
   name: string | null; country: string | null; country_name: string | null; photo: string | null; hidden: number | null; born: number | null; belt: string | null;
   career_wins: number | null; career_source: 'career' | 'results' | null; career_types: string | null; career_won?: number | null; career_lost?: number | null; career_events?: number | null; career_gold?: number | null;
+  // Their academy's athletes' record (club_board), which breaks the seed's ties (rules.js seedKey).
+  club_won?: number | null; club_lost?: number | null;
   // Its matches with no score read yet.
   open?: Bout[];
 }

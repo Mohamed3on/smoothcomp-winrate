@@ -12,7 +12,7 @@ interface OutcomeOut { v?: number; types: Types; losses: Record<string, unknown>
 type Listed = { wins?: number | null; medals?: Record<string, number | null | undefined> | (number | null)[] | null } | null | undefined;
 // One record of a match, as Match identity compares them: each part where the record knows it.
 interface MatchRecord { id?: number | string | null; event?: number | string | null; division?: string | null; bracket?: number | null; stage?: string | null; sides?: unknown[]; won?: boolean | null }
-interface Seed { belt?: string | null; won?: number | null; lost?: number | null; wins?: number | null; events?: number | null; gold?: number | null; submission?: number | null; points?: number | null; born?: number | null }
+interface Seed { belt?: string | null; won?: number | null; lost?: number | null; wins?: number | null; events?: number | null; gold?: number | null; submission?: number | null; points?: number | null; born?: number | null; academy?: [won: number, lost: number] | null }
 declare global {
   var SCWRRules: {
     rated(seed: Seed): boolean;

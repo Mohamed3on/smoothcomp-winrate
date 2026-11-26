@@ -85,11 +85,12 @@ const recordOf = (user) => {
   const record = SCWRCareers.records?.[user];
   return record ? Object.entries(record).reduce(([w, l], [type, [a, b]]) => (counted(type) ? [w + a, l + b] : [w, l]), [0, 0]) : null;
 };
-// What a bracket seeds them by (rules.js seedKey): belt, then win rate where a record is known, then wins per event, and so on.
+// What a bracket seeds them by (rules.js seedKey): belt, then win rate where a record is known, then wins per event, their academy's win rate, and so on.
 const seedOf = (r) => {
   const t = tally(r.user_id);
   const [won, lost] = recordOf(r.user_id) ?? [];
-  return { belt: belt(r.user_id ?? r.id), won, lost, wins: t?.[0], events: eventsOf(r.user_id), gold: fresh(r.user_id) ? careers[r.user_id].medals?.[0] : undefined, submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age };
+  return { belt: belt(r.user_id ?? r.id), won, lost, wins: t?.[0], events: eventsOf(r.user_id), gold: fresh(r.user_id) ? careers[r.user_id].medals?.[0] : undefined, submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age,
+    academy: r.club_id ? SCWRCareers.academies?.[String(r.club_id)] : null };
 };
 
 // How much of a whole-event read is still to come: the athletes among these
@@ -110,7 +111,7 @@ const ranked = new Set();
 
 // Brackets (lead 2) are seeded as the stats site seeds them (rules.js seedKey): the higher
 // belt where belts mix, then the best win rate where a record is known, then wins per event, so a long career of early exits doesn't
-// outrank a short one of finals; then most wins, by submission, by points, and the younger
+// outrank a short one of finals; then their academy's win rate (chiefly between debutants); then most wins, by submission, by points, and the younger
 // athlete. The athletes view picks its own lead. Anything unknown sorts after every known
 // figure; anything still level keeps Smoothcomp's own order.
 function rank(group, lead = 2) {
@@ -183,7 +184,11 @@ function readAll() {
   const unseen = () => { for (const u of users) if (!fresh(u)) pending.add(u); };
   unseen();
   if (asked) SCWRCareers.lookup([...pending]);
-  else { asked = true; SCWRCareers.lookup(users).then(() => { unseen(); drain(); }); }
+  else {
+    asked = true;
+    const clubs = [...new Set(source.flatMap((g) => g.registrations).filter((r) => r.club_id).map((r) => String(r.club_id)))];
+    SCWRCareers.lookup(users, clubs).then(() => { unseen(); drain(); });
+  }
   drain();
 }
 

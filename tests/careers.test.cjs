@@ -386,7 +386,7 @@ test('the shared cache answers for the event before any profile is read, and kee
   await p.api.readCareer('1');
   assert.equal(p.fetched.length, 0);
   assert.equal(p.api.careers['1'].wins.points, 3);
-  assert.deepEqual(w.posts[0], { url: 'https://mat-stats.mohamed3on.workers.dev/lookup', site: 'smoothcomp.com', users: ['1', '2'] });
+  assert.deepEqual(w.posts[0], { url: 'https://mat-stats.mohamed3on.workers.dev/lookup', site: 'smoothcomp.com', users: ['1', '2'], clubs: [] });
   await p.api.readCareer('2');
   const kept = w.posts.filter(post => post.url.endsWith('/keep'));
   assert.equal(kept.length, 1);
