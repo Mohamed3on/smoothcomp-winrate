@@ -14,7 +14,7 @@
   const CARD = ajp ? '.user-statistics' : '.match-statistics-content';
   // The rules apart from the page: profile-model.js.
   const { FINISHES, LABELS, finishOf, normalize: person } = SCWRRules;
-  const { clean } = SCWRProfile;
+  const { clean } = SCWRRules.Outcome;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
   // Smoothcomp's finishes come finer than its own chips name them ("submission_armbar",

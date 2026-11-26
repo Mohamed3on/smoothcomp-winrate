@@ -30,11 +30,11 @@ export interface Profile {
   rankings?: { placement: number; name: string; owner: string | null; ownerId: number | null; type: 'federation' | 'event' | null; toplist: number | null }[];
   ranked?: number; academies?: Club[]; affiliations?: Club[]; videos?: number;
 }
-// One settled event as the athlete's profile match lists gave it: [won, lost] per finish, and each loss.
-export interface Loss { type: string; how: string; opponent: string | null; club: string | null; division: string | null; image: string | null; reg: number | null; bracket: number | null; stage: string | null; user?: string | null }
+// One settled event as the athlete's profile match lists gave it (rules.js Outcome.clean keeps this shape): [won, lost] per finish, and each loss.
+export interface Loss { type: string; how: string; opponent: string | null; club: string | null; division: string | null; image: string | null; reg: number | null; bracket: number | null; stage: string | null; match?: number | null; user?: string | null }
 // Everyone met there; a win names its finish, division and round too (from v 2).
-export interface Faced { name: string; club: string | null; image: string | null; reg: number | null; won: boolean; type?: string; how?: string; division?: string | null; bracket?: number | null; stage?: string | null; user?: string | null }
-export interface Outcome { event: string; site?: string; start: string | null; title: string | null; out: { v?: 2; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean; absent?: boolean } }
+export interface Faced { name: string; club: string | null; image: string | null; reg: number | null; won: boolean; type?: string; how?: string; division?: string | null; bracket?: number | null; stage?: string | null; match?: number | null; user?: string | null }
+export interface Outcome { event: string; site?: string; start: string | null; title: string | null; out: { v?: 2 | 3; types: Record<string, [number, number]>; losses: Loss[]; faced: Faced[]; extra?: boolean; absent?: boolean } }
 export interface EventMeta { event: string; title: string | null; start: string | null; city: string | null; country: string | null; organiser: string | null; ends?: number | null; url?: string | null; sized?: number | null }
 export interface EventRow extends EventMeta { site: 'smoothcomp.com' | 'ajptour.com'; athletes: number; registered?: number | null; divisions: number; teams: number; fought: number; lat: number | null; lng: number | null; url: string | null; km: number | null }
 export interface EventEntry extends Entry {

@@ -7,6 +7,9 @@ type Side = [registration: number, won: boolean, name: string | null, club: stri
 type Match = [id: number, division: string, stage: string, finish: string | null, sides: Side[], bracket: number | null];
 interface Card { left?: Record<string, unknown> | null; right?: Record<string, unknown> | null; matchInfo?: { time?: string; timeRemaining?: number } }
 interface Read { matches: Match[]; over: boolean; ends: number | null; users: Record<string, unknown>; tried: number[]; missed?: number[]; cards?: Record<string, unknown> }
+// An event of an athlete as rules.js Outcome makes and cleans it (site lib/api.ts Outcome is the kept shape).
+interface OutcomeOut { v?: number; types: Types; losses: Record<string, unknown>[]; faced: Record<string, unknown>[]; extra?: boolean; absent?: boolean }
+type Listed = { wins?: number | null; medals?: Record<string, number | null | undefined> | (number | null)[] | null } | null | undefined;
 interface Seed { belt?: string | null; won?: number | null; lost?: number | null; wins?: number | null; events?: number | null; gold?: number | null; submission?: number | null; points?: number | null; born?: number | null }
 declare global {
   var SCWRRules: {
@@ -32,10 +35,16 @@ declare global {
     ): EventRecord[];
     noShow(entry: { wins?: Record<string, number> | null; losses?: Record<string, number> | null }): boolean;
     playedSql(alias: string): string;
+    Outcome: {
+      fromMatchList(event: { matches?: Record<string, unknown> } | null | undefined, name: unknown, listed: Listed): OutcomeOut;
+      fromBouts(divisions: { division: string; bouts?: Record<string, unknown>[] | null }[], listed: Listed): OutcomeOut;
+      clean(out: unknown): OutcomeOut;
+    };
+    photo(url: unknown): string | null;
     OVER: number;
     overAt(event: { ends?: number | null; start?: string | null } | null | undefined): number | null;
     overSql(alias: string): string;
-    wonNothing(listed: { wins?: number | null; medals?: Record<string, number | null | undefined> | (number | null)[] | null } | null | undefined): boolean;
+    wonNothing(listed: Listed): boolean;
     wonNothingSql(alias: string): string;
     presentSql(alias: string): string;
     missedSql(alias: string): string;

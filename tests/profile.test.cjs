@@ -8,31 +8,14 @@ const vm = require('node:vm');
 
 const context = vm.createContext({});
 for (const file of ['rules.js', 'profile-model.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
-const { outcomes, planBelts, clean, entry, merge, share, scoresOf, fromCard } = vm.runInContext('SCWRProfile', context);
+const { planBelts, merge, share, scoresOf, fromCard } = vm.runInContext('SCWRProfile', context);
+const { clean } = vm.runInContext('SCWRRules.Outcome', context);
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const DAY = 864e5;
 const NOW = Date.parse('2026-11-23T12:00:00Z');
 
 const seat = (id, name, won) => ({ event_registration_id: id, name, club: `${name} BJJ`, image: null, isWinner: won, isLoser: !won });
 const match = (wonBy, stage, a, b) => ({ wonBy, name: stage, bracket_id: 9, seats: [a, b] });
-
-test('their seat is the registration in the most matches, their name settling a tie', () => {
-  // A three-way round robin lists every match of the pool: each seat is in two, so the name decides.
-  const pool = { group: 'Adult / Blue / -76 kg', matches: [
-    match('submission_armbar', 'Match 1/3', seat(1, 'Kim Lee', true), seat(2, 'Ana Lima', false)),
-    match('points', 'Match 2/3', seat(2, 'Ana Lima', true), seat(3, 'Bo Sun', false)),
-    match('decision_unanimous', 'Match 3/3', seat(3, 'Bo Sun', true), seat(1, 'Kim Lee', false)),
-  ] };
-  // A walkover never counts, a forfeit being one.
-  const bracket = { group: 'Adult / Blue / Absolute', matches: [
-    match('forfeit', 'Semifinals', seat(4, 'Kim Lee', true), seat(5, 'Cy Doe', false)),
-    match('tko', 'Final', seat(4, 'Kim Lee', true), seat(6, 'Di Roe', false)),
-  ] };
-  const out = outcomes({ id: 1, matches: { a: pool, b: bracket } }, ' Kim Lee ');
-  assert.deepEqual(plain(out.types), { submission: [1, 0], decision: [0, 1], stoppage: [1, 0] });
-  assert.deepEqual(plain(out.losses.map((l) => [l.opponent, l.how, l.stage])), [['Bo Sun', 'Decision (unanimous)', 'Match 3/3']]);
-  assert.deepEqual(plain(out.faced.map((f) => [f.name, f.won, f.how ?? null])), [['Ana Lima', true, 'Submission (armbar)'], ['Bo Sun', false, null], ['Di Roe', true, 'Stoppage']]);
-});
 
 test('each belt begins after the last event listed at the belt below, the current one worn without events', () => {
   const bjj = (belt, order, competed, ...starts) => ({ name: 'Brazilian Jiu-Jitsu', belt, sort_order: order, competed_count: competed, events: starts.map((event_start) => ({ event_start })) });
@@ -43,21 +26,6 @@ test('each belt begins after the last event listed at the belt below, the curren
   assert.deepEqual(plain(plan.starts.slice(1)), [Date.parse('2025-01-10'), Date.parse('2025-06-01') + 1]);
   assert.equal(plan.beltOf({ start_date: '2025-03-01' }), 'blue');
   assert.deepEqual(plain(planBelts([bjj('Blue', 2, 4)])), { belt: 'blue', whole: true });
-});
-
-test('a kept copy keeps only finishes, an older "escape" a fastest escape', () => {
-  const out = clean({ types: { escape: [1, 0], walkover: [2, 0], points: [1, 1], junk: 'x' }, losses: [{ type: 'escape', opponent: 'A' }, { type: 'walkover' }, {}], faced: [{ name: 'A', won: true, type: 'escape' }, { won: false }], v: 2 });
-  assert.deepEqual(plain(out), { types: { fastest_escape: [1, 0], points: [1, 1] }, losses: [{ type: 'fastest_escape', opponent: 'A' }], faced: [{ name: 'A', won: true, type: 'fastest_escape' }], v: 2 });
-});
-
-test("an event listed with no match, win or medal there is one they didn't show at; a bracket of one won isn't", () => {
-  const context = { name: 'Kim Lee', dated: new Map(), now: NOW };
-  const row = (wins, medals) => ({ id: 9, title: 'Open', start_date: '2026-10-01', wins, medals });
-  assert.equal(entry(row(0, { gold: 0, silver: 0, bronze: 0 }), undefined, context).out.absent, true);
-  assert.equal(entry(row(0, { gold: 1, silver: 0, bronze: 0 }), undefined, context).out.absent, undefined);
-  assert.equal(entry(row(1, {}), undefined, context).out.absent, undefined);
-  // The mark is kept with the copy.
-  assert.equal(clean(entry(row(0, {}), undefined, context).out).absent, true);
 });
 
 test('a visit keeps what it read and what was kept, leaving out what an unanswered page may hold', () => {

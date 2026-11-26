@@ -6,9 +6,9 @@ import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
 import { PLACED, locate } from './crawl.js';
 
-const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql } = globalThis.SCWRRules;
+const { BELTS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql, photo, Outcome } = globalThis.SCWRRules;
 
-// An event their profile lists with no match, win or medal they didn't show at (profile-model.js entry marks it too): marked
+// An event their profile lists with no match, win or medal they didn't show at (rules.js Outcome marks it too): marked
 // `absent` here as well, whatever install sent it. ?1 site, ?2 the athletes (JSON).
 export const ABSENT = `UPDATE outcomes SET out = json_set(out, '$.absent', json('true'))
   WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND out ->> '$.absent' IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(out, '$.types'))
@@ -130,8 +130,6 @@ const tally = (bucket) => {
   }
   return out;
 };
-// Photos only from the sites' own hosts.
-const photo = (url) => (typeof url === 'string' && /^https:\/\/([\w-]+\.)*(smoothcomp\.com|ajptour\.com)\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
 const ISO = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z?$/;
 const coord = (v, max) => { const n = v == null || v === '' ? NaN : Number(v); return Number.isFinite(n) && Math.abs(n) <= max ? n : null; };
 // When the page read what it sends: an upload read before the one kept is dropped, so a
@@ -322,30 +320,9 @@ async function record(env, { site, event, records, meta, athletes, read, crawled
   return json({});
 }
 
-// An athlete's settled events, as profile pages read them from the match lists. The
-// worker keeps only the shape profile.js reads: finishes (walkovers aside, which match lists
-// never count), counts and bounded text. Older installs name a fastest escape "escape".
+// An athlete's settled events, as profile pages read them from the match lists: kept as rules.js Outcome.clean shapes them.
 const SETTLED = 7 * 24 * 60 * 60 * 1000;
-const count = n => (Number.isSafeInteger(n) && n >= 0 && n < 1000 ? n : 0);
 const regOf = r => (Number.isSafeInteger(r) && r > 0 ? r : null);
-const finished = (type) => (typeof type === 'string' && type && finishOf(type) !== 'walkover' ? finishOf(type) : null);
-export function cleanOut(out) {
-  const types = {};
-  for (const [type, pair] of Object.entries(out?.types && typeof out.types === 'object' ? out.types : {})) {
-    const t = finished(type);
-    if (t && Array.isArray(pair) && (count(pair[0]) || count(pair[1]))) types[t] = [(types[t]?.[0] ?? 0) + count(pair[0]), (types[t]?.[1] ?? 0) + count(pair[1])];
-  }
-  const losses = (Array.isArray(out?.losses) ? out.losses : []).slice(0, 60).filter(l => finished(l?.type)).map(l => ({
-    type: finished(l.type), how: text(l.how, 60) ?? '', opponent: text(l.opponent, 120), club: text(l.club, 160), division: text(l.division, 200),
-    reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: text(l.stage, 60), match: regOf(l.match),
-  }));
-  // A win names its finish, round and division too (from v 2), for a head-to-head; v 3 keeps every match's id.
-  const faced = (Array.isArray(out?.faced) ? out.faced : []).slice(0, 120).filter(m => text(m?.name, 120)).map(m => ({
-    name: text(m.name, 120), club: text(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
-    ...(m.won === true && finished(m.type) ? { type: finished(m.type), how: text(m.how, 60) ?? '', division: text(m.division, 200), bracket: regOf(m.bracket), stage: text(m.stage, 60), match: regOf(m.match) } : {}),
-  }));
-  return { ...([2, 3].includes(out?.v) ? { v: out.v } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true && !Object.keys(types).length ? { absent: true } : {}) };
-}
 // An athlete's stored matches whose score was read, for the points their profile shows (profile.js readPoints): each
 // with its event, division, result, opponent, round and match id where kept; then the cards kept for the match ids
 // asked (`matches`) that they fought, theirs first. The profile reads only the rest's cards.
@@ -377,7 +354,7 @@ async function outcomes(env, { site, user }) {
 async function crawled(env, { site, user, events }) {
   if (!SITES.includes(site) || !validUser(user) || !Array.isArray(events) || events.length > 400) return json({ error: 'Bad events' }, 400);
   const ids = JSON.stringify(events.filter(e => Number.isSafeInteger(e) && e > 0).map(String));
-  const { results } = await env.DB.prepare(`SELECT j.value event, h.start, h.title, h.wins, c.state, e.division, e.bouts FROM json_each(?3) j
+  const { results } = await env.DB.prepare(`SELECT j.value event, h.start, h.title, h.wins, h.gold, h.silver, h.bronze, c.state, e.division, e.bouts FROM json_each(?3) j
     LEFT JOIN history h ON h.site = ?1 AND h.user = ?2 AND h.event = j.value LEFT JOIN crawls c ON c.site = ?1 AND c.event = j.value
     LEFT JOIN entries e ON e.site = ?1 AND e.event = j.value AND e.user = ?2 AND e.fought = 1`).bind(site, user, ids).all();
   const by = Map.groupBy(results, r => r.event);
@@ -385,16 +362,9 @@ async function crawled(env, { site, user, events }) {
   for (const [event, rows] of by) {
     const fought = rows.filter(r => r.division);
     if ((!fought.length || fought.some(r => !r.bouts)) && (rows[0].state !== 'done' || rows[0].wins)) continue;
-    const out = { v: 3, types: {}, losses: [], faced: [], ...(!fought.length && { absent: true }) };
-    for (const r of fought) for (const b of JSON.parse(r.bouts ?? '[]')) {
-      const type = finishOf(b.type);
-      if (type === 'walkover') continue;
-      (out.types[type] ??= [0, 0])[b.won ? 0 : 1]++;
-      const at = { how: b.how ?? LABELS[type], division: r.division, stage: b.stage, bracket: b.bracket, match: b.match };
-      if (b.opponent) out.faced.push({ name: b.opponent, club: b.club, won: b.won, ...(b.won ? { type, ...at } : {}) });
-      if (!b.won) out.losses.push({ type, opponent: b.opponent, club: b.club, ...at });
-    }
-    found.push({ id: Number(event), start_date: rows[0].start, title: rows[0].title, out: cleanOut(out) });
+    const [h] = rows;
+    const out = Outcome.fromBouts(fought.map((r) => ({ division: r.division, bouts: JSON.parse(r.bouts ?? '[]') })), { wins: h.wins, medals: [h.gold, h.silver, h.bronze] });
+    found.push({ id: Number(event), start_date: h.start, title: h.title, out: Outcome.clean(out) });
   }
   const waiting = [...by.keys()].filter(event => !found.some(e => e.id === Number(event)));
   if (waiting.length) await env.DB.prepare(`UPDATE crawls SET priority = 3 WHERE site = ?1 AND state = 'queued' AND priority < 3 AND event IN (SELECT value FROM json_each(?2))`)
@@ -407,7 +377,7 @@ async function keepOutcomes(env, { site, user, events }) {
   if (!SITES.includes(site) || !validUser(user) || !Array.isArray(events) || events.length > 400) return json({ error: 'Bad outcomes' }, 400);
   // An event only a match list names may come undated; every other one must have started.
   const rows = events.filter(e => Number.isSafeInteger(e?.id) && e.id > 0 && (typeof e.start_date === 'string' ? Date.parse(e.start_date) < Date.now() : e.start_date == null && e.out?.extra === true))
-    .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(cleanOut(e.out))]);
+    .map(e => [String(e.id), e.start_date?.slice(0, 40) ?? null, text(e.title, 200), JSON.stringify(Outcome.clean(e.out))]);
   // A copy taken in an event's first week, while its results can still change, gives way to any later
   // one. After that the event is settled, so the first copy of it stands and later ones cannot replace
   // it, except a copy from before v 3, which lacks the wins' details (v 2) or the match ids: a v 3 upload

@@ -30,10 +30,12 @@ results row is (`events.fought`); it is over at its end, else two days from its 
 _Avoid_: "missed" for an event still on: until it is over, a registrant without a result is still to fight.
 
 **Outcome**: one event of an athlete as their profile's match lists give it (finishes, losses,
-everyone met). Kept on the browser and in D1 `outcomes`. Owner: `profile-model.js`.
+everyone met, each match's id from v 3), or the results read give it where a match list never answers; `absent` where
+they didn't show (Attendance). Kept on the browser and in D1 `outcomes`, cleaned to one bounded shape. Owner: `rules.js`
+`Outcome` (`fromMatchList`, `fromBouts`, `clean`; `tests/outcome.test.cjs`).
 
 **Seat**: which registration in a match list is the athlete's: the one in the most of a division's
-matches, their name settling a tie. Owner: `profile-model.js` `outcomes`.
+matches, their name settling a tie. Owner: `rules.js` `Outcome.fromMatchList`.
 
 **Place**: where an athlete finished a division. Published results give it; until then the
 matches do, by the round each side went out in, a round robin by its record. Owner: `rules.js`
@@ -48,4 +50,4 @@ it is. Kept under the default filters (`club_board`, `club_recent`), else added 
 `rules.js` `rivalsOf`.
 
 **Upload**: what a page (or the crawler) sends the server about an event or athlete. The server
-cleans it apart from writing it. Owner: `server/worker.js` `upload`, `cleanOut`.
+cleans it apart from writing it. Owner: `server/worker.js` `upload` (an Outcome, `rules.js` `Outcome.clean`).

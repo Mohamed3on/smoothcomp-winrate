@@ -1,47 +1,10 @@
-// The profile page's rules, apart from the page: which seat in a match list is theirs, when each
-// belt began, what a kept copy may hold, and how one visit's reads join what was kept. No DOM, no
+// The profile page's rules, apart from the page: when each belt began and how one visit's reads join
+// what was kept (an event's Outcome is rules.js'). No DOM, no
 // network, no storage, so tests/profile.test.cjs holds them to the shapes Smoothcomp sends.
 const SCWRProfile = (() => {
-  const { BELTS, beltOf, finishOf, howOf, eventRecords, totals, beltSplit, rivalsOf, usualDivision, normalize, SCORELESS } = SCWRRules;
+  const { BELTS, beltOf, eventRecords, totals, beltSplit, rivalsOf, usualDivision, normalize, SCORELESS, Outcome } = SCWRRules;
   const WEEK = 7 * 864e5;
   const time = (e) => Date.parse(e.event_start ?? e.start_date);
-  // A match list's finish, or a kept one's (an older copy says "escape"); walkovers never count here.
-  const finished = (type) => (typeof type === 'string' && type && finishOf(type) !== 'walkover' ? finishOf(type) : null);
-
-  // The athlete's matches at one event, as [won, lost] by finish, and each loss with who beat
-  // them, in what division and how; each win names the same, for a head-to-head. Walkovers left
-  // out. v 3 marks the wins' details and every match's id. Each division registers them afresh: their seat is the
-  // registration in the most of its matches (a round robin lists others' too), their name (as
-  // the profile gives it) settling a tie.
-  function outcomes(event, name) {
-    name = String(name ?? '').trim().toLowerCase();
-    const out = { v: 3, types: {}, losses: [], faced: [] };
-    for (const group of Object.values(event.matches ?? {})) {
-      const matches = group.matches ?? [];
-      const seen = new Map();
-      for (const m of matches) for (const s of m.seats ?? []) {
-        const id = s.event_registration_id;
-        seen.set(id, { n: (seen.get(id)?.n ?? 0) + 1, named: s.name?.trim().toLowerCase() === name });
-      }
-      const most = Math.max(0, ...[...seen.values()].map(s => s.n));
-      const top = [...seen].filter(([, s]) => s.n === most);
-      const mine = (top.length === 1 && most > 1 ? top[0] : top.find(([, s]) => s.named))?.[0];
-      if (mine == null) continue;
-      for (const m of matches) {
-        const seat = m.seats?.find(s => s.event_registration_id === mine);
-        const type = finishOf(m.wonBy);
-        if (!seat || type === 'walkover' || !(seat.isWinner || seat.isLoser)) continue;
-        out.types[type] ??= [0, 0];
-        out.types[type][seat.isWinner ? 0 : 1]++;
-        const other = m.seats.find(s => s !== seat);
-        if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner,
-          ...(seat.isWinner ? { type, how: howOf(m.wonBy), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null, match: m.id ?? null } : {}) });
-        if (seat.isLoser) out.losses.push({ type, how: howOf(m.wonBy), opponent: other?.name ?? null, club: other?.club ?? null, division: group.group ?? null,
-          reg: other?.event_registration_id ?? null, image: other?.image ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null, match: m.id ?? null });
-      }
-    }
-    return out;
-  }
 
   // When each belt began, from the profile's belt list (`skills`). Each belt's events run from its
   // first when the list names all of them, else from just after the last one listed at the belt
@@ -61,18 +24,6 @@ const SCWRProfile = (() => {
     return { belt, worn, starts, shown: new Set([belt, ...worn]).size, beltOf: (e) => worn[starts.findLastIndex(start => start <= time(e))] ?? worn[0] };
   }
 
-  // What is read back, kept on this browser or shared, keeps only the shape outcomes() makes.
-  function clean(out) {
-    const types = {};
-    for (const [type, pair] of Object.entries(out?.types && typeof out.types === 'object' ? out.types : {})) {
-      const t = finished(type);
-      if (t && Array.isArray(pair)) types[t] = [(types[t]?.[0] ?? 0) + (Number(pair[0]) || 0), (types[t]?.[1] ?? 0) + (Number(pair[1]) || 0)];
-    }
-    return { types, losses: (Array.isArray(out?.losses) ? out.losses : []).filter(l => finished(l?.type)).map(l => ({ ...l, type: finished(l.type) })),
-      faced: (Array.isArray(out?.faced) ? out.faced : []).filter(m => typeof m?.name === 'string').map(m => (m.type ? { ...m, type: finished(m.type) ?? undefined } : m)),
-      ...([2, 3].includes(out?.v) ? { v: out.v } : {}), ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true ? { absent: true } : {}) };
-  }
-
   // Everything shown, from the kept events, by the rules the stats site counts by too; newest
   // first, so each rival takes the club and photo of the latest meeting.
   function tally(events, plan) {
@@ -88,14 +39,12 @@ const SCWRProfile = (() => {
     return { types: totals(records), belts, losses, wins, rivals, usual: usualDivision(records) };
   }
 
-  // One event as kept: `listed` the event list's row, `event` its match list. A match list can hold an
-  // event the event list leaves out (an event under two ids): its matches count all the same
-  // (`extra`), dated by the belt list (`dated`) where it names it. Settled a week after it started.
+  // One event as kept (its Outcome, rules.js): `listed` the event list's row, `event` its match list. A match list can hold an
+  // event the event list leaves out (an event under two ids): its matches count all the same (`extra`), dated by the belt list
+  // (`dated`) where it names it. Settled a week after it started.
   function entry(listed, event, { name, dated, now }) {
     const start = listed ? listed.start_date : dated.get(event.id) ?? null;
-    const out = !event ? { v: 3, types: {}, losses: [], faced: [] } : listed ? outcomes(event, name) : { ...outcomes(event, name), extra: true };
-    // Smoothcomp lists the events registered for too: one with no match, win or medal they didn't show at (`absent`), and isn't counted.
-    if (listed && !Object.keys(out.types).length && !(listed.wins > 0) && !['gold', 'silver', 'bronze'].some(m => listed.medals?.[m] > 0)) out.absent = true;
+    const out = Outcome.fromMatchList(event, name, listed);
     return { id: listed?.id ?? event.id, start_date: start, title: event?.title ?? listed?.title ?? null, out, settled: (!listed && !start) || now - Date.parse(start) > WEEK };
   }
 
@@ -155,5 +104,5 @@ const SCWRProfile = (() => {
       clock: [/^\d+:\d\d$/.test(time ?? '') ? Number(time.split(':')[0]) * 60 + Number(time.split(':')[1]) : null, Number.isSafeInteger(left) ? Math.round(left / 1000) : null] };
   }
 
-  return { outcomes, planBelts, clean, tally, entry, merge, share, scoresOf, fromCard, WEEK };
+  return { planBelts, tally, entry, merge, share, scoresOf, fromCard, WEEK };
 })();

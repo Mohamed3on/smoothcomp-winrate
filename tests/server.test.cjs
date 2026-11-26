@@ -1,4 +1,4 @@
-// The server's intake: what an upload may say (worker.js upload, cleanOut), and a results page's
+// The server's intake: what an upload may say (worker.js upload), and a results page's
 // upload going in through /record and back out through the stats site's reads, over D1's schema
 // in SQLite (a stand-in for D1: the same SQL, bound by number as D1 binds it).
 const { test } = require('node:test');
@@ -54,14 +54,6 @@ test('an upload keeps only the shapes the tables hold', async () => {
   assert.deepEqual(JSON.parse(said.entries[0].wins), { submission: 3, walkover: 1 });
   assert.deepEqual(JSON.parse(said.entries[0].bouts)[0], { won: true, type: 'submission', how: 'Submission (armbar)', opponent: 'Bo Sun', user: '12', club: null, stage: 'Final' });
   assert.equal(upload('900', meta, null), null);
-});
-
-test("a profile's match lists keep finishes, an older install's \"escape\" a fastest escape", async () => {
-  const { cleanOut } = await import('../server/worker.js');
-  const out = cleanOut({ v: 2, types: { escape: [1, 0], fastest_escape: [1, 1], walkover: [3, 0] }, losses: [{ type: 'escape', opponent: 'A' }, { type: 'walkover' }], faced: [{ name: 'A', won: true, type: 'escape' }] });
-  assert.deepEqual(out.types, { fastest_escape: [2, 1] });
-  assert.deepEqual(out.losses.map((l) => l.type), ['fastest_escape']);
-  assert.equal(out.faced[0].type, 'fastest_escape');
 });
 
 test("a results page's upload reads back on the stats site", async () => {

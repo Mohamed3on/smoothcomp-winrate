@@ -116,6 +116,81 @@ globalThis.SCWRRules = (() => {
     OR EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ${h}.site AND o.user = ${h}.user AND o.event = ${h}.event AND NOT ${presentSql('o')})))`;
   // Whether they showed at one event, from what is held of them there: their entries (results or registrations) and Outcome.
   const showed = (entries, outcome) => entries.some((e) => !noShow(e) && (e.fought || !outcome?.out?.absent)) || (!outcome?.out?.absent && !entries.some(noShow));
+  // Outcome: one event of an athlete as their profile's match lists give it: [won, lost] by finish (walkovers left out, which
+  // match lists never count), each loss, and everyone met, a win naming its finish, round and division (v 2) and every match
+  // its id (v 3); `extra` an event only a match list holds, `absent` one their profile lists that they didn't show at
+  // (Attendance: no match there, nothing won). Made from a match list or from the matches the results read keep, and cleaned
+  // to that shape, bounded, wherever one is read back or kept: the profile page, its browser copy, and the server alike.
+  const V = 3;
+  const finished = (type) => (typeof type === 'string' && type && finishOf(type) !== 'walkover' ? finishOf(type) : null);
+  // Photos only from the sites' own hosts.
+  const photo = (url) => (typeof url === 'string' && /^https:\/\/([\w-]+\.)*(smoothcomp\.com|ajptour\.com)\/[^\s"'<>]{1,300}$/.test(url) ? url : null);
+  const regOf = (r) => (Number.isSafeInteger(r) && r > 0 ? r : null);
+  const count = (n) => (Number.isSafeInteger(n) && n >= 0 && n < 1000 ? n : 0);
+  const marked = (out, listed) => (listed && !Object.keys(out.types).length && wonNothing(listed) ? { ...out, absent: true } : out);
+  const Outcome = {
+    // From the profile's match list for the event (`event`, null where none was read), `name` as the profile gives it,
+    // `listed` the event list's row (null for an event only the match list holds). Each division registers them afresh:
+    // their seat is the registration in the most of its matches (a round robin lists others' too), their name settling a tie.
+    fromMatchList(event, name, listed) {
+      name = String(name ?? '').trim().toLowerCase();
+      const out = { v: V, types: {}, losses: [], faced: [], ...(!listed && event ? { extra: true } : {}) };
+      for (const group of Object.values(event?.matches ?? {})) {
+        const matches = group.matches ?? [];
+        const seen = new Map();
+        for (const m of matches) for (const s of m.seats ?? []) {
+          const id = s.event_registration_id;
+          seen.set(id, { n: (seen.get(id)?.n ?? 0) + 1, named: s.name?.trim().toLowerCase() === name });
+        }
+        const most = Math.max(0, ...[...seen.values()].map((s) => s.n));
+        const top = [...seen].filter(([, s]) => s.n === most);
+        const mine = (top.length === 1 && most > 1 ? top[0] : top.find(([, s]) => s.named))?.[0];
+        if (mine == null) continue;
+        for (const m of matches) {
+          const seat = m.seats?.find((s) => s.event_registration_id === mine);
+          const type = finishOf(m.wonBy);
+          if (!seat || type === 'walkover' || !(seat.isWinner || seat.isLoser)) continue;
+          out.types[type] ??= [0, 0];
+          out.types[type][seat.isWinner ? 0 : 1]++;
+          const other = m.seats.find((s) => s !== seat);
+          const at = { how: howOf(m.wonBy), division: group.group ?? null, bracket: m.bracket_id ?? null, stage: m.name ?? null, match: m.id ?? null };
+          if (other?.name) out.faced.push({ name: other.name, club: other.club ?? null, image: other.image ?? null, reg: other.event_registration_id ?? null, won: !!seat.isWinner, ...(seat.isWinner ? { type, ...at } : {}) });
+          if (seat.isLoser) out.losses.push({ type, opponent: other?.name ?? null, club: other?.club ?? null, reg: other?.event_registration_id ?? null, image: other?.image ?? null, ...at });
+        }
+      }
+      return marked(out, listed);
+    },
+    // From the matches the results read keep there (`divisions`: { division, bouts }, the ones they fought), `listed` as above.
+    fromBouts(divisions, listed) {
+      const out = { v: V, types: {}, losses: [], faced: [] };
+      for (const { division, bouts } of divisions) for (const b of bouts ?? []) {
+        const type = finishOf(b.type);
+        if (type === 'walkover') continue;
+        (out.types[type] ??= [0, 0])[b.won ? 0 : 1]++;
+        const at = { how: b.how ?? LABELS[type], division, stage: b.stage, bracket: b.bracket, match: b.match };
+        if (b.opponent) out.faced.push({ name: b.opponent, club: b.club, won: b.won, ...(b.won ? { type, ...at } : {}) });
+        if (!b.won) out.losses.push({ type, opponent: b.opponent, club: b.club, ...at });
+      }
+      return marked(out, listed);
+    },
+    // Only that shape, bounded, in the order kept copies hold it (the server compares them as text): finishes (an older copy's "escape" a fastest escape), capped text, photos from the sites alone.
+    clean(out) {
+      const types = {};
+      for (const [type, pair] of Object.entries(out?.types && typeof out.types === 'object' ? out.types : {})) {
+        const t = finished(type);
+        if (t && Array.isArray(pair) && (count(pair[0]) || count(pair[1]))) types[t] = [(types[t]?.[0] ?? 0) + count(pair[0]), (types[t]?.[1] ?? 0) + count(pair[1])];
+      }
+      const at = (m) => ({ how: words(m.how, 60) ?? '', division: words(m.division, 200), bracket: regOf(m.bracket), stage: words(m.stage, 60), match: regOf(m.match) });
+      const losses = (Array.isArray(out?.losses) ? out.losses : []).slice(0, 60).filter((l) => finished(l?.type)).map((l) => ({
+        type: finished(l.type), how: words(l.how, 60) ?? '', opponent: words(l.opponent, 120), club: words(l.club, 160), division: words(l.division, 200),
+        reg: regOf(l.reg), image: photo(l.image), bracket: regOf(l.bracket), stage: words(l.stage, 60), match: regOf(l.match) }));
+      const faced = (Array.isArray(out?.faced) ? out.faced : []).slice(0, 120).filter((m) => words(m?.name, 120)).map((m) => ({
+        name: words(m.name, 120), club: words(m.club, 160), image: photo(m.image), reg: regOf(m.reg), won: m.won === true,
+        ...(m.won === true && finished(m.type) ? { type: finished(m.type), ...at(m) } : {}) }));
+      return { ...([2, V].includes(out?.v) ? { v: out.v } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}), ...(out?.absent === true && !Object.keys(types).length ? { absent: true } : {}) };
+    },
+  };
+
   // Every event's [won, lost] by finish, summed.
   const totals = (records) => records.reduce((into, r) => {
     for (const [t, [w, l]] of Object.entries(r.types)) add(into, t, w, l);
@@ -481,5 +556,5 @@ globalThis.SCWRRules = (() => {
     return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
   }
 
-  return { OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  return { Outcome, photo, OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();
