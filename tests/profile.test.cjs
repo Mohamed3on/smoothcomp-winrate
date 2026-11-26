@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 const context = vm.createContext({});
 for (const file of ['rules.js', 'profile-model.js']) vm.runInContext(fs.readFileSync(file, 'utf8'), context, { filename: file });
-const { outcomes, planBelts, clean, merge, share } = vm.runInContext('SCWRProfile', context);
+const { outcomes, planBelts, clean, merge, share, scoresOf, fromCard } = vm.runInContext('SCWRProfile', context);
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const DAY = 864e5;
 const NOW = Date.parse('2026-11-23T12:00:00Z');
@@ -81,4 +81,27 @@ test('a visit keeps what it read and what was kept, leaving out what an unanswer
   const later = share({ events: partial.events, fresh: partial.fresh, shared: new Set(), kept: { shared: true, gaps: { at: NOW - DAY } }, total: 5, holes: [5], all: false, now: NOW });
   assert.deepEqual(plain(later.unshared.map((e) => e.id)), [4]);
   assert.deepEqual(plain(later.gaps), { at: NOW - DAY, ids: [5] });
+});
+
+test("each match's points come from this browser's copy, else what Mat Stats holds, by id or the same meeting; walkovers and stoppages have none", () => {
+  const division = 'Adult / Blue';
+  const events = [{ id: 5, out: { types: {}, faced: [
+    { name: 'Bo Sun', won: true, type: 'points', stage: 'Final', match: 11, division },
+    { name: 'Cy Dee', won: true, type: 'stoppage', stage: 'Quarterfinals', match: 12, division },
+    { name: 'Hüseyin Akinci', won: true, type: 'submission', stage: 'Semifinals', match: 13, division },
+    { name: 'Al Ray', won: false },
+  ], losses: [{ type: 'points', opponent: 'Al Ray', stage: 'Match 2/3', match: 14, division }, { type: 'walkover', opponent: 'Ed', match: 15, division }] } }];
+  const stored = [
+    { event: 5, division, won: true, opponent: 'Huseyin Akinci', stage: 'Semifinals', match: null, us: [9, 0, 0], them: [2, 0, 0] },
+    { event: 5, division, won: true, opponent: 'Bo Sun', stage: 'Final', match: 11, us: [1, 0, 0], them: [0, 0, 0] },
+  ];
+  assert.deepEqual(plain(scoresOf(events, { 11: [4, 0] }, stored)).map((m) => [m.id, m.type, m.score]), [[11, 'points', [4, 0]], [13, 'submission', [9, 2]], [14, 'points', null]]);
+});
+
+test("a match card reads as their score, whichever side they are; a card without them reads as none", () => {
+  const card = { left: { id: 854897, score: 6, advantage: 0, penalty: 1 }, right: { id: 1567570, score: 2 }, matchInfo: { time: '1:59', timeRemaining: 181000 } };
+  assert.deepEqual(plain(fromCard(card, '1567570')), { score: [2, 6], users: ['854897', '1567570'], s: [[6, 0, 1], [2, 0, 0]], clock: [119, 181] });
+  assert.deepEqual(plain(fromCard(card, '854897').score), [6, 2]);
+  assert.equal(fromCard(card, '99'), null);
+  assert.equal(fromCard(null, '1567570'), null);
 });

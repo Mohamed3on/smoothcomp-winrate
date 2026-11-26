@@ -576,15 +576,24 @@ test("an event's scores a browser read fill its stored matches that have none, e
     { stage: 'Semifinals', group: 'Adult / Blue', users: ['11', '15'], s: [[3, 0, 0], [1, 0, 0]], clock: [300, 0] },
   ];
   assert.equal((await post({ site: 'smoothcomp.com', event: '960', matches: [{ stage: 'x', users: ['a', 'b'], s: [] }] })).status, 400);
-  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 3 });
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 3, kept: 0 });
   const read = (user, division = 'Adult / Blue') => JSON.parse(db.prepare("SELECT bouts FROM entries WHERE user = ? AND division = ?").get(user, division).bouts).map((b) => [b.us, b.them, b.clock]);
   // A walkover keeps none, a match already scored keeps its own.
   assert.deepEqual(read('11'), [[[4, 1, 0], [0, 0, 0], [148, 151]], [undefined, undefined, undefined], [[2, 0, 0], [0, 0, 0], undefined]]);
   assert.deepEqual(read('12'), [[[0, 0, 0], [4, 1, 0], [148, 151]]]);
   assert.deepEqual(read('15'), [[[1, 0, 0], [3, 0, 0], [300, 0]]]);
   assert.deepEqual(read('11', 'No Gi / Blue'), [[undefined, undefined, undefined]]);
+  // An athlete's profile asks for their matches with a score read (worker.js scored).
+  const scored = async (user) => (await (await worker.fetch(new Request('https://matstats.test/scored', { method: 'POST', body: JSON.stringify({ site: 'smoothcomp.com', user }) }), env, { waitUntil: () => {} })).json()).matches;
+  assert.deepEqual((await scored('12')).map((m) => [m.event, m.division, m.won, m.opponent, m.stage, m.us, m.them]), [[960, 'Adult / Blue', false, 'x', 'Match 1/3', [0, 0, 0], [4, 1, 0]]]);
+  // A card sent with its match id is kept by it even for an event with no results read (no round needed), and comes
+  // back to either side's profile when asked for, theirs first.
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '961', matches: [{ match: 7001, stage: null, users: ['21', '22'], s: [[6, 0, 1], [2, 0, 0]], clock: [119, 181] }] })).json(), { filled: 0, kept: 1 });
+  const card = async (user) => (await (await worker.fetch(new Request('https://matstats.test/scored', { method: 'POST', body: JSON.stringify({ site: 'smoothcomp.com', user, matches: [7001, 7002] }) }), env, { waitUntil: () => {} })).json()).matches;
+  assert.deepEqual(await card('22'), [{ match: 7001, us: [2, 0, 0], them: [6, 0, 1] }]);
+  assert.deepEqual(await card('99'), []);
   // Sent again, nothing is left to fill.
-  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 0 });
+  assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 0, kept: 0 });
 });
 
 test("search finds both sites' athletes, academies and events, one person's accounts once", async () => {

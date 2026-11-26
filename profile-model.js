@@ -2,7 +2,7 @@
 // belt began, what a kept copy may hold, and how one visit's reads join what was kept. No DOM, no
 // network, no storage, so tests/profile.test.cjs holds them to the shapes Smoothcomp sends.
 const SCWRProfile = (() => {
-  const { BELTS, beltOf, finishOf, howOf, eventRecords, totals, beltSplit, rivalsOf, usualDivision } = SCWRRules;
+  const { BELTS, beltOf, finishOf, howOf, eventRecords, totals, beltSplit, rivalsOf, usualDivision, normalize, SCORELESS } = SCWRRules;
   const WEEK = 7 * 864e5;
   const time = (e) => Date.parse(e.event_start ?? e.start_date);
   // A match list's finish, or a kept one's (an older copy says "escape"); walkovers never count here.
@@ -123,5 +123,35 @@ const SCWRProfile = (() => {
     return { missing, unshared, gaps: missing > 0 ? { at: all ? now : kept?.gaps?.at, ids: holes.filter(id => !counted.has(id)) } : undefined };
   }
 
-  return { outcomes, planBelts, clean, tally, entry, merge, share, WEEK };
+  // Each of their matches with a score to read (not a walkover or a stoppage, rules.js SCORELESS) as
+  // { id, event, type, division, stage, score }, score [theirs, the opponent's] points or null: kept on this
+  // browser by match id (`kept`), else one Mat Stats holds (`stored`, worker.js scored) by the match id, else
+  // by the same event, division, result, opponent and round, names spelt either way ("Hüseyin", "Huseyin").
+  function scoresOf(events, kept, stored) {
+    const fold = (s) => normalize(s).normalize('NFD').replace(/\p{M}/gu, '');
+    const meeting = (event, division, won, opponent, stage) => `${event}|${fold(division)}|${!!won}|${fold(opponent)}|${stage ?? ''}`;
+    const byId = new Map(stored.filter(m => m.match).map(m => [Number(m.match), m]));
+    const byMeeting = new Map(stored.map(m => [meeting(m.event, m.division, m.won, m.opponent, m.stage), m]));
+    return events.flatMap(e => [...e.out.faced.filter(f => f.won).map(f => ({ ...f, opponent: f.name })), ...e.out.losses.map(l => ({ ...l, won: false }))]
+      .filter(m => m.type && !SCORELESS.includes(m.type))
+      .map((m) => {
+        const s = (m.match && byId.get(Number(m.match))) || byMeeting.get(meeting(e.id, m.division, m.won, m.opponent, m.stage));
+        return { id: m.match ?? null, event: e.id, type: m.type, division: m.division ?? null, stage: m.stage ?? null,
+          score: (m.match && kept[m.match]) || (s ? [s.us[0], s.them[0]] : null) };
+      }));
+  }
+
+  // A match card (Smoothcomp's getBracketMatchData) as theirs: `score` [theirs, the opponent's] points, and the
+  // users, [points, advantages, penalties] and clock Mat Stats keeps (worker.js scores); null when neither side is them.
+  function fromCard(card, user) {
+    const sides = [card?.left, card?.right];
+    const mine = sides.findIndex(p => p?.id != null && String(p.id) === String(user));
+    if (mine < 0 || sides[1 - mine]?.id == null) return null;
+    const trio = (p) => [p.score, p.advantage, p.penalty].map(n => (Number.isSafeInteger(n) ? n : 0));
+    const time = card.matchInfo?.time, left = card.matchInfo?.timeRemaining;
+    return { score: [trio(sides[mine])[0], trio(sides[1 - mine])[0]], users: sides.map(p => String(p.id)), s: sides.map(trio),
+      clock: [/^\d+:\d\d$/.test(time ?? '') ? Number(time.split(':')[0]) * 60 + Number(time.split(':')[1]) : null, Number.isSafeInteger(left) ? Math.round(left / 1000) : null] };
+  }
+
+  return { outcomes, planBelts, clean, tally, entry, merge, share, scoresOf, fromCard, WEEK };
 })();

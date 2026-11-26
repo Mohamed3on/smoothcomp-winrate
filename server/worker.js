@@ -309,6 +309,25 @@ export function cleanOut(out) {
   }));
   return { ...(out?.v === 2 ? { v: 2 } : {}), types, losses, faced, ...(out?.extra === true ? { extra: true } : {}) };
 }
+// An athlete's stored matches whose score was read, for the points their profile shows (profile.js readPoints): each
+// with its event, division, result, opponent, round and match id where kept; then the cards kept for the match ids
+// asked (`matches`) that they fought, theirs first. The profile reads only the rest's cards.
+async function scored(env, { site, user, matches }) {
+  if (!SITES.includes(site) || !validUser(user)) return json({ error: 'Bad athlete' }, 400);
+  const ids = (Array.isArray(matches) ? matches : []).slice(0, 2000).filter(regOf);
+  const [entries, cards] = await env.DB.batch([
+    env.DB.prepare('SELECT event, division, bouts FROM entries WHERE site = ?1 AND user = ?2 AND fought = 1 AND bouts IS NOT NULL').bind(site, String(user)),
+    env.DB.prepare('SELECT match, users, s FROM cards WHERE site = ?1 AND match IN (SELECT value FROM json_each(?2))').bind(site, JSON.stringify(ids)),
+  ]);
+  return json({ matches: [...entries.results.flatMap((r) => {
+    let bouts;
+    try { bouts = JSON.parse(r.bouts); } catch { return []; }
+    return bouts.filter((b) => b.us && b.them).map((b) => ({ event: Number(r.event), division: r.division, won: !!b.won, opponent: b.opponent ?? null, stage: b.stage ?? null, match: b.match ?? null, us: b.us, them: b.them }));
+  }), ...cards.results.flatMap((c) => {
+    const users = JSON.parse(c.users), s = JSON.parse(c.s), i = users.indexOf(String(user));
+    return i < 0 ? [] : [{ match: c.match, us: s[i], them: s[1 - i] }];
+  })] });
+}
 async function outcomes(env, { site, user }) {
   if (!SITES.includes(site) || !validUser(user)) return json({ error: 'Bad outcomes' }, 400);
   const { results } = await env.DB.prepare('SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2').bind(site, user).all();
@@ -440,12 +459,13 @@ async function readNow(env, { site, event, user }, ctx) {
   return json({ events: results.map((r) => r.event), found: found.results.length });
 }
 
-// An event's scores, which a reader's browser read from its match cards (site read-scores.tsx), filled into the
+// An event's scores, which a reader's browser read from its match cards (site read-scores.tsx, profile.js), filled into the
 // stored matches that have none: each by its division, round and the two users who fought it (a match kept without its
-// round, by the only one the two fought there). Only rows that change are written.
+// round, by the only one the two fought there). Only rows that change are written. A card sent with its match id is kept
+// by it too (cards), whether or not the event's results were read; one sent by its id alone may name no round.
 async function scores(env, { site, event, matches }) {
   const time = (n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000);
-  const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => text(m?.stage, 60) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
+  const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => (text(m?.stage, 60) || regOf(m?.match)) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
     && Array.isArray(m.s) && m.s.length === 2 && m.s.every(trio) && (m.clock == null || (Array.isArray(m.clock) && m.clock.length === 2 && m.clock.every(time)))).map((m) => ({ ...m, users: m.users.map(String), group: m.group ? normalize(String(m.group)) : null })) : [];
   if (!SITES.includes(site) || !/^\d{1,9}$/.test(String(event ?? '')) || !list.length) return json({ error: 'Bad scores' }, 400);
   const { results } = await env.DB.prepare('SELECT user, division, bouts FROM entries WHERE site = ?1 AND event = ?2 AND user IN (SELECT value FROM json_each(?3)) AND bouts IS NOT NULL')
@@ -469,11 +489,14 @@ async function scores(env, { site, event, matches }) {
   }
   if (changed.length) await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 2 FROM json_each(?3) j
     WHERE entries.site = ?1 AND entries.event = ?2 AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`).bind(site, String(event), JSON.stringify(changed)).run();
-  return json({ filled: changed.length });
+  const cards = list.filter((m) => regOf(m.match)).map((m) => [m.match, JSON.stringify(m.users), JSON.stringify(m.s), m.clock ? JSON.stringify(m.clock) : null]);
+  if (cards.length) await env.DB.prepare(`INSERT OR REPLACE INTO cards (site, match, users, s, clock, at) SELECT ?1, j.value ->> 0, j.value ->> 1, j.value ->> 2, j.value ->> 3, ?3 FROM json_each(?2) j`)
+    .bind(site, JSON.stringify(cards), Date.now()).run();
+  return json({ filled: changed.length, kept: cards.length });
 }
 
-const READS = new Set(['/lookup', '/outcomes', '/crawled', '/read-now']);
-const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/size': size, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/read-now': readNow, '/scores': scores };
+const READS = new Set(['/lookup', '/outcomes', '/crawled', '/read-now', '/scored']);
+const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster': roster, '/size': size, '/people': people, '/outcomes': outcomes, '/crawled': crawled, '/keep-outcomes': keepOutcomes, '/belts': belts, '/profile': profile, '/read-now': readNow, '/scores': scores, '/scored': scored };
 
 // The site's reads, kept at Cloudflare's edge so most visits never reach the database. Seconds an
 // answer stays fresh; past that, lists are still served at once (for up to a day) while a fresh copy

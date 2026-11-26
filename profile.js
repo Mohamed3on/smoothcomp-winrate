@@ -142,7 +142,7 @@
     const { missing, unshared, gaps } = SCWRProfile.share({ events, fresh, shared, kept, total, holes, all, now: Date.now() });
     let sent = !!kept?.shared || shared.size > 0;
     if (unshared.length) sent = (await ask('/keep-outcomes', { site, user, events: unshared.slice(0, 400) }).then(() => true, () => false)) || sent;
-    keep(key, { seen: Date.now(), shared: sent, events, gaps });
+    keep(key, { seen: Date.now(), shared: sent, events, gaps, scores: kept?.scores });
     // When each belt began, so the stats site splits the win rate by belt as this profile does.
     if (plan.belt) ask('/belts', { site, user, worn: plan.worn ?? [plan.belt], starts: (plan.starts ?? [null]).map(t => (Number.isFinite(t) ? t : null)) }).catch(() => {});
     // The event list rows read here join the athlete's history on the stats site: every
@@ -152,6 +152,37 @@
     show({ ...tally(events), missing: Math.max(0, missing), total });
     reading = false;
     shareProfile();
+    readPoints(events, { site, user, key, kept: kept?.scores ?? {} }).catch(() => {});
+  }
+  // Their points on the scoreboard (stats.points, profile-model.js scoresOf): the scores Mat Stats holds (their results'
+  // matches, and the cards kept by match id), then the cards of the rest read here by match id (Smoothcomp answers them
+  // unsigned), four at a time, and sent to Mat Stats, which keeps each by its id for everyone (worker.js scores). Kept with
+  // their events, so a visit asks nothing once every score is known. If Mat Stats can't say which it holds, no card is
+  // read: it may hold them all.
+  async function readPoints(events, { site, user, key, kept }) {
+    kept = { ...kept };
+    const known = SCWRProfile.scoresOf(events, kept, []);
+    const asked = known.filter(m => !m.score && m.id).map(m => m.id);
+    const stored = known.some(m => !m.score) ? (await ask('/scored', { site, user, matches: asked }).catch(() => null))?.matches : [];
+    const points = SCWRProfile.scoresOf(events, kept, stored ?? []);
+    show({ ...stats, points });
+    const before = Object.keys(kept).length;
+    for (const m of points) if (m.id && m.score) kept[m.id] ??= m.score;
+    const unread = stored ? points.filter(m => !m.score && m.id) : [];
+    const read = new Map();
+    let next = 0;
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (next < unread.length) {
+        const m = unread[next++];
+        const card = SCWRProfile.fromCard(await fetch(`/en/getBracketMatchData/${m.id}`, { headers: { Accept: 'application/json' } }).then(r => (r.ok ? r.json() : null)).catch(() => null), user);
+        if (!card) continue;
+        kept[m.id] = card.score;
+        (read.get(m.event) ?? read.set(m.event, []).get(m.event)).push({ match: m.id, stage: m.stage, group: m.division, users: card.users, s: card.s, clock: card.clock });
+      }
+    }));
+    for (const [event, matches] of read) ask('/scores', { site, event: String(event), matches }).catch(() => {});
+    if (Object.keys(kept).length > before) keep(key, { ...(await SCWRSite.store.load(key)), scores: kept });
+    if (unread.length) show({ ...stats, points: SCWRProfile.scoresOf(events, kept, stored) });
   }
   // What else the profile shows goes to the stats site too: belts in each art, rankings, academy
   // and affiliation, match videos, and each event's cover. Sent once the responses settle.
@@ -204,6 +235,15 @@
     let html = `<div class="scwr-rate" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
       + (wins + losses ? `<span class="scwr-rate-figure" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
         : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
+    // Their points on the scoreboard in the matches by the finishes picked whose score was read (readPoints).
+    const pts = (stats.points ?? []).filter(m => picked.has(m.type)), got = pts.filter(m => m.score);
+    if (got.length) {
+      const [f, a] = got.reduce(([f, a], m) => [f + m.score[0], a + m.score[1]], [0, 0]);
+      const matches = (n) => `${n.toLocaleString()} match${n === 1 ? '' : 'es'}`;
+      html += `<div class="scwr-points gi-text-xs gi-text-secondary" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, by the finishes counted; walkovers and stoppages have none">`
+        + `Points <span class="scwr-record">${wl(f.toLocaleString(), a.toLocaleString())}</span> · <span class="gi-font-medium">${f > a ? '+' : f < a ? '−' : '±'}${Math.abs(f - a).toLocaleString()}</span>`
+        + ` over ${got.length === pts.length ? matches(pts.length) : `${got.length.toLocaleString()} of ${matches(pts.length)}`}</div>`;
+    }
     // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
     const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
       : stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';

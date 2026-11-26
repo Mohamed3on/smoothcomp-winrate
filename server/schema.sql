@@ -314,3 +314,16 @@ WHEN (old.club_id, old.dup, old.source, old.gold, old.silver, old.bronze, old.w_
     ON CONFLICT (site, club_id) DO UPDATE SET athletes = athletes + 1, wins = wins + excluded.wins, submission = submission + excluded.submission, points = points + excluded.points,
       gold = gold + excluded.gold, silver = silver + excluded.silver, bronze = bronze + excluded.bronze, won = won + excluded.won, lost = lost + excluded.lost;
 END;
+
+-- A match's card as a browser read it (profile.js readPoints, site read-scores.tsx), by its match id: both sides'
+-- users, their [points, advantages, penalties] and the clock. Kept whether or not its event's results were read, so a
+-- profile's points come from here for everyone after its first reader (worker.js scored).
+CREATE TABLE IF NOT EXISTS cards (
+  site TEXT NOT NULL,
+  match INTEGER NOT NULL,
+  users TEXT NOT NULL, -- [left, right] (JSON)
+  s TEXT NOT NULL, -- each side's [points, advantages, penalties] (JSON)
+  clock TEXT, -- [ended at, left] in seconds (JSON)
+  at INTEGER NOT NULL,
+  PRIMARY KEY (site, match)
+);
