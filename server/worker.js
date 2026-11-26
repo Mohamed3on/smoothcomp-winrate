@@ -6,14 +6,13 @@ import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
 import { PLACED, locate } from './crawl.js';
 
-const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize, noShow, eventRecords, usualDivision, bracketOf } = globalThis.SCWRRules;
+const { BELTS, LABELS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql } = globalThis.SCWRRules;
 
 // An event their profile lists with no match, win or medal they didn't show at (profile-model.js entry marks it too): marked
 // `absent` here as well, whatever install sent it. ?1 site, ?2 the athletes (JSON).
 export const ABSENT = `UPDATE outcomes SET out = json_set(out, '$.absent', json('true'))
   WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND out ->> '$.absent' IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(out, '$.types'))
-    AND EXISTS (SELECT 1 FROM history h WHERE h.site = outcomes.site AND h.user = outcomes.user AND h.event = outcomes.event
-      AND coalesce(h.wins, 0) = 0 AND coalesce(h.gold, 0) + coalesce(h.silver, 0) + coalesce(h.bronze, 0) = 0)`;
+    AND EXISTS (SELECT 1 FROM history h WHERE h.site = outcomes.site AND h.user = outcomes.user AND h.event = outcomes.event AND ${wonNothingSql('h')})`;
 
 // Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), each summed with
 // their person's other accounts (MERGE), a few hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
@@ -41,7 +40,7 @@ async function bracketsOf(env, site, chunks) {
     env.DB.prepare('SELECT o.user, o.event, o.start, o.out FROM json_each(?2) us CROSS JOIN outcomes o ON o.site = ?1 AND o.user = us.value').bind(site, some),
   ]));
   return chunks.map((some, i) => {
-    const entries = Map.groupBy(read[2 * i].results.map((e) => ({ ...e, fought: 1, wins: JSON.parse(e.wins ?? '{}'), losses: JSON.parse(e.losses ?? '{}') })).filter((e) => !noShow(e)), (e) => e.user);
+    const entries = Map.groupBy(read[2 * i].results.map((e) => ({ ...e, fought: 1, wins: JSON.parse(e.wins ?? '{}'), losses: JSON.parse(e.losses ?? '{}') })), (e) => e.user);
     const outcomes = Map.groupBy(read[2 * i + 1].results.map((o) => ({ ...o, out: JSON.parse(o.out) })), (o) => o.user);
     return JSON.stringify(Object.fromEntries(JSON.parse(some).map((user) => {
       const b = bracketOf(usualDivision(eventRecords(outcomes.get(user) ?? [], entries.get(user) ?? [])));
@@ -68,7 +67,7 @@ async function lookup(env, { site, users }) {
   const counts = await env.DB.prepare('SELECT user, count(*) AS events FROM history WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) GROUP BY user')
     .bind(site, JSON.stringify(Object.keys(kept.careers).filter((user) => kept.careers[user].wins && kept.careers[user].events == null))).all();
   for (const row of counts.results) kept.careers[row.user].events = row.events;
-  // How many of the events their profile lists they didn't show at (stats.js missed): their count leaves those out.
+  // How many of the events their profile lists they didn't show at (rules.js missedSql): their count leaves those out.
   const absent = await env.DB.prepare('SELECT user, absent FROM tallies WHERE site = ?1 AND absent > 0 AND user IN (SELECT value FROM json_each(?2))')
     .bind(site, JSON.stringify(users)).all();
   kept.absent = Object.fromEntries(absent.results.map((row) => [row.user, row.absent]));
@@ -83,9 +82,8 @@ async function lookup(env, { site, users }) {
   const rated = await env.DB.prepare('SELECT user, rec FROM tallies WHERE site = ?1 AND rec IS NOT NULL AND user IN (SELECT value FROM json_each(?2))')
     .bind(site, JSON.stringify(users)).all();
   kept.records = Object.fromEntries(rated.results.map((row) => [row.user, JSON.parse(row.rec)]));
-  // When the latest event each athlete entered ended, so a career read before it is read again.
-  // An event whose end no page has sent yet counts as over at its start.
-  const over = 'coalesce(v.ends, unixepoch(v.start) * 1000)';
+  // When the latest event each athlete entered was over (rules.js overAt), so a career read before it is read again.
+  const over = overSql('v');
   const ended = await env.DB.prepare(`SELECT user, max(${over}) AS ended FROM entries e JOIN events v USING (site, event)
     WHERE e.site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ${over} <= ?3 GROUP BY user`)
     .bind(site, JSON.stringify(users), Date.now()).all();
@@ -261,10 +259,12 @@ async function people(env, { site, athletes }) {
 // podiums, and its own counts. Nothing changed, nothing to do.
 async function settle(env, site, event, users) {
   if (!users.length) return;
+  // Its counts first: whether its results are read (events.fought) says who didn't show (rules.js missedSql) in the recount.
+  await env.DB.prepare(EVENT_COUNTS).bind(site, event).run();
   await retally(env, site, users);
   // The + keeps SQLite off the academy index, which reads every entry on the site, onto the event key.
   const ids = (await env.DB.prepare('SELECT DISTINCT +club_id AS club_id FROM entries WHERE site = ?1 AND event = ?2 AND +club_id IS NOT NULL').bind(site, event).all()).results.map((row) => row.club_id);
-  await env.DB.batch([env.DB.prepare(CLUBS).bind(site, JSON.stringify(ids)), env.DB.prepare(EVENT_COUNTS).bind(site, event)]);
+  await env.DB.prepare(CLUBS).bind(site, JSON.stringify(ids)).run();
 }
 
 // A registration list's athletes and the event they entered.
@@ -301,7 +301,7 @@ async function record(env, { site, event, records, meta, athletes, read, crawled
   const rows = Object.entries(records).filter(([user, r]) => validUser(user) && Array.isArray(r) && r.length === 2 && r.every(n => Number.isSafeInteger(n) && n >= 0 && n < 100));
   if (rows.length > 5000) return json({ error: 'Too many' }, 413);
   // Whoever this read adds, changes or drops is recounted, and with them those registered whose profile lists the event
-  // but who had no match in it: they didn't show (stats.js missed).
+  // but who had no match in it: they didn't show (rules.js missedSql).
   const users = await identify(env, site, event, meta, athletes, true, readAt(read));
   if (users.length) users.push(...(await env.DB.prepare(`SELECT DISTINCT e.user FROM entries e WHERE e.site = ?1 AND e.event = ?2 AND e.fought = 0
       AND EXISTS (SELECT 1 FROM history h WHERE h.site = e.site AND h.user = e.user AND h.event = e.event)

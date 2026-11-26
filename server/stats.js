@@ -2,7 +2,7 @@
 // the finish types counted, a belt, a country, and the fewest wins and events that count.
 import '../rules.js';
 
-const { BELTS, FINISHES, WEIGHTS, finishSql, playedSql, SCORELESS } = globalThis.SCWRRules;
+const { BELTS, FINISHES, WEIGHTS, finishSql, playedSql, presentSql, missedSql, overSql, SCORELESS } = globalThis.SCWRRules;
 // The age groups a bracket names (rules.js bracketOf).
 const AGES = ['Kids', 'Teen', 'Juvenile', 'Adult', 'Master'];
 const SITES = ['smoothcomp.com', 'ajptour.com'];
@@ -56,18 +56,9 @@ const KM = (lat, lng, at) => `(6371 * acos(min(1, max(-1, sin(radians(?${at})) *
 // The grappling sports' ids on Smoothcomp: Jiu-Jitsu (Gi); Jiu-Jitsu (NoGi), its ADCC and Submission Wrestling rules; Luta Livre.
 const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3', '24'] };
 
-// An event their profile lists (history row `h`) that they didn't show at, with nothing won there on their profile (Smoothcomp lists the
-// events registered for too): they registered, its results are read, and they had no match there; or their profile's match lists
-// held no match, win or medal there (profile-model.js entry: `absent`). Results saying they fought there win.
-const missed = (h) => `(coalesce(${h}.wins, 0) = 0
-  AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1)
-  AND ((EXISTS (SELECT 1 FROM reads r WHERE r.site = ${h}.site AND r.event = ${h}.event AND r.fought = 1)
-      AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user))
-    OR EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ${h}.site AND o.user = ${h}.user AND o.event = ${h}.event AND o.out ->> '$.absent')))`;
-
 // Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
 // ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:
-// `rec` from the match lists of their profile where it was opened (with the results' walkovers there;
+// Only where they showed (rules.js Attendance): `rec` from the match lists of their profile where it was opened (with the results' walkovers there;
 // older lists name a fastest escape "escape", which the rules group) with the results read at every event those lists
 // don't hold (for an athlete whose profile nobody opened, every event read); `seen` from every
 // event read. Medals and events from the events read, `listed` the events their profile lists (`absent` those they didn't show at, left out),
@@ -80,16 +71,16 @@ export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, 
   fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1 AND ${playedSql('e')}),
   per AS (
     SELECT o.user, ${finishSql('j.key')} AS t, j.value ->> 0 AS w, j.value ->> 1 AS l FROM us CROSS JOIN outcomes o, json_each(o.out, '$.types') j WHERE o.site = ?1 AND o.user = us.user
-    UNION ALL SELECT f.user, j.key, j.value, 0 FROM fe f, json_each(f.wins) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
-    UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)
+    UNION ALL SELECT f.user, j.key, j.value, 0 FROM fe f, json_each(f.wins) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event AND ${presentSql('x')})
+    UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j WHERE NOT EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event AND ${presentSql('x')})
     -- The match lists leave walkovers out: the results give them there.
-    UNION ALL SELECT f.user, 'walkover', coalesce(f.wins ->> '$.walkover', 0), coalesce(f.losses ->> '$.walkover', 0) FROM fe f WHERE EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event)),
+    UNION ALL SELECT f.user, 'walkover', coalesce(f.wins ->> '$.walkover', 0), coalesce(f.losses ->> '$.walkover', 0) FROM fe f WHERE EXISTS (SELECT 1 FROM outcomes x WHERE x.site = ?1 AND x.user = f.user AND x.event = f.event AND ${presentSql('x')})),
   rec AS (SELECT user, json_group_object(t, json_array(w, l)) AS rec FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM per GROUP BY user, t) GROUP BY user),
   read AS (SELECT f.user, j.key AS t, j.value AS w, 0 AS l FROM fe f, json_each(f.wins) j UNION ALL SELECT f.user, j.key, 0, j.value FROM fe f, json_each(f.losses) j),
   seen AS (SELECT user, json_group_object(t, json_array(w, l)) AS seen FROM (SELECT user, t, sum(w) AS w, sum(l) AS l FROM read GROUP BY user, t) GROUP BY user),
   med AS (SELECT user, sum(place = 1) AS gold, sum(place = 2) AS silver, sum(place = 3) AS bronze, count(DISTINCT event) AS events FROM fe GROUP BY user),
   listed AS (SELECT user, count(*) FILTER (WHERE NOT gone) AS listed, count(*) FILTER (WHERE gone) AS absent, max(substr(start, 1, 10)) FILTER (WHERE NOT gone) AS last
-    FROM (SELECT h.user, h.start, ${missed('h')} AS gone FROM us CROSS JOIN history h WHERE h.site = ?1 AND h.user = us.user) GROUP BY user),
+    FROM (SELECT h.user, h.start, ${missedSql('h')} AS gone FROM us CROSS JOIN history h WHERE h.site = ?1 AND h.user = us.user) GROUP BY user),
   latest AS (SELECT f.user, max(substr(v.start, 1, 10)) AS last FROM fe f JOIN events v ON v.site = f.site AND v.event = f.event GROUP BY f.user)
   SELECT ?1, us.user, rec.rec, seen.seen, coalesce(med.gold, 0), coalesce(med.silver, 0), coalesce(med.bronze, 0), coalesce(med.events, 0), coalesce(listed.listed, 0),
     nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), ''), coalesce(listed.absent, 0)
@@ -443,12 +434,12 @@ const account = (env, f, site, user) => [
   env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
     FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()}
       -- A registration in an event whose results are read and that has ended (as the event page judges it): they didn't show.
-      AND NOT (e.fought = 0 AND v.fought = 1 AND coalesce(v.ends, unixepoch(v.start) * 1000 + 2 * 864e5) < unixepoch('now') * 1000)
+      AND NOT (e.fought = 0 AND v.fought = 1 AND ${overSql('v')} < unixepoch('now') * 1000)
     ORDER BY v.start DESC, e.event DESC`).bind(site, user),
   env.DB.prepare(`SELECT h.event, h.title, h.start, h.city, h.wins, h.image, h.gold, h.silver, h.bronze, v.event IS NOT NULL AS known
     FROM history h LEFT JOIN events v ON v.site = h.site AND v.event = h.event WHERE h.site = ?1 AND h.user = ?2
       -- One they didn't show at, once over (as above), is left out.
-      AND NOT (${missed('h')} AND coalesce(v.ends, unixepoch(v.start) * 1000 + 2 * 864e5) < unixepoch('now') * 1000)
+      AND NOT (${missedSql('h')} AND ${overSql('v')} < unixepoch('now') * 1000)
     ORDER BY h.start DESC`).bind(site, user),
   // Each event's finishes won and lost, every loss and everyone met, as their profile's match lists gave them.
   env.DB.prepare(`SELECT event, start, title, out FROM outcomes WHERE site = ?1 AND user = ?2 ORDER BY start DESC`).bind(site, user),

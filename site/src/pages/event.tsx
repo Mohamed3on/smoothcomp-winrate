@@ -18,7 +18,7 @@ import { resetAction } from '@/pages/athletes';
 import { cn } from '@/lib/utils';
 import { once, sizeEvent } from '@/lib/smoothcomp';
 import { DivisionLink } from '@/pages/division';
-import { beltOf, bySeed, rated, sureSeed } from '@/lib/rules';
+import { beltOf, bySeed, overAt, rated, sureSeed } from '@/lib/rules';
 
 // The medal a bracket's seeding points to (rules.js, as in the extension): first gold, second silver, third
 // bronze, fourth nothing. Seeded by win rate where a record is known, then wins per event and career wins.
@@ -100,9 +100,9 @@ export function EventPage({ id }: { id: string }) {
   // When a layer was last read: the server's note of it, else its newest row (rows only change when what they say does).
   const read = (rows: EventEntry[], fought: 0 | 1) => data.reads?.[fought] ?? Math.max(0, ...rows.map((e) => e.at ?? 0));
   const results = data.entries.filter((e) => e.fought), registered = data.entries.filter((e) => !e.fought);
-  // Results arrive while the registration list still stands: until the event ends (when its end isn't
-  // known, two days from its start: a weekend), registrants without a result are still to fight; after that they didn't show.
-  const over = event.ends ?? (event.start ? Date.parse(event.start) + 2 * 864e5 : 0);
+  // Results arrive while the registration list still stands: until the event is over (rules.js overAt), registrants
+  // without a result are still to fight; after that they didn't show.
+  const over = overAt(event) ?? 0;
   const live = results.length > 0 && registered.length > 0 && Date.now() < over;
   const entries = results.length && !live ? results : data.entries;
   const title = event.title ?? `Event ${id}`;

@@ -16,9 +16,18 @@ Owner: `rules.js` `beltOf`.
 **Grade field**: the registration field that grades an athlete, named Belt, Level, Rank, Skill level
 or Grade by the organiser. Owner: `rules.js` `isGrade`.
 
-**Record**: an athlete's [won, lost] by finish, event by event: their profile's match lists where
-one was read (with the results' walkovers there), else the results read. Owner: `rules.js`
-`eventRecords`; the server's `TALLY` counts the same (`tests/records.test.cjs`).
+**Record**: an athlete's [won, lost] by finish, event by event, at the events they showed at (Attendance): their
+profile's match lists where one was read (with the results' walkovers there), else the results read. Owner: `rules.js`
+`eventRecords`; the server's `TALLY` counts the same, a parity test running both over the same rows
+(`tests/records.test.cjs`).
+
+**Attendance**: whether an athlete showed at an event. They didn't where they had walkovers alone (a no-show), where
+their profile lists it with no match, win or medal there (an absent Outcome), or where they registered and the results
+read hold no match of theirs; results saying they fought win over the last two. An event's results are read once a
+results row is (`events.fought`); it is over at its end, else two days from its start. Owner: `rules.js` (`noShow`,
+`showed`, `overAt`, `wonNothing`, each with a SQL twin: `playedSql`, `missedSql`, `overSql`, `wonNothingSql`,
+`presentSql`).
+_Avoid_: "missed" for an event still on: until it is over, a registrant without a result is still to fight.
 
 **Outcome**: one event of an athlete as their profile's match lists give it (finishes, losses,
 everyone met). Kept on the browser and in D1 `outcomes`. Owner: `profile-model.js`.

@@ -66,8 +66,9 @@ globalThis.SCWRRules = (() => {
     return into;
   };
   function eventRecords(outcomes = [], entries = []) {
-    // An event their profile lists that they didn't show at (`absent`: no match, win or medal there) isn't theirs, unless the results say they fought.
+    // Only where they showed (Attendance): an absent Outcome isn't theirs, unless the results say they fought there.
     outcomes = outcomes.filter((o) => !o.out?.absent);
+    entries = entries.filter((e) => e.fought && !noShow(e));
     const listed = new Set(outcomes.map((o) => String(o.event)));
     const by = new Map();
     const at = (event, start) => by.get(event) ?? by.set(event, { event, start: start ?? null, types: {}, divisions: [] }).get(event);
@@ -76,7 +77,7 @@ globalThis.SCWRRules = (() => {
       for (const [t, [w, l]] of Object.entries(o.out?.types ?? {})) add(r.types, finishOf(t), Number(w) || 0, Number(l) || 0);
       r.divisions.push(...[...(o.out?.faced ?? []), ...(o.out?.losses ?? [])].map((m) => m.division).filter(Boolean));
     }
-    for (const e of entries.filter((x) => x.fought)) {
+    for (const e of entries) {
       const r = at(String(e.event), e.start);
       r.start ??= e.start ?? null;
       const counts = listed.has(r.event) ? (t) => finishOf(t) === 'walkover' : () => true;
@@ -86,6 +87,14 @@ globalThis.SCWRRules = (() => {
     }
     return [...by.values()].sort((a, b) => String(a.start ?? '').localeCompare(String(b.start ?? '')));
   }
+  // Attendance: whether they showed at an event, each rule with its SQL twin for the server's queries. An event is over at its
+  // end, else two days from its start (a weekend); its results are read once a results row is (events.fought, kept by
+  // stats.js EVENT_COUNTS before a recount). They didn't show where they had walkovers alone (noShow), where their profile lists
+  // it with no match, win or medal there (an absent Outcome), or where they registered and the results read hold no match of
+  // theirs (missedSql); results saying they fought there win over the last two.
+  const OVER = 2 * 864e5;
+  const overAt = (event) => event?.ends ?? (event?.start ? Date.parse(event.start) + OVER : null);
+  const overSql = (v) => `coalesce(${v}.ends, unixepoch(${v}.start) * 1000 + ${OVER})`;
   // An entry whose every match was a walkover: they fought no one there, so it isn't one of their events
   // (a bracket of one, with no match at all, still is). playedSql asks the opposite of an entries row in SQL.
   const noShow = (e) => {
@@ -93,6 +102,20 @@ globalThis.SCWRRules = (() => {
     return finishes.length > 0 && finishes.every((t) => finishOf(t) === 'walkover');
   };
   const playedSql = (e) => `(SELECT count(*) = 0 OR sum(${finishSql('key')} != 'walkover') > 0 FROM (SELECT key FROM json_each(${e}.wins) UNION ALL SELECT key FROM json_each(${e}.losses)))`;
+  // An event their profile lists (`listed`: { wins, medals }, medals by name or place) with nothing won there; history row h in SQL.
+  const wonNothing = (listed) => !(Number(listed?.wins) > 0) && !Object.values(listed?.medals ?? {}).some((n) => Number(n) > 0);
+  const wonNothingSql = (h) => `coalesce(${h}.wins, 0) + coalesce(${h}.gold, 0) + coalesce(${h}.silver, 0) + coalesce(${h}.bronze, 0) = 0`;
+  // An outcomes row (o) they showed at: not absent.
+  const presentSql = (o) => `coalesce(${o}.out ->> '$.absent', 0) = 0`;
+  // A history row (h) they didn't show at: nothing won there, no result of theirs, and either their registration with the
+  // results read, or an absent Outcome.
+  const missedSql = (h) => `(${wonNothingSql(h)}
+  AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user AND e.fought = 1)
+  AND ((EXISTS (SELECT 1 FROM events v WHERE v.site = ${h}.site AND v.event = ${h}.event AND v.fought = 1)
+      AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ${h}.site AND e.event = ${h}.event AND e.user = ${h}.user))
+    OR EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ${h}.site AND o.user = ${h}.user AND o.event = ${h}.event AND NOT ${presentSql('o')})))`;
+  // Whether they showed at one event, from what is held of them there: their entries (results or registrations) and Outcome.
+  const showed = (entries, outcome) => entries.some((e) => !noShow(e) && (e.fought || !outcome?.out?.absent)) || (!outcome?.out?.absent && !entries.some(noShow));
   // Every event's [won, lost] by finish, summed.
   const totals = (records) => records.reduce((into, r) => {
     for (const [t, [w, l]] of Object.entries(r.types)) add(into, t, w, l);
@@ -458,5 +481,5 @@ globalThis.SCWRRules = (() => {
     return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
   }
 
-  return { rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  return { OVER, overAt, overSql, wonNothing, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

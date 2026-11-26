@@ -32,6 +32,14 @@ declare global {
     ): EventRecord[];
     noShow(entry: { wins?: Record<string, number> | null; losses?: Record<string, number> | null }): boolean;
     playedSql(alias: string): string;
+    OVER: number;
+    overAt(event: { ends?: number | null; start?: string | null } | null | undefined): number | null;
+    overSql(alias: string): string;
+    wonNothing(listed: { wins?: number | null; medals?: Record<string, number | null | undefined> | (number | null)[] | null } | null | undefined): boolean;
+    wonNothingSql(alias: string): string;
+    presentSql(alias: string): string;
+    missedSql(alias: string): string;
+    showed(entries: { wins?: Record<string, number> | null; losses?: Record<string, number> | null; fought?: number | boolean }[], outcome?: { out?: { absent?: boolean } } | null): boolean;
     totals(records: EventRecord[]): Types;
     beltSplit(records: EventRecord[], worn: string[], starts: (number | null)[]): { belt: string; types: Types; events: number }[];
     divisionOf(name: unknown): { age: string | null; weight: string | null };

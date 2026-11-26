@@ -13,7 +13,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, noShow, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, normalize, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -524,11 +524,9 @@ export function AthletePage({ id }: { id: string }) {
   if (isLoading) return <div className="flex items-center gap-5"><Skeleton className="size-20 rounded-full" /><Skeleton className="h-8 w-64" /></div>;
   if (!data) return <Empty title={(error as { status?: number })?.status === 404 ? 'No athlete here' : 'That didn’t load'} text={(error as { status?: number })?.status === 404 ? 'Mat Stats has nothing under this athlete on this site. They may be on the other site, or nobody has read them yet.' : 'The stats server didn’t answer. Try again in a moment.'} />;
   const { career, person: who, accounts = [] } = data;
-  // An event where they had walkovers alone (rules.js noShow) isn't one they fought: it's left out whole.
-  const skip = new Set(data.entries.filter(noShow).map(at));
-  // So is one their profile lists that they didn't show at (rules.js eventRecords), unless the results say they fought there.
-  for (const o of data.outcomes ?? []) if (o.out.absent) skip.add(at(o));
-  for (const e of data.entries) if (!noShow(e) && (e.fought || !data.outcomes?.some((o) => o.out.absent && at(o) === at(e)))) skip.delete(at(e));
+  // An event they didn't show at (rules.js showed: walkovers alone, or listed with no match there and no results saying they fought) is left out whole.
+  const held = Map.groupBy(data.entries, at), outcomeAt = new Map((data.outcomes ?? []).map((o) => [at(o), o]));
+  const skip = new Set([...held.keys(), ...outcomeAt.keys()].filter((k) => !showed(held.get(k) ?? [], outcomeAt.get(k))));
   const [entries, history, outcomes] = [data.entries.filter((e) => !skip.has(at(e))), data.history.filter((h) => !skip.has(at(h))), (data.outcomes ?? []).filter((o) => !skip.has(at(o)))];
   const a = { ...(who ?? {}), ...(career ?? {}), name: who?.name ?? career?.name ?? null, born: who?.born ?? career?.born ?? null } as Athlete & { hidden: number | null };
   // With no belt read for them, the highest one their divisions name.
