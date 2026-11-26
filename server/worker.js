@@ -462,7 +462,8 @@ async function readNow(env, { site, event, user }, ctx) {
 // An event's scores, which a reader's browser read from its match cards (site read-scores.tsx, profile.js), filled into the
 // stored matches that have none: each by its division, round and the two users who fought it (a match kept without its
 // round, by the only one the two fought there). Only rows that change are written. A card sent with its match id is kept
-// by it too (cards), whether or not the event's results were read; one sent by its id alone may name no round.
+// by it too (cards), whether or not the event's results were read; one sent by its id alone may name no round. A card
+// already kept stays as first read: a finished match's score doesn't change, and a later upload can't overwrite it.
 async function scores(env, { site, event, matches }) {
   const time = (n) => n === null || (Number.isSafeInteger(n) && n >= 0 && n < 36000);
   const list = Array.isArray(matches) ? matches.slice(0, 2000).filter((m) => (text(m?.stage, 60) || regOf(m?.match)) && Array.isArray(m.users) && m.users.length === 2 && m.users.every((u) => validUser(String(u)))
@@ -490,7 +491,7 @@ async function scores(env, { site, event, matches }) {
   if (changed.length) await env.DB.prepare(`UPDATE entries SET bouts = j.value ->> 2 FROM json_each(?3) j
     WHERE entries.site = ?1 AND entries.event = ?2 AND entries.user = j.value ->> 0 AND entries.division = j.value ->> 1`).bind(site, String(event), JSON.stringify(changed)).run();
   const cards = list.filter((m) => regOf(m.match)).map((m) => [m.match, JSON.stringify(m.users), JSON.stringify(m.s), m.clock ? JSON.stringify(m.clock) : null]);
-  if (cards.length) await env.DB.prepare(`INSERT OR REPLACE INTO cards (site, match, users, s, clock, at) SELECT ?1, j.value ->> 0, j.value ->> 1, j.value ->> 2, j.value ->> 3, ?3 FROM json_each(?2) j`)
+  if (cards.length) await env.DB.prepare(`INSERT INTO cards (site, match, users, s, clock, at) SELECT ?1, j.value ->> 0, j.value ->> 1, j.value ->> 2, j.value ->> 3, ?3 FROM json_each(?2) j WHERE true ON CONFLICT (site, match) DO NOTHING`)
     .bind(site, JSON.stringify(cards), Date.now()).run();
   return json({ filled: changed.length, kept: cards.length });
 }

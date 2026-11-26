@@ -592,6 +592,9 @@ test("an event's scores a browser read fill its stored matches that have none, e
   const card = async (user) => (await (await worker.fetch(new Request('https://matstats.test/scored', { method: 'POST', body: JSON.stringify({ site: 'smoothcomp.com', user, matches: [7001, 7002] }) }), env, { waitUntil: () => {} })).json()).matches;
   assert.deepEqual(await card('22'), [{ match: 7001, us: [2, 0, 0], them: [6, 0, 1] }]);
   assert.deepEqual(await card('99'), []);
+  // A card already kept isn't overwritten by a later upload.
+  await post({ site: 'smoothcomp.com', event: '961', matches: [{ match: 7001, stage: null, users: ['21', '22'], s: [[0, 0, 0], [99, 0, 0]], clock: null }] });
+  assert.deepEqual(await card('22'), [{ match: 7001, us: [2, 0, 0], them: [6, 0, 1] }]);
   // Sent again, nothing is left to fill.
   assert.deepEqual(await (await post({ site: 'smoothcomp.com', event: '960', matches })).json(), { filled: 0, kept: 0 });
 });
