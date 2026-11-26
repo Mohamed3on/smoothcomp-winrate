@@ -279,26 +279,34 @@ export async function listEvents(env) {
   }
 }
 
+// BJJ only (the user's call, 2026-11-26): an event the events lists name sports for is read when one of them is Jiu-Jitsu,
+// gi or no-gi (its ADCC and Submission Wrestling rules too; stats.js SPORTS); judo, MMA, wrestling, kempo and the rest
+// took a quarter of the events read and a fifth of the matches. One with no sport named (from an athlete's event list) is read.
+const BJJ = ['1', '7', '4', '3'];
+const other = (site, event) => `EXISTS (SELECT 1 FROM events o WHERE o.site = ${site} AND o.event = ${event} AND o.sports IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM json_each(o.sports) j WHERE j.value IN (${BJJ.map((x) => `'${x}'`).join(', ')})))`;
+
 // Every known event that has ended with no results, newest first; ids from profiles' event lists too.
 // Those queued already are skipped before their entries are looked through.
 export async function queue(env) {
+  await env.DB.prepare(`DELETE FROM crawls WHERE state = 'queued' AND ${other('crawls.site', 'crawls.event')}`).run();
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at)
     SELECT k.site, k.event, 'queued', max(k.start), max(k.title), max(k.city), 0, ?1 FROM (
       SELECT site, event, start, title, city FROM events UNION ALL SELECT site, event, start, title, city FROM history) k
-    WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = k.site AND c.event = k.event)
+    WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = k.site AND c.event = k.event) AND NOT ${other('k.site', 'k.event')}
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
     GROUP BY k.site, k.event`).bind(Date.now()).run();
   // Events a results page sent without matches: read for those alone. Event by event through the
   // event key, skipping those queued already, instead of walking every entry.
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at)
     SELECT v.site, v.event, 'queued', v.start, v.title, v.city, 0, ?1 FROM events v
-    WHERE v.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = v.site AND c.event = v.event)
+    WHERE v.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = v.site AND c.event = v.event) AND NOT ${other('v.site', 'v.event')}
       AND EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1 AND e.bouts IS NOT NULL)`).bind(Date.now()).run();
   // Results can still be corrected after an event: one read under ten days after it started is
   // read again once ten days have passed.
   await env.DB.prepare(`UPDATE crawls SET state = 'queued', data = NULL, next = 0, tries = 0 WHERE state = 'done' AND wrote IS NOT NULL
-    AND wrote < unixepoch(start) * 1000 + 864000000 AND unixepoch('now') > unixepoch(start) + 864000`).run();
+    AND wrote < unixepoch(start) * 1000 + 864000000 AND unixepoch('now') > unixepoch(start) + 864000 AND NOT ${other('crawls.site', 'crawls.event')}`).run();
 }
 
 // run: how long the lane reads (at most RUN).

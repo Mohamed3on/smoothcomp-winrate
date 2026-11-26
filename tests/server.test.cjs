@@ -713,3 +713,16 @@ test("an event a profile couldn't read comes from the crawled results: a bracket
   // Gold in a bracket of one, its history row not read yet: no match, and theirs all the same.
   assert.deepEqual(events.map((e) => [e.id, e.out.absent ?? false]).sort(), [[901, false], [902, true]]);
 });
+
+test('the crawler queues BJJ events alone, and those no events list names a sport for', async () => {
+  const { queue } = await import('../server/crawl.js');
+  const { DB, db } = d1();
+  const event = db.prepare("INSERT INTO events (site, event, title, start, sports, at) VALUES ('smoothcomp.com', ?, 'Open', '2026-01-10', ?, 0)");
+  event.run('1', '["1","7"]'); event.run('2', '["26"]'); event.run('3', '["19","3"]');
+  db.exec("INSERT INTO history (site, user, event, title, start, at) VALUES ('smoothcomp.com', '11', '4', 'Open', '2026-01-10', 0)");
+  // One queued before the rule, judo: taken off.
+  db.exec("INSERT INTO events (site, event, title, start, sports, at) VALUES ('smoothcomp.com', '5', 'Judo', '2026-01-10', '[\"26\"]', 0)");
+  db.exec("INSERT INTO crawls (site, event, state, start, next, at) VALUES ('smoothcomp.com', '5', 'queued', '2026-01-10', 0, 0)");
+  await queue({ DB });
+  assert.deepEqual(db.prepare('SELECT event FROM crawls ORDER BY event').all().map((r) => r.event), ['1', '3', '4']);
+});
