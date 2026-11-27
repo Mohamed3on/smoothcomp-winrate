@@ -63,9 +63,10 @@ const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3
 // don't hold (for an athlete whose profile nobody opened, every event read); `seen` from every
 // event read. Medals and events from the events read, `listed` the events their profile lists (`absent` those they didn't show at, left out),
 // `last` their latest event. ?1 site, ?2 the athletes (JSON).
-// Each recount writes only the rows it changes (D1 bills every row and index entry written).
+// Each recount writes only the rows it changes (D1 bills every row and index entry written), stamped `changed` (ms) when it
+// does, and returns those athletes (worker.js retally: their ranking rows wait for the nightly rebuild).
 const TALLY_COLS = ['rec','seen','gold','silver','bronze','events','listed','last','absent'];
-export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last, absent)
+export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, bronze, events, listed, last, absent, changed)
   WITH us AS MATERIALIZED (SELECT DISTINCT value AS user FROM json_each(?2)),
   -- CROSS JOIN keeps these athletes the outer loop, so each table is read by athlete, never whole.
   fe AS MATERIALIZED (SELECT e.* FROM us CROSS JOIN entries e WHERE e.site = ?1 AND e.user = us.user AND e.fought = 1 AND ${playedSql('e')}),
@@ -83,11 +84,12 @@ export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, 
     FROM (SELECT h.user, h.start, ${missedSql('h')} AS gone FROM us CROSS JOIN history h WHERE h.site = ?1 AND h.user = us.user) GROUP BY user),
   latest AS (SELECT f.user, max(substr(v.start, 1, 10)) AS last FROM fe f JOIN events v ON v.site = f.site AND v.event = f.event GROUP BY f.user)
   SELECT ?1, us.user, rec.rec, seen.seen, coalesce(med.gold, 0), coalesce(med.silver, 0), coalesce(med.bronze, 0), coalesce(med.events, 0), coalesce(listed.listed, 0),
-    nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), ''), coalesce(listed.absent, 0)
+    nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), ''), coalesce(listed.absent, 0), unixepoch() * 1000
   FROM us LEFT JOIN rec USING (user) LEFT JOIN seen USING (user) LEFT JOIN med USING (user) LEFT JOIN listed USING (user) LEFT JOIN latest USING (user)
   WHERE rec.rec IS NOT NULL OR seen.seen IS NOT NULL OR med.events IS NOT NULL OR listed.listed IS NOT NULL
-  ON CONFLICT (site, user) DO UPDATE SET ${TALLY_COLS.map((c) => `${c} = excluded.${c}`).join(', ')}
-  WHERE (${TALLY_COLS.map((c) => `tallies.${c}`).join(', ')}) IS NOT (${TALLY_COLS.map((c) => `excluded.${c}`).join(', ')})`;
+  ON CONFLICT (site, user) DO UPDATE SET ${TALLY_COLS.map((c) => `${c} = excluded.${c}`).join(', ')}, changed = excluded.changed
+  WHERE (${TALLY_COLS.map((c) => `tallies.${c}`).join(', ')}) IS NOT (${TALLY_COLS.map((c) => `excluded.${c}`).join(', ')})
+  RETURNING user`;
 
 // The finishes every count is kept under (rules.js), a column each on the board.
 const GROUPS = FINISHES;

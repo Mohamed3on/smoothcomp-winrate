@@ -14,21 +14,63 @@ export const ABSENT = `UPDATE outcomes SET out = json_set(out, '$.absent', json(
   WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND out ->> '$.absent' IS NULL AND NOT EXISTS (SELECT 1 FROM json_each(out, '$.types'))
     AND EXISTS (SELECT 1 FROM history h WHERE h.site = outcomes.site AND h.user = outcomes.user AND h.event = outcomes.event AND ${wonNothingSql('h')})`;
 
-// Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (BOARD), each summed with
-// their person's other accounts (MERGE), a few hundred at a time, at most as many as an upload can store; one left with nothing to count loses its rows.
-export async function retally(env, site, users) {
+const chunked = (users) => {
   const all = [...new Set(users)].filter(validUser).slice(0, 5000);
   const chunks = [];
   for (let i = 0; i < all.length; i += 400) chunks.push(JSON.stringify(all.slice(i, i + 400)));
-  const brackets = chunks.length ? await bracketsOf(env, site, chunks) : [];
-  const statements = [];
-  chunks.forEach((some, i) => {
-    statements.push(env.DB.prepare(ABSENT).bind(site, some), env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
+  return chunks;
+};
+
+// Recounts these athletes' totals (stats.js TALLY) and rebuilds their ranking rows (rank), a few hundred at a time, at most
+// as many as an upload can store; one left with nothing to count loses its rows. `wait` (an event's results): those whose
+// totals changed keep their ranking rows until the nightly rebuild (rebuild), which writes each athlete once a day however
+// many events they had (the user's call, 2026-11-27: rankings and academies may lag a day; an athlete's own page doesn't, see current).
+export async function retally(env, site, users, wait = false) {
+  const chunks = chunked(users);
+  if (!chunks.length) return;
+  const done = await env.DB.batch(chunks.flatMap((some) => [env.DB.prepare(ABSENT).bind(site, some), env.DB.prepare(TALLY).bind(site, some), env.DB.prepare(`DELETE FROM tallies WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.user = tallies.user AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM outcomes o WHERE o.site = ?1 AND o.user = tallies.user) AND NOT EXISTS (SELECT 1 FROM history h WHERE h.site = ?1 AND h.user = tallies.user)`).bind(site, some),
-      env.DB.prepare(BOARD[0]).bind(site, some, 0), ...BOARD.slice(1).map((sql) => env.DB.prepare(sql).bind(site, some, 0, brackets[i])), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some)));
-  });
-  if (statements.length) await env.DB.batch(statements);
+    env.DB.prepare(BOARD[0]).bind(site, some, 0)]));
+  const later = new Set(wait ? done.filter((_, i) => i % 4 === 1).flatMap((r) => r.results.map((row) => row.user)) : []);
+  await rank(env, site, chunks.flatMap((some) => JSON.parse(some)).filter((user) => !later.has(user)));
+}
+
+// Rebuilds these athletes' ranking rows (BOARD), each summed with their person's other accounts (MERGE).
+export async function rank(env, site, users) {
+  const chunks = chunked(users);
+  if (!chunks.length) return;
+  const brackets = await bracketsOf(env, site, chunks);
+  await env.DB.batch(chunks.flatMap((some, i) => [...BOARD.slice(1).map((sql) => env.DB.prepare(sql).bind(site, some, 0, brackets[i])), ...MERGE.map((sql) => env.DB.prepare(sql).bind(site, some))]));
+}
+
+// The nightly rebuild: once a day, the ranking rows of everyone whose totals changed since the last (tallies.changed), 1,600 a
+// minute from the crawler's cron, resumable. meta 'rank' = { from } between runs (everything changed by then is ranked), and
+// during one { from, to, site, after }: the changes up to `to`, site by site, by user.
+export async function rebuild(env, now = Date.now()) {
+  let kept = JSON.parse(await env.DB.prepare("SELECT v FROM meta WHERE k = 'rank'").first('v') ?? 'null') ?? { from: 0 };
+  if (!kept.to) {
+    if (now - kept.from < 864e5) return;
+    kept = { from: kept.from, to: now, site: SITES[0], after: '' };
+  }
+  for (let n = 0; n < 4; n++) {
+    const { results } = await env.DB.prepare('SELECT user FROM tallies WHERE site = ?1 AND user > ?2 AND changed > ?3 AND changed <= ?4 ORDER BY user LIMIT 400')
+      .bind(kept.site, kept.after, kept.from, kept.to).all();
+    if (results.length) { await rank(env, kept.site, results.map((row) => row.user)); kept.after = results.at(-1).user; continue; }
+    const next = SITES[SITES.indexOf(kept.site) + 1];
+    if (next) { kept = { ...kept, site: next, after: '' }; continue; }
+    kept = { from: kept.to };
+    break;
+  }
+  await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('rank', ?1)").bind(JSON.stringify(kept)).run();
+}
+
+// An athlete's page opened before the nightly rebuild reached them: their ranking row is rebuilt first, so the totals it
+// shows match the results under them.
+async function current(env, site, user) {
+  if (await budget(env) === 'stop') return;
+  const due = await env.DB.prepare(`SELECT 1 FROM tallies WHERE site = ?1 AND user = ?2 AND changed > coalesce((SELECT v ->> '$.from' FROM meta WHERE k = 'rank'), 0)`).bind(site, user).first();
+  if (due) await rank(env, site, [user]);
 }
 
 // Each chunk's athletes' brackets (rules.js bracketOf), as stats.js BOARD takes them: { user: [sex, age, weight] }, from the
@@ -270,11 +312,11 @@ async function people(env, { site, athletes }) {
 
 // After an event's entries change: its athletes' totals and ranking rows, its academies' names and
 // podiums, and its own counts. Nothing changed, nothing to do.
-async function settle(env, site, event, users) {
+async function settle(env, site, event, users, wait = false) {
   if (!users.length) return;
   // Its counts first: whether its results are read (events.fought) says who didn't show (rules.js missedSql) in the recount.
   await env.DB.prepare(EVENT_COUNTS).bind(site, event).run();
-  await retally(env, site, users);
+  await retally(env, site, users, wait);
   // The + keeps SQLite off the academy index, which reads every entry on the site, onto the event key.
   const ids = (await env.DB.prepare('SELECT DISTINCT +club_id AS club_id FROM entries WHERE site = ?1 AND event = ?2 AND +club_id IS NOT NULL').bind(site, event).all()).results.map((row) => row.club_id);
   await env.DB.prepare(CLUBS).bind(site, JSON.stringify(ids)).run();
@@ -319,7 +361,7 @@ async function record(env, { site, event, records, meta, athletes, read, crawled
   if (users.length) users.push(...(await env.DB.prepare(`SELECT DISTINCT e.user FROM entries e WHERE e.site = ?1 AND e.event = ?2 AND e.fought = 0
       AND EXISTS (SELECT 1 FROM history h WHERE h.site = e.site AND h.user = e.user AND h.event = e.event)
       AND NOT EXISTS (SELECT 1 FROM entries x WHERE x.site = e.site AND x.event = e.event AND x.user = e.user AND x.fought = 1)`).bind(site, event).all()).results.map((r) => r.user));
-  await settle(env, site, event, users);
+  await settle(env, site, event, users, true);
   // Results sent with their matches leave the crawler nothing to read: the event leaves its queue
   // (taken off, not marked done, so it never counts against the crawler's day). The crawler's own
   // results keep their row: it marks the read done, or still to come for an event still on.
@@ -595,6 +637,7 @@ export default {
         SELECT h.event FROM people p CROSS JOIN history h WHERE p.site = ?1 AND p.club_id = ?2 AND h.site = p.site AND h.user = p.user)`)
         .bind(SITES.includes(searchParams.get('site')) ? searchParams.get('site') : SITES[0], searchParams.get('id')).run().catch(() => {}));
     }
+    if (pathname === '/api/athlete' && validUser(searchParams.get('id') ?? '')) await current(env, SITES.includes(searchParams.get('site')) ? searchParams.get('site') : SITES[0], searchParams.get('id')).catch((e) => console.error('current', String(e)));
     const read = pathname.startsWith('/api/') && API[pathname.slice(5)];
     if (read) return request.method === 'GET' ? cached(request, ctx, pathname.slice(5), env, (db) => read({ ...env, DB: db }, searchParams)) : json({ error: 'Not found' }, 404);
     if ((request.method === 'GET' || request.method === 'HEAD') && !pathname.startsWith('/api/')) return page(request, env);

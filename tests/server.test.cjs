@@ -36,6 +36,16 @@ function d1() {
   return { DB, db };
 }
 
+// An upload as the site shows it once rankings have caught up: results leave their athletes' ranking rows to the nightly
+// rebuild (worker.js rebuild), run here at once, to the end.
+async function posted(worker, env, path, body) {
+  const response = await worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const { rebuild } = await import('../server/worker.js');
+  await env.DB.prepare("DELETE FROM meta WHERE k = 'rank'").run();
+  do await rebuild(env); while (JSON.parse(await env.DB.prepare("SELECT v FROM meta WHERE k = 'rank'").first('v')).to);
+  return response;
+}
+
 const athletes = {
   11: { name: '  Kim Lee ', club: 'Alpha BJJ', clubId: '501', country: 'NL', belt: 'Adult / Blue', age: 30, photo: 'https://evil.example/x.png', hidden: false,
     entries: [{ division: 'Adult / Blue / -76 kg', place: 1, wins: { submission: 2, forfeit: 1, 'submission_armbar': 1 }, losses: {},
@@ -61,7 +71,7 @@ test("a results page's upload reads back on the stats site", async () => {
   const { API } = await import('../server/stats.js');
   const { DB } = d1();
   const env = { DB };
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   const response = await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
   assert.equal(response.status, 200);
   const event = await (await API.event(env, new URLSearchParams('site=smoothcomp.com&id=900'))).json();
@@ -116,7 +126,7 @@ test("an event their profile lists but they didn't show at isn't theirs: not in 
   const { API } = await import('../server/stats.js');
   const { DB, db } = d1();
   const env = { DB };
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   const listed = db.prepare("INSERT INTO history (site, user, event, title, start, wins, at) VALUES ('smoothcomp.com', '31', ?, 'Open', ?, ?, 0)");
   listed.run('900', '2026-10-03', 0);
   listed.run('800', '2025-10-03', 1);
@@ -141,7 +151,7 @@ test("an event their profile lists but they didn't show at isn't theirs: not in 
 test("a career read says whether a profile is hidden, over the events' flag", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { DB, db } = d1();
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), { DB }, {});
+  const post = (path, body) => posted(worker, { DB }, path, body);
   await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
   const hidden = () => db.prepare("SELECT p.user, p.hidden, b.hidden AS ranked FROM people p LEFT JOIN board b USING (site, user) ORDER BY p.user").all().map((r) => [r.user, r.hidden, r.ranked]);
   assert.deepEqual(hidden(), [['11', 0, 0], ['12', null, null]]);
@@ -154,7 +164,7 @@ test("an event where an athlete had walkovers alone isn't one of theirs: no even
   const { API } = await import('../server/stats.js');
   const { DB } = d1();
   const env = { DB };
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   const at = (event, start, entries) => post('/record', { site: 'smoothcomp.com', event, meta: { ...meta, start }, read: Date.now(), records: { 21: [0, 0] },
     athletes: { 21: { name: 'Ana Ruiz', club: 'Alpha BJJ', clubId: '501', entries } } });
   await at('901', '2026-09-01T08:00:00Z', [{ division: 'Adult / Blue / -76 kg', place: 2, wins: { submission: 1 }, losses: { points: 1 } }]);
@@ -173,7 +183,7 @@ test("an athlete's accounts with their name, birth year and country read as one"
   const { API } = await import('../server/stats.js');
   const { DB } = d1();
   const env = { DB };
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   await post('/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
   // AJP numbers its events and accounts apart: its event 900 is another event, and its Kim Lee in Germany someone else.
   const ajp = {
@@ -337,7 +347,7 @@ test('D1 usage near what the plan includes rests the crawler, then stops uploads
   assert.equal(await budget(env), 'slow');
   await DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('budget', ?1)").bind(JSON.stringify({ state: 'stop', at: Date.now() })).run();
   assert.equal(await budget(env, Date.now(), true), 'stop');
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   assert.equal((await post('/record', { site: 'smoothcomp.com', event: '900', records: {}, meta, athletes, read: Date.now() })).status, 503);
   // Lookups still answer.
   assert.equal((await post('/lookup', { site: 'smoothcomp.com', users: ['11'] })).status, 200);
@@ -348,7 +358,7 @@ test("an athlete's belt is at least the lowest belt of every division they enter
   const { API } = await import('../server/stats.js');
   const { DB } = d1();
   const env = { DB };
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   // Purple in 2024; in 2026 a Brown/Black division, which names no one belt. A kids' green belt never lifts an adult white.
   await post('/record', { site: 'smoothcomp.com', event: '950', records: { 21: [1, 0], 22: [1, 0] }, meta: { ...meta, start: '2024-09-15T07:00:00Z' }, athletes: {
     21: { name: 'Tam Nja', belt: 'Purple', entries: [{ division: 'Gi Adult / Male / Purple / -170 lbs', place: 1, wins: { points: 1 }, losses: {} }] },
@@ -449,7 +459,7 @@ test('listed events are found by place, date, sport and size, and academies wher
   assert.equal(db.prepare("SELECT sized FROM events WHERE site = 'smoothcomp.com' AND event = '4'").get().sized, sized);
   assert.deepEqual(await find('when=past'), []);
   // An academy sits where it competes most, and a radius finds it.
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   await post('/record', { site: 'smoothcomp.com', event: '1', records: { 11: [3, 0], 12: [1, 2] }, meta: { title: 'Potsdam Open', start: `${day(10)}T09:00:00Z` }, athletes, read: Date.now() });
   const near = async (q) => (await (await API.teams(env, new URLSearchParams(`site=smoothcomp.com&athletes=1&${q}`))).json()).rows;
   assert.deepEqual((await near('near=52.52,13.40&km=50')).map((t) => [t.club_id, t.city, Math.round(t.km)]), [['501', 'Potsdam', 27], ['502', 'Potsdam', 27]]);
@@ -520,7 +530,7 @@ test("an academy's own page places it, over where it competes most", async () =>
   assert.equal(clubPlace('<title>403 - not allowed</title>'), null);
   // Its athletes competed in Berlin, but its page pins it in Munich.
   const day = new Date(Date.now() - 5 * 864e5).toISOString().slice(0, 10);
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   await post('/record', { site: 'smoothcomp.com', event: '9', records: { 11: [3, 0], 12: [1, 2] }, meta: { title: 'Berlin Open', start: `${day}T09:00:00Z`, city: 'Berlin', country: 'DE', lat: 52.52, lng: 13.4 }, athletes, read: Date.now() });
   const near = async (q) => (await (await API.teams(env, new URLSearchParams(`site=smoothcomp.com&athletes=1&${q}`))).json()).rows.map((t) => [t.club_id, t.city, t.placed]);
   assert.deepEqual(await near('near=52.52,13.40&km=50'), [['501', 'Berlin', 'events'], ['502', 'Berlin', 'events']]);
@@ -705,7 +715,7 @@ test("search finds both sites' athletes, academies and events, one person's acco
 test("an event a profile couldn't read comes from the crawled results: a bracket of one is theirs, an event with no result of theirs isn't", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { DB, db } = d1();
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), { DB }, {});
+  const post = (path, body) => posted(worker, { DB }, path, body);
   db.exec(`INSERT INTO crawls (site, event, state, at) VALUES ('smoothcomp.com', '901', 'done', 0), ('smoothcomp.com', '902', 'done', 0);
     INSERT INTO entries (site, event, user, division, place, wins, losses, fought, at, bouts) VALUES ('smoothcomp.com', '901', '7', 'Adult / Blue / -76 kg', 1, '{}', '{}', 1, 0, '[]');
     INSERT INTO history (site, user, event, start, wins, gold, at) VALUES ('smoothcomp.com', '7', '902', '2026-10-01', 0, 0, 0);`);
@@ -733,7 +743,7 @@ test("what was kept of an event that isn't BJJ goes, and whoever is left with no
   const { API } = await import('../server/stats.js');
   const { DB, db } = d1();
   const env = { DB };
-  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const post = (path, body) => posted(worker, env, path, body);
   const site = 'smoothcomp.com', read = Date.now();
   const entered = (who, entry) => ({ ...athletes[who], entries: [entry] });
   await post('/record', { site, event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read });
@@ -771,4 +781,29 @@ test("what was kept of an event that isn't BJJ goes, and whoever is left with no
   assert.deepEqual(db.prepare('SELECT user FROM people ORDER BY user').all().map((r) => r.user), ['11', '12']);
   assert.deepEqual(db.prepare('SELECT club_id FROM clubs ORDER BY club_id').all().map((r) => r.club_id), ['501', '502']);
   assert.deepEqual({ ...db.prepare("SELECT athletes, fought FROM events WHERE event = '901'").get() }, { athletes: 0, fought: null });
+});
+
+test("results reach the rankings at the nightly rebuild, and an athlete's own page at once", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { rebuild } = await import('../server/worker.js');
+  const { DB, db } = d1();
+  const env = { DB };
+  const fetch = (path, init) => worker.fetch(new Request(`https://matstats.test${path}`, init), env, { waitUntil: () => {} });
+  await fetch('/record', { method: 'POST', body: JSON.stringify({ site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() }) });
+  const ranked = () => db.prepare('SELECT user FROM board ORDER BY user').all().map((r) => r.user);
+  // Their totals are counted, their ranking rows wait.
+  assert.deepEqual(db.prepare('SELECT user FROM tallies WHERE changed IS NOT NULL ORDER BY user').all().map((r) => r.user), ['11', '12']);
+  assert.deepEqual(ranked(), []);
+  // Opening an athlete's page ranks them first (no stored copy: a Worker's cache, empty).
+  globalThis.caches ??= { default: { match: async () => undefined, put: async () => {} } };
+  await fetch('/api/athlete?site=smoothcomp.com&id=12');
+  assert.deepEqual(ranked(), ['12']);
+  // The rebuild ranks the rest, then waits a day.
+  await rebuild(env);
+  assert.deepEqual(ranked(), ['11', '12']);
+  assert.equal(JSON.parse(db.prepare("SELECT v FROM meta WHERE k = 'rank'").get().v).to, undefined);
+  await DB.prepare("UPDATE tallies SET changed = ?1").bind(Date.now() + 1000).run();
+  await DB.prepare("DELETE FROM board").run();
+  await rebuild(env, Date.now() + 2000);
+  assert.deepEqual(ranked(), []);
 });

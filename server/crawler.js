@@ -4,7 +4,7 @@
 // to requests, so each minute's cron sends one request per lane to this same Worker. Its workers.dev
 // address answers only a request carrying the CRAWL_KEY secret (a lane started by hand).
 import { crawl, findClubs, listEvents, placeClubs, queue, sizeEvents } from './crawl.js';
-import { addBouts, purge, record } from './worker.js';
+import { addBouts, purge, rebuild, record } from './worker.js';
 import { budget, checkBudget } from './budget.js';
 import { keepRecent } from './stats.js';
 
@@ -44,6 +44,8 @@ export default {
     if (at.getUTCMinutes() % 10 === 0) await checkBudget(env).catch((e) => console.error('budget', e?.message));
     const state = await budget(env, Date.now(), true);
     if (at.getUTCMinutes() === 45) await watch(env, state).catch((e) => console.error('watch', e?.message));
+    // Rankings and academies catch up on the day's results once a day, even while the crawler rests (worker.js rebuild).
+    if (state !== 'stop') await rebuild(env).catch((e) => console.error('rebuild', e?.message));
     if (state !== 'ok') return;
     if (at.getUTCMinutes() % 30 === 0) await queue(env);
     // The last year's events are listed once a day, before the 03:30 refill queues them.

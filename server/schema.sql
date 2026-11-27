@@ -169,6 +169,9 @@ CREATE TABLE IF NOT EXISTS tallies (
   last TEXT,
   -- The events their profile lists that they didn't show at (stats.js missed), left out of listed and last.
   absent INTEGER NOT NULL DEFAULT 0,
+  -- When a recount last changed them (ms): their ranking row is rebuilt by then, or that night (worker.js rank, rebuild).
+  -- Added by ALTER TABLE ... ADD COLUMN on D1.
+  changed INTEGER,
   PRIMARY KEY (site, user)
 ) WITHOUT ROWID;
 -- One row per athlete with everything a ranking shows (stats.js BOARD), rebuilt with their tally:
