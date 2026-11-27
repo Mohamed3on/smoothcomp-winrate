@@ -629,6 +629,7 @@ function paint() {
   painter.disconnect();
   const strength = stack && !draining && strengths();
   const unread = draining && order === null && left(vm.all.flatMap((g) => g.registrations));
+  let ages;
   for (const group of document.querySelectorAll('#registrations .participant-group')) {
     watcher.observe(group);
     // A stacked order says what it ranks by beside each bracket's name.
@@ -653,8 +654,13 @@ function paint() {
         cell.className = 'participant-td scwr-career';
         slot.after(cell);
       }
-      draw(cell, row.classList.contains('participants-table-head') ? 'head'
-        : SCWRSite.profileId(row.querySelector('a[href*="/profile/"]')?.getAttribute('href')));
+      const user = row.classList.contains('participants-table-head') ? 'head'
+        : SCWRSite.profileId(row.querySelector('a[href*="/profile/"]')?.getAttribute('href'));
+      draw(cell, user);
+      // An event that hides Smoothcomp's age column still sends each age: it follows the country.
+      const country = !row.querySelector(':scope > .participant-td-birth') && row.querySelector('.country-name > span');
+      const age = country && (ages ??= new Map(vm.all.flatMap((g) => g.registrations.map((r) => [String(r.user_id), r.age])))).get(user);
+      if (Number.isFinite(age) && country.dataset.age !== `${age} years`) country.dataset.age = `${age} years`;
     }
   }
   // In the athletes list, each athlete wears their belt after their name.

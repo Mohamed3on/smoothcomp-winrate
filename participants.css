@@ -308,11 +308,14 @@
 #registrations .participants-desktop .profile-card.unapproved .participant-tr { background-color: var(--gray-2); }
 #registrations .participants-desktop .participant-tr-note-notapproved { display: none; }
 /* After the country name, in its small muted type, where the name column has
-   room, so the figures stay in line. */
+   room, so the figures stay in line. The age goes there too when the event
+   hides Smoothcomp's own age column. */
+.profile-card .country-name > span[data-age]::after { content: ' · ' attr(data-age); white-space: nowrap; }
 .profile-card.unapproved .country-name > span::after {
   content: ' · Not approved';
   white-space: nowrap;
 }
+.profile-card.unapproved .country-name > span[data-age]::after { content: ' · ' attr(data-age) ' · Not approved'; }
 
 /* The brackets the athlete would top-seed sit over the list in Smoothcomp's own
    idiom: a muted uppercase heading like its quick filters, and rows grounded
