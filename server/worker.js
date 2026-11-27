@@ -66,11 +66,15 @@ export async function rebuild(env, now = Date.now()) {
 }
 
 // An athlete's page opened before the nightly rebuild reached them: their ranking row is rebuilt first, so the totals it
-// shows match the results under them.
+// shows match the results under them, and their stamp goes back to the last rebuild's, so neither the next view nor the
+// rebuild ranks them again.
 async function current(env, site, user) {
   if (await budget(env) === 'stop') return;
-  const due = await env.DB.prepare(`SELECT 1 FROM tallies WHERE site = ?1 AND user = ?2 AND changed > coalesce((SELECT v ->> '$.from' FROM meta WHERE k = 'rank'), 0)`).bind(site, user).first();
-  if (due) await rank(env, site, [user]);
+  const from = await env.DB.prepare(`SELECT coalesce((SELECT v ->> '$.from' FROM meta WHERE k = 'rank'), 0) AS from_ FROM tallies WHERE site = ?1 AND user = ?2
+    AND changed > coalesce((SELECT v ->> '$.from' FROM meta WHERE k = 'rank'), 0)`).bind(site, user).first('from_');
+  if (from == null) return;
+  await rank(env, site, [user]);
+  await env.DB.prepare('UPDATE tallies SET changed = ?3 WHERE site = ?1 AND user = ?2').bind(site, user, from).run();
 }
 
 // Each chunk's athletes' brackets (rules.js bracketOf), as stats.js BOARD takes them: { user: [sex, age, weight] }, from the

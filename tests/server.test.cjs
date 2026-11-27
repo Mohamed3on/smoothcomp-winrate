@@ -798,6 +798,8 @@ test("results reach the rankings at the nightly rebuild, and an athlete's own pa
   globalThis.caches ??= { default: { match: async () => undefined, put: async () => {} } };
   await fetch('/api/athlete?site=smoothcomp.com&id=12');
   assert.deepEqual(ranked(), ['12']);
+  // Ranked, they no longer wait: the next view and the rebuild leave them be.
+  assert.equal(db.prepare("SELECT changed FROM tallies WHERE user = '12'").get().changed, 0);
   // The rebuild ranks the rest, then waits a day.
   await rebuild(env);
   assert.deepEqual(ranked(), ['11', '12']);
