@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CalendarDaysIcon, SearchIcon, UsersIcon, XIcon } from 'lucide-react';
 import { useLocation } from 'wouter';
@@ -35,6 +35,7 @@ export function Search({ f }: { f: Filters }) {
   const [debounced, setDebounced] = useState('');
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState('');
+  const input = useRef<HTMLInputElement>(null);
   const [, navigate] = useLocation();
   useEffect(() => { const t = setTimeout(() => setDebounced(q.trim()), 200); return () => clearTimeout(t); }, [q]);
   useEffect(() => {
@@ -73,7 +74,8 @@ export function Search({ f }: { f: Filters }) {
     <>
       {/* Typing on the box starts the search with that letter. */}
       {/* Below md only the icon shows. */}
-      <button type="button" onClick={() => setOpen(true)} aria-label="Search athletes, academies, events"
+      {/* iOS raises the keyboard only for a focus inside the tap, and base-ui focuses a frame later: render the dialog now and focus its box here. */}
+      <button type="button" onClick={() => { flushSync(() => setOpen(true)); input.current?.focus(); }} aria-label="Search athletes, academies, events"
         onKeyDown={(e) => { if (e.key.length === 1 && e.key !== ' ' && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); setQ(e.key); setOpen(true); } }}
         className="flex size-8 items-center justify-center gap-2 rounded-lg border border-input/30 bg-input/30 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring md:w-48 md:justify-start md:px-2 lg:w-80">
         <SearchIcon className="size-4 shrink-0 md:opacity-50" />
@@ -82,7 +84,7 @@ export function Search({ f }: { f: Filters }) {
       </button>
       <CommandDialog open={open} onOpenChange={setOpen} title="Search" description="Find an athlete, academy or event." className="sm:max-w-xl">
         <Command shouldFilter={false} value={selected} onValueChange={setSelected} onKeyDown={onKeyDown}>
-          <CommandInput value={q} onValueChange={setQ} loading={pending} placeholder="Search athletes, academies, events" />
+          <CommandInput ref={input} value={q} onValueChange={setQ} loading={pending} placeholder="Search athletes, academies, events" />
           {(live || !!recent.length) && (
             <CommandList aria-busy={pending} className="max-h-[50vh] overscroll-contain">
               {live && !pending && <CommandEmpty>{debounced.split(/\s+/).some((w) => [...w].length >= 3) ? <>Nothing matches “{debounced}”.</> : 'Type 3 letters of a name to find athletes and academies.'}</CommandEmpty>}
