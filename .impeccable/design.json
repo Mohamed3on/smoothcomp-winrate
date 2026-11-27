@@ -1,0 +1,505 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-27T19:43:58.656Z",
+  "title": "Design System: Smoothcomp Winrate",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#14161a",
+        "dark": "#f0f2f4",
+        "purpose": "Headings, athlete names, primary figures, the selected tab.",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#14161a",
+          "#24272d",
+          "#3a3e46",
+          "#5b616b",
+          "#868d97",
+          "#b4bac2",
+          "#e4e7ea"
+        ]
+      },
+      "secondary-ink": {
+        "role": "neutral",
+        "displayName": "Secondary Ink",
+        "canonical": "#5b616b",
+        "dark": "#a3a9b3",
+        "purpose": "Explanatory copy, unselected tabs, the trailing side of a head-to-head figure."
+      },
+      "muted-ink": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#696f79",
+        "dark": "#868d97",
+        "purpose": "Rank numbers, metadata, legends, the footer key, placeholders and a zero in a W–L figure."
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "rgba(0, 0, 0, 0.09)",
+        "dark": "rgba(255, 255, 255, 0.10)",
+        "purpose": "Row rules and section dividers. Translucent so it works on any host ground."
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Control Edge",
+        "canonical": "rgba(0, 0, 0, 0.16)",
+        "dark": "rgba(255, 255, 255, 0.2)",
+        "purpose": "Borders on buttons, fields and chips."
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Panel Surface",
+        "canonical": "#fbfbfc",
+        "dark": "#17191c",
+        "purpose": "The panel body and the ground inside fields."
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised Band",
+        "canonical": "#f1f3f5",
+        "dark": "#1e2126",
+        "purpose": "Toolbar, sticky table header, head-to-head comparison band, official-results footer."
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Hover Wash",
+        "canonical": "rgba(0, 0, 0, 0.035)",
+        "dark": "rgba(255, 255, 255, 0.05)",
+        "purpose": "Row and button hover, and the ground behind a missing avatar."
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Signal Blue",
+        "canonical": "#1565c0",
+        "dark": "#79b3ea",
+        "purpose": "Chosen, leading or focused. The only accent in the system.",
+        "tonalRamp": [
+          "#0a2f5c",
+          "#0d4180",
+          "#1053a3",
+          "#1565c0",
+          "#3d85d4",
+          "#6ba4e2",
+          "#a3c8ee",
+          "#dbe9f8"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Signal Blue Soft",
+        "canonical": "rgba(21, 101, 192, 0.09)",
+        "dark": "rgba(121, 179, 234, 0.13)",
+        "purpose": "Every selected-state fill: pressed chips, open rows, sorted cells, the expanded-row ground, winner pills, the age pill and text selection."
+      },
+      "gold": {
+        "role": "tertiary",
+        "displayName": "Gold",
+        "canonical": "#8a6100",
+        "dark": "#e3b757",
+        "purpose": "First-place counts and pips. Never UI colour."
+      },
+      "silver": {
+        "role": "tertiary",
+        "displayName": "Silver",
+        "canonical": "#5f646c",
+        "dark": "#c3c9d2",
+        "purpose": "Second-place counts and pips."
+      },
+      "bronze": {
+        "role": "tertiary",
+        "displayName": "Bronze",
+        "canonical": "#8a4f1e",
+        "dark": "#d59a68",
+        "purpose": "Third-place counts and pips."
+      },
+      "won": {
+        "role": "tertiary",
+        "displayName": "Won",
+        "canonical": "#136338",
+        "dark": "#5fd08a",
+        "purpose": "A match's outcome only: the winning half of a W–L figure and the W badge (the letter on a 14% tint of its own colour)."
+      },
+      "lost": {
+        "role": "tertiary",
+        "displayName": "Lost",
+        "canonical": "#ad2620",
+        "dark": "#ff8a80",
+        "purpose": "A match's outcome only: the losing half of a W–L figure and the L badge. A zero takes muted ink, so an unbeaten record shows no red."
+      },
+      "win-submission": {
+        "role": "secondary",
+        "displayName": "Submission",
+        "canonical": "#08477f",
+        "dark": "#a9cff0",
+        "purpose": "Ramp step 1 of 6. The most decisive finish, and the highest contrast against the surface."
+      },
+      "win-stoppage": {
+        "role": "secondary",
+        "displayName": "Stoppage",
+        "canonical": "#135ba1",
+        "dark": "#8abce9",
+        "purpose": "Ramp step 2 of 6."
+      },
+      "win-points": {
+        "role": "secondary",
+        "displayName": "Points",
+        "canonical": "#1d6fc4",
+        "dark": "#6aa8e2",
+        "purpose": "Ramp step 3 of 6."
+      },
+      "win-decision": {
+        "role": "secondary",
+        "displayName": "Decision",
+        "canonical": "#4f9ae0",
+        "dark": "#3f7fc4",
+        "purpose": "Ramp step 4 of 6."
+      },
+      "win-disqualification": {
+        "role": "secondary",
+        "displayName": "Disqualification",
+        "canonical": "#7fb2e0",
+        "dark": "#27547f",
+        "purpose": "Ramp step 5 of 6."
+      },
+      "win-walkover": {
+        "role": "secondary",
+        "displayName": "Walkover",
+        "canonical": "#b9bec6",
+        "dark": "#4a4f57",
+        "purpose": "Ramp step 6 of 6. Uncontested, and the only step that leaves the blue hue."
+      }
+    },
+    "cssVariables": {
+      "note": "results.css names the neutrals by role; frontmatter token → custom property on .scwr-results.",
+      "map": {
+        "ink": "--fg",
+        "secondary-ink": "--fg-2",
+        "muted-ink": "--fg-3",
+        "line-strong": "--line-2",
+        "rounded.lg": "--radius",
+        "rounded.md": "--radius-md",
+        "rounded.sm": "--radius-sm",
+        "gutter": "--pad (= --s-5, --s-3 under 620px)"
+      }
+    },
+    "rampExtras": {
+      "note": "Shipped ramp tokens outside the six-step vocabulary, for finish types a few events report.",
+      "win-fastest_escape": {
+        "light": "#18659a",
+        "dark": "#7bb4e6"
+      },
+      "win-other": {
+        "light": "#9aa1aa",
+        "dark": "#5d6570"
+      }
+    },
+    "beltColors": {
+      "note": "Borrowed from the sport, identical in both themes. The rank bar is #17191c on every belt except black, where it is #b53b42.",
+      "white": "#f4f5f6",
+      "grey": "#8d949d",
+      "yellow": "#e7bd28",
+      "orange": "#dc7627",
+      "green": "#2b8a56",
+      "blue": "#2871b8",
+      "purple": "#744ca3",
+      "brown": "#79472f",
+      "black": "#17191c",
+      "red": "#b53b42"
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Record",
+        "purpose": "The head-to-head record. One instance per surface; its digits are coloured individually, leader in accent, trailer in secondary ink."
+      },
+      "headline": {
+        "displayName": "Panel Title",
+        "purpose": "The panel's own title."
+      },
+      "title": {
+        "displayName": "Surface Title",
+        "purpose": "A heading that owns a surface inside the panel (the Matchups heading, the empty state) and the medal glyphs in the column headers."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "The panel default: table cells, tabs, copy, athlete and academy names, every figure. Names and figures take 600; nothing takes a different size."
+      },
+      "small": {
+        "displayName": "Small",
+        "purpose": "Everything that supports a figure: explanatory copy, metadata, rank numbers, form controls, legends, the footer key and the whole head-to-head ledger."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase chrome: field labels, sortable column headers, the age pill, avatar monograms, NEXT / ON MAT, and the WINNER and LEADS markers that make a colour redundant."
+      }
+    },
+    "weights": [
+      400,
+      600,
+      700
+    ],
+    "shadows": [
+      {
+        "name": "avatar-hairline",
+        "value": "inset 0 0 0 1px var(--line)",
+        "purpose": "Keeps a circular avatar from bleeding into the row behind it. The only shadow that draws an edge inside the panel."
+      },
+      {
+        "name": "row-hover-wash",
+        "value": "inset 0 0 0 100vmax var(--hover)",
+        "purpose": "Row hover painted over the cell's own tint, so open rows and the sorted column keep theirs. Hover devices only."
+      },
+      {
+        "name": "pending-ring",
+        "value": "inset 0 0 0 1.5px currentColor",
+        "purpose": "The hollow dot of a match still to come (NEXT marker, upcoming bout); filled once the match is on the mat."
+      },
+      {
+        "name": "popover-lift",
+        "value": "0 8px 24px rgba(0, 0, 0, 0.3)",
+        "purpose": "participants.css: the bracket popover that floats over Smoothcomp's participants page. Outside the panel; not a panel elevation."
+      },
+      {
+        "name": "dialog-lift",
+        "value": "0 24px 64px rgb(0 0 0 / 0.5)",
+        "purpose": "profile.css: the losses dialog over the profile page, with a 55% black backdrop. Outside the panel; not a panel elevation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-emphasis",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Panel: the tab underline scaling in from its left edge (180ms), the Matchups surface entering (180ms, 5px rise), and the 0.97 press on buttons and chips (160ms)."
+      },
+      {
+        "name": "ease-out-host",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Host-page injections (participants, profile): opacity fades 150–240ms, the bracket popover drop (160ms, 4px), the split-bar grow (350ms, staggered 60ms)."
+      },
+      {
+        "name": "state",
+        "value": "0.15s ease",
+        "purpose": "Colour, background and border transitions on buttons, tabs, sort headers, names, chips and table rows."
+      },
+      {
+        "name": "pulse",
+        "value": "1.4s ease-in-out infinite",
+        "purpose": "Skeleton shimmer while the match list loads; dips to 40% opacity at the midpoint. The live ON MAT dot pulses the same keyframe at 2s."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "panel motion lives inside @media (prefers-reduced-motion: no-preference)",
+        "purpose": "With reduced motion requested, every panel transition and animation is absent rather than shortened."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "container",
+        "value": "container: scwr / inline-size",
+        "purpose": "The panel is the query container. No layout rule in the panel asks the viewport."
+      },
+      {
+        "name": "scroll",
+        "value": "1080px",
+        "purpose": "Table becomes a horizontal scroller (min 780px) with a themed 8px line-strong scrollbar; the sticky header goes static."
+      },
+      {
+        "name": "trim",
+        "value": "860px",
+        "purpose": "Conceded and depth columns drop; table minimum falls to 580px."
+      },
+      {
+        "name": "compact",
+        "value": "620px",
+        "purpose": "Gutter 20px to 12px, toolbar to two columns, biggest and athletes columns drop (min 560px), Matchups controls reach 44px targets."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Tab",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "Switches the panel body between Athletes, Academies, Brackets and Matchups. The selected tab takes ink and reveals a 2px accent underline that scales in from its left edge.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab\" aria-selected=\"true\">Athletes</button><button class=\"ds-tab\" aria-selected=\"false\">Academies</button><button class=\"ds-tab\" aria-selected=\"false\">Brackets</button><button class=\"ds-tab\" aria-selected=\"false\">Matchups</button></div>",
+      "css": ".ds-tabs { display: flex; gap: 2px; padding: 0 20px; border-bottom: 1px solid var(--line, rgba(0,0,0,.09)); font-size: 13px; line-height: 1.45; } .ds-tab { position: relative; padding: 0 2px 8px; margin-right: 20px; border: 0; background: none; color: var(--fg-2, #5b616b); font: inherit; font-weight: 600; cursor: pointer; transition: color .15s ease, background-color .15s ease; } .ds-tab::after { content: ''; position: absolute; inset: auto 0 -1px; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent, #1565c0); transform: scaleX(0); transform-origin: left; transition: transform .18s cubic-bezier(.22,1,.36,1); } .ds-tab[aria-selected='true'] { color: var(--fg, #14161a); } .ds-tab[aria-selected='true']::after { transform: scaleX(1); } .ds-tab:hover { color: var(--fg, #14161a); } .ds-tab:focus-visible { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; border-radius: 4px; }"
+    },
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "The one button: 32px, 6px corners, a line-strong border on a transparent ground. Hover tints only on devices that hover; press scales to 0.97; disabled means working.",
+      "html": "<div class=\"ds-row\"><button class=\"ds-btn\">Swap</button><button class=\"ds-btn\" disabled>Reading…</button></div>",
+      "css": ".ds-row { display: flex; gap: 8px; } .ds-btn { min-height: 32px; padding: 0 12px; border: 1px solid var(--line-2, rgba(0,0,0,.16)); border-radius: 6px; background: transparent; color: var(--fg, #14161a); font: inherit; font-size: 11.5px; line-height: 1.4; font-weight: 600; cursor: pointer; transition: color .15s ease, background-color .15s ease, border-color .15s ease, transform 160ms cubic-bezier(.22,1,.36,1); } .ds-btn:hover:not(:disabled) { border-color: var(--fg-3, #696f79); background: var(--hover, rgba(0,0,0,.035)); } .ds-btn:active:not(:disabled) { transform: scale(.97); } .ds-btn:disabled { opacity: .45; cursor: progress; } .ds-btn:focus-visible { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; border-radius: 4px; }"
+    },
+    {
+      "name": "Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Search, select and number inputs: 32px, 6px corners, surface ground, Small text, accent caret. The age range is one 148px box holding two borderless ends split by a muted en dash; it lights accent once either end is set.",
+      "html": "<div class=\"ds-tools\"><label class=\"ds-field ds-grow\"><span>Search</span><input type=\"search\" placeholder=\"Athlete or academy\"></label><label class=\"ds-field\"><span>Age range</span><span class=\"ds-age-control\" data-active=\"true\"><input type=\"number\" value=\"18\" placeholder=\"Any\"><i>–</i><input type=\"number\" placeholder=\"Any\"></span></label></div>",
+      "css": ".ds-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 16px; padding: 16px 20px; background: var(--raised, #f1f3f5); } .ds-field { display: grid; gap: 4px; min-width: 0; } .ds-grow { flex: 1 1 200px; } .ds-field > span:first-child { color: var(--fg-2, #5b616b); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; } .ds-field input[type='search'] { min-height: 32px; width: 100%; padding: 0 8px; border: 1px solid var(--line-2, rgba(0,0,0,.16)); border-radius: 6px; background: var(--surface, #fbfbfc); color: var(--fg, #14161a); caret-color: var(--accent, #1565c0); font: inherit; font-size: 11.5px; } .ds-field input::placeholder { color: var(--fg-3, #696f79); } .ds-field input:focus-visible { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; border-radius: 4px; } .ds-age-control { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; width: 148px; min-height: 32px; overflow: hidden; border: 1px solid var(--line-2, rgba(0,0,0,.16)); border-radius: 6px; background: var(--surface, #fbfbfc); transition: border-color .15s ease, background-color .15s ease; } .ds-age-control[data-active='true'] { border-color: var(--accent, #1565c0); background: var(--accent-soft, rgba(21,101,192,.09)); } .ds-age-control > i { color: var(--fg-3, #696f79); font-style: normal; } .ds-age-control > input { min-height: 30px; width: 100%; padding: 0 4px; border: 0; background: transparent; outline: 0; color: var(--fg, #14161a); caret-color: var(--accent, #1565c0); font: inherit; font-size: 11.5px; font-weight: 600; text-align: center; } .ds-age-control > input::-webkit-inner-spin-button { display: none; } .ds-age-control:focus-within { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; }"
+    },
+    {
+      "name": "Win-type Chip",
+      "kind": "chip",
+      "refersTo": "chip-toggle",
+      "description": "Filters which win types count. A pill carrying a dot in that finish's ramp colour at 35% until pressed; pressed takes an accent border, accent-soft ground and ink text. The set never allows an empty allowlist.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" aria-pressed=\"true\"><i class=\"ds-seg ds-seg-submission\"></i>Submissions</button><button class=\"ds-chip\" aria-pressed=\"true\"><i class=\"ds-seg ds-seg-points\"></i>Points</button><button class=\"ds-chip\" aria-pressed=\"false\"><i class=\"ds-seg ds-seg-walkover\"></i>Walkovers</button></div>",
+      "css": ".ds-chips { display: flex; flex-wrap: wrap; gap: 4px; } .ds-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid var(--line-2, rgba(0,0,0,.16)); border-radius: 999px; background: transparent; color: var(--fg-3, #696f79); font: inherit; font-size: 11.5px; line-height: 1.4; font-weight: 600; cursor: pointer; transition: color .15s ease, background-color .15s ease, border-color .15s ease, transform 160ms cubic-bezier(.22,1,.36,1); } .ds-chip[aria-pressed='true'] { border-color: var(--accent, #1565c0); background: var(--accent-soft, rgba(21,101,192,.09)); color: var(--fg, #14161a); } .ds-chip:active { transform: scale(.97); } .ds-chip .ds-seg { width: 9px; height: 9px; flex: none; border-radius: 50%; opacity: .35; } .ds-chip[aria-pressed='true'] .ds-seg { opacity: 1; } .ds-seg-submission { background: var(--win-submission, #08477f); } .ds-seg-stoppage { background: var(--win-stoppage, #135ba1); } .ds-seg-points { background: var(--win-points, #1d6fc4); } .ds-seg-decision { background: var(--win-decision, #4f9ae0); } .ds-seg-walkover { background: var(--win-walkover, #b9bec6); } .ds-chip:focus-visible { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; border-radius: 4px; }"
+    },
+    {
+      "name": "Sortable Column Header",
+      "kind": "custom",
+      "refersTo": "tab",
+      "description": "A full-width button in Label type on the raised header band. The active sort turns accent and shows its clip-path caret; hover reveals the caret at 45%.",
+      "html": "<div class=\"ds-head\"><button class=\"ds-sort\" data-direction=\"desc\"><span>Wins</span><i class=\"ds-caret\"></i></button><button class=\"ds-sort\"><span>Win %</span><i class=\"ds-caret\"></i></button><button class=\"ds-sort\"><span>Finish</span><i class=\"ds-caret\"></i></button></div>",
+      "css": ".ds-head { display: flex; background: var(--raised, #f1f3f5); border-bottom: 1px solid var(--line-2, rgba(0,0,0,.16)); } .ds-sort { display: flex; align-items: center; justify-content: end; gap: 4px; width: 100%; padding: 8px; border: 0; background: none; color: var(--fg-2, #5b616b); font: inherit; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; transition: color .15s ease; } .ds-sort:hover { color: var(--fg, #14161a); } .ds-caret { width: 7px; height: 4px; flex: none; background: currentColor; clip-path: polygon(50% 100%, 0 0, 100% 0); opacity: 0; } .ds-sort:hover .ds-caret { opacity: .45; } .ds-sort[data-direction] { color: var(--accent, #1565c0); } .ds-sort[data-direction] .ds-caret { opacity: 1; } .ds-sort[data-direction='asc'] .ds-caret { transform: rotate(180deg); } .ds-sort:focus-visible { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; border-radius: 4px; }"
+    },
+    {
+      "name": "Athlete Identity",
+      "kind": "custom",
+      "refersTo": "age-chip",
+      "description": "The recurring athlete signature: 26px avatar or monogram, name at Body/600, flag carrying its country as an accessible label, 22×8 belt swatch with a rank bar, age pill, and one-line meta. A match still to come rings the avatar and adds a NEXT or ON MAT marker.",
+      "html": "<div class=\"ds-identity\"><span class=\"ds-face ds-monogram\" data-next>AS</span><div class=\"ds-identity-text\"><span class=\"ds-named\"><a class=\"ds-name\" href=\"#\">Ana Silva</a><span class=\"ds-flag\" role=\"img\" aria-label=\"Brazil\">🇧🇷</span><span class=\"ds-next\"><i></i>Next ~16:19</span></span><span class=\"ds-details\"><span class=\"ds-belt\" data-belt=\"purple\" role=\"img\" aria-label=\"Purple belt\"></span><span class=\"ds-age\">24</span><span class=\"ds-meta\">Example Academy · Adult · -64 kg · 2 brackets</span></span></div></div>",
+      "css": ".ds-identity { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; } .ds-identity-text { display: grid; gap: 2px; min-width: 0; } .ds-face { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--hover, rgba(0,0,0,.035)); box-shadow: inset 0 0 0 1px var(--line, rgba(0,0,0,.09)); } .ds-face[data-next] { outline: 1.5px solid var(--fg-2, #5b616b); outline-offset: 2px; } .ds-monogram { display: grid; place-items: center; color: var(--fg-3, #696f79); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; } .ds-named { display: flex; align-items: baseline; gap: 4px; min-width: 0; } .ds-name { overflow: hidden; color: var(--fg, #14161a); font-weight: 600; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; } a.ds-name:hover { color: var(--accent, #1565c0); text-decoration: underline; text-underline-offset: 2px; } a.ds-name:focus-visible { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; border-radius: 4px; } .ds-flag { flex: none; line-height: 1; } .ds-next { display: inline-flex; flex: none; align-items: center; gap: 4px; margin-left: 4px; color: var(--fg-2, #5b616b); white-space: nowrap; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; } .ds-next > i { width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; } .ds-details { display: flex; align-items: center; gap: 4px; min-width: 0; } .ds-belt { --belt: #f4f5f6; --belt-rank: #17191c; position: relative; flex: none; width: 22px; height: 8px; overflow: hidden; border: 1px solid var(--line-2, rgba(0,0,0,.16)); border-radius: 2px; background: var(--belt); } .ds-belt::after { content: ''; position: absolute; inset: 0 3px 0 auto; width: 5px; background: var(--belt-rank); } .ds-belt[data-belt='purple'] { --belt: #744ca3; } .ds-belt[data-belt='black'] { --belt: #17191c; --belt-rank: #b53b42; } .ds-age { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--accent-soft, rgba(21,101,192,.09)); color: var(--accent, #1565c0); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; line-height: 1.4; white-space: nowrap; } .ds-meta { flex: 1; min-width: 0; color: var(--fg-3, #696f79); font-size: 11.5px; line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }"
+    },
+    {
+      "name": "Ranked Row",
+      "kind": "custom",
+      "refersTo": "tab",
+      "description": "A table row: 8px cells over a 1px line rule, tabular figures, the rank muted until the top three turn bold ink. Hover is an inset wash over the cell's own tint; the sorted cell and an open row take accent-soft.",
+      "html": "<table class=\"ds-table\"><tbody><tr class=\"ds-row ds-top\"><td class=\"ds-rank\">1</td><td class=\"ds-start\"><span class=\"ds-name\">Ana Silva</span></td><td class=\"ds-sorted\"><span class=\"ds-num\">7</span></td><td><span class=\"ds-won\">7</span><i class=\"ds-dash\">–</i><span class=\"ds-muted\">0</span></td><td class=\"ds-gold\">2</td></tr><tr class=\"ds-row\"><td class=\"ds-rank\">4</td><td class=\"ds-start\"><span class=\"ds-name\">Bea Costa</span></td><td class=\"ds-sorted\"><span class=\"ds-num\">5</span></td><td><span class=\"ds-won\">5</span><i class=\"ds-dash\">–</i><span class=\"ds-lost\">2</span></td><td class=\"ds-muted\">0</td></tr></tbody></table>",
+      "css": ".ds-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; color: var(--fg, #14161a); } .ds-table td { padding: 8px; border-bottom: 1px solid var(--line, rgba(0,0,0,.09)); text-align: right; transition: background-color .15s ease, box-shadow .15s ease; } .ds-table td.ds-start { text-align: left; } .ds-row { cursor: pointer; } .ds-row:hover > td { box-shadow: inset 0 0 0 100vmax var(--hover, rgba(0,0,0,.035)); } .ds-sorted { background: var(--accent-soft, rgba(21,101,192,.09)); } .ds-rank { width: 5%; padding-left: 16px; color: var(--fg-3, #696f79); font-size: 11.5px; text-align: left !important; } .ds-top .ds-rank { color: var(--fg, #14161a); font-weight: 700; } .ds-name { font-weight: 600; } .ds-num { font-weight: 600; } .ds-muted { color: var(--fg-3, #696f79); font-weight: 400; } .ds-won { color: var(--won, #136338); font-weight: 600; } .ds-lost { color: var(--lost, #ad2620); font-weight: 600; } .ds-dash { margin: 0 1px; color: var(--fg-3, #696f79); font-style: normal; } .ds-gold { color: var(--gold, #8a6100); font-weight: 700; }"
+    },
+    {
+      "name": "Win-type Bar",
+      "kind": "custom",
+      "refersTo": "chip-toggle",
+      "description": "A 6px clipped track whose segments are flex-grown by count in the fixed ramp order, with a one-line legend beneath. The same colours and order appear in the chips, the ledger markers and the footer key.",
+      "html": "<div class=\"ds-bar\"><div class=\"ds-bar-track\"><i class=\"ds-seg ds-seg-submission\" style=\"flex-grow:4\"></i><i class=\"ds-seg ds-seg-stoppage\" style=\"flex-grow:1\"></i><i class=\"ds-seg ds-seg-points\" style=\"flex-grow:2\"></i><i class=\"ds-seg ds-seg-decision\" style=\"flex-grow:1\"></i></div><span class=\"ds-bar-legend\">4 sub · 1 stop · 2 pts · 1 dec</span></div>",
+      "css": ".ds-bar { display: grid; gap: 4px; min-width: 0; } .ds-bar-track { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; } .ds-bar-track .ds-seg { display: block; min-width: 3px; border-radius: 1px; } .ds-seg-submission { background: var(--win-submission, #08477f); } .ds-seg-stoppage { background: var(--win-stoppage, #135ba1); } .ds-seg-points { background: var(--win-points, #1d6fc4); } .ds-seg-decision { background: var(--win-decision, #4f9ae0); } .ds-seg-walkover { background: var(--win-walkover, #b9bec6); } .ds-bar-legend { color: var(--fg-3, #696f79); font-size: 11.5px; line-height: 1.4; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }"
+    },
+    {
+      "name": "Head-to-Head Record",
+      "kind": "custom",
+      "refersTo": "winner-pill",
+      "description": "The centre of the comparison band. Each digit is coloured on its own: leader accent, trailer secondary ink, dash muted. The points line below follows the same rule, so the accent flips between lines when wins and points disagree.",
+      "html": "<div class=\"ds-aggregate\"><small>Wins</small><strong class=\"ds-record\"><span class=\"ds-lead\">4</span><i class=\"ds-dash\">–</i><span class=\"ds-trails\">3</span></strong><small>7 matches</small><p class=\"ds-points\"><span>Points</span><strong><span class=\"ds-trails\">12</span><i class=\"ds-dash\">–</i><span class=\"ds-lead\">27</span></strong></p></div>",
+      "css": ".ds-aggregate { display: grid; justify-items: center; padding: 20px; background: var(--raised, #f1f3f5); text-align: center; font-variant-numeric: tabular-nums; } .ds-aggregate > small, .ds-points > span { color: var(--fg-2, #5b616b); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; } .ds-record { display: flex; align-items: baseline; margin: 4px 0; color: var(--fg, #14161a); font-size: 28px; font-weight: 700; line-height: 1; letter-spacing: -.03em; } .ds-dash { margin: 0 1px; color: var(--fg-3, #696f79); font-style: normal; } .ds-lead { color: var(--accent, #1565c0); } .ds-trails { color: var(--fg-2, #5b616b); } .ds-points { display: flex; align-items: baseline; gap: 8px; margin: 8px 0 0; } .ds-points strong { display: flex; align-items: baseline; font-size: 13px; line-height: 1.45; }"
+    },
+    {
+      "name": "Ledger Winner Pill",
+      "kind": "custom",
+      "refersTo": "winner-pill",
+      "description": "An athlete in the direct-match ledger. The winner takes the accent-soft ground and an uppercase WINNER, so the result never rests on colour alone; the finish sits in the middle column behind its ramp marker.",
+      "html": "<div class=\"ds-match\"><a class=\"ds-person ds-winner\" href=\"#\"><span class=\"ds-person-name\">Ana Silva</span><span class=\"ds-belt\" data-belt=\"purple\"></span><span class=\"ds-winner-label\">Winner</span></a><span class=\"ds-detail\"><a class=\"ds-division\" href=\"#\">Adult / Purple / -64 kg</a><span class=\"ds-outcome\"><i class=\"ds-seg ds-seg-submission\"></i><strong>Submission</strong><span class=\"ds-facts\">04:41</span></span></span><a class=\"ds-person\" href=\"#\"><span class=\"ds-person-name\">Bea Costa</span></a></div>",
+      "css": ".ds-match { display: grid; grid-template-columns: minmax(0,1fr) minmax(100px,1.3fr) minmax(0,1fr); align-items: center; gap: 12px; min-height: 46px; padding: 0 12px; border-top: 1px solid var(--line, rgba(0,0,0,.09)); font-variant-numeric: tabular-nums; } .ds-person { display: inline-flex; align-items: center; gap: 4px; width: max-content; max-width: 100%; margin-left: -8px; padding: 4px 8px; overflow: hidden; border-radius: 4px; color: var(--fg-2, #5b616b); font-size: 11.5px; line-height: 1.4; font-weight: 600; text-decoration: none; white-space: nowrap; } .ds-person:last-child { justify-self: end; margin-left: 0; margin-right: -8px; } .ds-person.ds-winner { background: var(--accent-soft, rgba(21,101,192,.09)); font-weight: 700; } a.ds-person:hover { color: var(--accent, #1565c0); text-decoration: underline; text-underline-offset: 2px; } a.ds-person:focus-visible { outline: 2px solid var(--accent, #1565c0); outline-offset: -2px; border-radius: 4px; } .ds-person-name { overflow: hidden; text-overflow: ellipsis; } .ds-person .ds-belt { width: 18px; height: 7px; } .ds-belt { --belt: #f4f5f6; --belt-rank: #17191c; position: relative; flex: none; width: 22px; height: 8px; overflow: hidden; border: 1px solid var(--line-2, rgba(0,0,0,.16)); border-radius: 2px; background: var(--belt); } .ds-belt::after { content: ''; position: absolute; inset: 0 3px 0 auto; width: 5px; background: var(--belt-rank); } .ds-belt[data-belt='purple'] { --belt: #744ca3; } .ds-belt[data-belt='black'] { --belt: #17191c; --belt-rank: #b53b42; } .ds-winner-label { flex: none; color: var(--accent, #1565c0); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; } .ds-detail { display: grid; justify-items: center; min-width: 0; color: var(--fg-2, #5b616b); font-size: 11.5px; line-height: 1.4; text-align: center; } .ds-division { max-width: 100%; overflow: hidden; color: inherit; text-overflow: ellipsis; white-space: nowrap; } .ds-outcome { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; } .ds-outcome .ds-seg { width: 13px; height: 5px; flex: none; border-radius: 2px; } .ds-seg-submission { background: var(--win-submission, #08477f); } .ds-seg-stoppage { background: var(--win-stoppage, #135ba1); } .ds-seg-points { background: var(--win-points, #1d6fc4); } .ds-seg-decision { background: var(--win-decision, #4f9ae0); } .ds-seg-walkover { background: var(--win-walkover, #b9bec6); } .ds-outcome strong { color: var(--fg, #14161a); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Incumbent Competition Ledger",
+    "overview": "This extension has no page of its own. It appears inside Smoothcomp's results page, and its entire visual argument is that it belongs there. It recomputes an event's numbers from the published match list rather than trusting the site's own counters, and the credibility of that recount depends on looking like a native part of the page that produced it, not like a widget bolted on top.\n\nThat produces a system with two registers, chosen by how much of the page the code owns. Where it owns a container — the Competition Leaders panel on a results page — it brings a complete token set scoped to .scwr-results, reads the host's real backdrop at runtime, and stamps data-scwr-theme so a light Smoothcomp and a dark Smoothcomp each get a panel built for them. Where it only injects cells into rows the site already drew — the records inline on the official results — it declares almost no colour at all, painting in currentColor and translucent greys so it inherits whatever that row happens to be wearing.\n\nEverything else follows from density. This is a statistics panel read by someone scanning for a name or a record, so it is flat, tabular and quiet: 1px rules and tonal layering instead of shadows, one restrained accent, and colour used to encode meaning rather than to decorate. The expressive budget is spent on the two things that carry information — the win-type ramp and the accent — and nowhere else.",
+    "keyCharacteristics": [
+      "A tabbed panel (Athletes, Academies, Brackets, Matchups) that replaces its own body per view, plus inline annotations on the host's official results.",
+      "Runtime theme detection from the host backdrop, never from the OS setting.",
+      "An ordinal win-type colour ramp shared by bars, filter chips, ledger markers and the footer key.",
+      "Tabular numerals everywhere, fixed column budgets, and one-line metadata that truncates rather than reflows.",
+      "Container queries throughout: the panel adapts to the space Smoothcomp gives it, which is not the viewport."
+    ],
+    "rules": [
+      {
+        "name": "The Host's Clothes Rule",
+        "body": "The panel samples the real backdrop it was injected into and stamps data-scwr-theme itself. It never reads prefers-color-scheme: the page's theme is the only theme that matters, and light is the fallback so an unrecognised host still renders correctly.",
+        "section": "colors"
+      },
+      {
+        "name": "The Contrast Ramp Rule",
+        "body": "Decisiveness is encoded as contrast against the surface, so the win-type ramp inverts between themes — darkest-is-most-decisive on light, lightest-is-most-decisive on dark. Never port one theme's hex values to the other.",
+        "section": "colors"
+      },
+      {
+        "name": "The Borrowed Ink Rule",
+        "body": "Code injected into markup Smoothcomp drew paints in currentColor and rgba(128,128,128,α), never in panel tokens. A cell added to somebody else's row inherits that row's ink, or it announces itself as foreign.",
+        "section": "colors"
+      },
+      {
+        "name": "The Encoded Colour Rule",
+        "body": "Colour carries meaning or it is not applied. Accent means chosen, leading or focused; the ramp means finish type; won and lost mean a match's outcome; medal colours mean podium. There is no decorative colour in this system.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Line Rule",
+        "body": "Metadata never wraps. A four-fact meta line that reflows makes every table row a different height, so it truncates with an ellipsis and carries the full text in a title instead.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Block Rule",
+        "body": "Every font-size in the panel is declared in the Type block at the top of results.css and nowhere else. Component rules carry colour, layout and truncation; a component that wants a different size joins a step's selector list rather than declaring its own. Smoothcomp's Bootstrap sizes bare headings and <small>, so each step names its elements explicitly instead of trusting inheritance from the panel root.",
+        "section": "typography"
+      },
+      {
+        "name": "The Borrowed Type Rule",
+        "body": "The inline notes drawn onto Smoothcomp's own results sit outside .scwr-results, so no panel token resolves for them and the scale does not apply. They size themselves in em against whatever they were dropped into — the Borrowed Ink Rule extended to type.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tabular Rule",
+        "body": "font-variant-numeric: tabular-nums is set on the panel root and re-asserted on every figure that escapes it. A number that shifts as it updates is a number nobody can compare.",
+        "section": "typography"
+      },
+      {
+        "name": "The Container Rule",
+        "body": "No @media (max-width) describes this panel's layout. If a rule reacts to width, it asks @container scwr.",
+        "section": "layout"
+      },
+      {
+        "name": "The One Gutter Rule",
+        "body": "Sections do not repeat the 20px gutter, they read --pad. The narrow container redefines that one custom property on .scwr-results instead of overriding the padding of the header, tabs, toolbar, status, footer, table and Matchups surface one rule at a time. All other spacing steps a 4px rhythm (--s-1 … --s-7) with a 2px half-step for stacked text; dimensions that are derived rather than rhythmic — the detail row's indent, the head-to-head centre column, control widths — stay literal at the rule that needs them.",
+        "section": "layout"
+      },
+      {
+        "name": "The Fixed Budget Rule",
+        "body": "Column widths are authoritative percentages declared per view, not hints. Adding a column means rebalancing the set to 100%.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat Rule",
+        "body": "No drop shadows, no nested cards, no elevation scale. A surface that needs to separate gets a rule or a tone; if it needs more than that, the layout is wrong.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Drawn Glyph Rule",
+        "body": "Indicators are drawn in CSS or SVG, never borrowed from the font. A caret is a clip-path, a flag is an emoji or an inline SVG with a country name attached, a belt is a box — because a glyph the host font lacks is an indicator that silently disappears.",
+        "section": "shapes"
+      },
+      {
+        "name": "The Second Reading Rule",
+        "body": "Every state that colour communicates also exists in text or shape. The winner has a WINNER label, the leader has LEADS, the sorted column has a caret. Remove all colour and the panel still reports correctly.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do read the host backdrop at runtime and stamp data-scwr-theme; light is the fallback for an unknown host.",
+      "Do keep the win-type vocabulary — order, colour and label — identical in bars, chips, ledger markers and the footer key.",
+      "Do ask @container scwr for every width-dependent rule.",
+      "Do keep numerals tabular, and metadata on one line with the full text in a title.",
+      "Do pair every colour-carried state with a text or shape reading of the same fact.",
+      "Do derive the head-to-head aggregate and its complete ledger from one filtered match set, and show every counted match.",
+      "Do read a finished event's match scores from local storage; they never change, so only the matches missing from the cache are fetched."
+    ],
+    "donts": [
+      "Don't introduce a font family, an outer shadow, an elevation scale or a second accent.",
+      "Don't declare a font-size outside the Type block, or a seventh step inside it. A component that needs different type joins the step it belongs to.",
+      "Don't paint injected cells on Smoothcomp's own rows with panel tokens; they borrow currentColor.",
+      "Don't copy one theme's win-type hexes into the other — the ramp inverts.",
+      "Don't draw a comparison as a full-width rail with a marker on it. A track with a handle reads as a control, and these are results.",
+      "Don't repeat a figure that is already stated nearby; the record carries the wins result, so nothing else needs to.",
+      "Don't hide direct matches behind pagination, disclosure or a summary-only view.",
+      "Don't link hidden or unresolved athletes to guessed profiles.",
+      "Don't treat the narrow-container rules as a mobile product; this is a desktop surface defending itself against a cramped host."
+    ]
+  }
+}

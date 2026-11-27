@@ -6,7 +6,7 @@
 // events, wins or belts change.
 (() => {
   const got = {};
-  let pastUrl, plan, stats, reading;
+  let pastUrl, plan, stats, reading, failed;
   // AJP Tour's profile is Smoothcomp's older page: the wins ring sits in .user-statistics,
   // and Smoothcomp's utility classes that this block uses are filled in by profile.css.
   const ajp = location.hostname === 'ajptour.com';
@@ -217,9 +217,9 @@
     rev++;
     draw();
   }
-  // Placeholders hold the shape of what is being read: the chips, the facts, and a row per belt.
+  // Placeholders hold the shape of what is being read: the chips, the figures, and a row per belt.
   const skeleton = () => `<div class="scwr-chips">${[96, 72, 80].map(w => `<i class="scwr-skel" style="width: ${w}px; height: 20px; border-radius: 999px"></i>`).join('')}</div>`
-    + `<div class="scwr-facts">${[96, 64, 120].map(w => `<div><i class="scwr-skel" style="width: 72px; height: 10px"></i><i class="scwr-skel" style="width: ${w}px; height: 10px"></i></div>`).join('')}</div>`
+    + `<div class="scwr-figures">${'<div><i class="scwr-skel" style="width: 44px; height: 18px"></i><i class="scwr-skel" style="width: 80px; height: 10px"></i></div>'.repeat(2)}</div>`
     + (plan.whole ? '' : `<div class="scwr-belt-split">${'<div class="scwr-split-row"><i class="scwr-skel" style="height: 8px"></i><i class="scwr-skel" style="height: 12px"></i><i class="scwr-skel" style="height: 6px"></i><i class="scwr-skel" style="height: 10px"></i></div>'.repeat(plan.shown)}</div>`);
   const record = (types) => [...picked].reduce(([w, l], type) => [w + (types[type]?.[0] ?? 0), l + (types[type]?.[1] ?? 0)], [0, 0]);
   const rate = SCWRRules.winRate;
@@ -234,9 +234,17 @@
   // finish's wins in its hue, the chips' order, then the losses as the bare track, the win rate inside.
   // AJP draws an older ring this doesn't find, so there the rate leads the facts instead.
   const RING = `${CARD} .gi-relative:has(> [data-pc-name="chart"])`;
+  // Until the matches are counted the ring is a bare track, so Smoothcomp's count never shows first; it comes
+  // back only when nothing will be counted (no events, or the read failed).
   function ring() {
-    const box = stats && document.querySelector(RING);
+    const box = document.querySelector(RING);
     if (!box) return;
+    if (!stats) {
+      const ours = box.querySelector(':scope > .scwr-ring');
+      if (failed || got['past-events']?.meta?.total === 0) return ours?.remove();
+      if (!ours) box.insertAdjacentHTML('beforeend', '<div class="scwr-ring" data-wait aria-busy="true"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" stroke="color-mix(in srgb, currentColor 12%, transparent)"/></svg><i class="scwr-skel" style="width: 56px; height: 22px"></i></div>');
+      return;
+    }
     const [w, l] = record(stats.types), all = w + l;
     const parts = [...finishes().filter(t => picked.has(t) && stats.types[t][0]).map(t => [stats.types[t][0], hue(t)]), [l, 'color-mix(in srgb, currentColor 16%, transparent)']].filter(([n]) => n);
     // Lengths on a circle of 100; a hair apart where segments meet.
@@ -251,10 +259,11 @@
     const counted = finishes().filter(t => picked.has(t) && stats.types[t][0]).map(t => `${stats.types[t][0]} by ${nameOf(t).toLowerCase()}`).join(', ');
     const label = all ? `${rate(w, l)} of ${all} matches won: ${counted}; ${l} lost. Walkovers are not counted.` : 'No matches by these finishes';
     const html = `<svg viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg><div class="scwr-ring-figure gi-text-primary">`
-      + (all ? `<span class="gi-text-3xl" style="${tone(w, l)}">${rate(w, l)}</span><span class="scwr-record gi-text-sm">${wl(w, l)}</span>`
+      + (all ? `<span class="gi-text-3xl" style="${tone(w, l)}">${rate(w, l)}</span><span class="gi-text-secondary gi-text-xs">win rate</span><span class="scwr-record gi-text-xs">${wl(w, l)}</span>`
         : '<span class="gi-text-3xl">–</span><span class="gi-text-secondary gi-text-xs">No matches</span>') + '</div>';
     let ours = box.querySelector(':scope > .scwr-ring');
     if (ours?.dataset.html === html) return;
+    if (ours?.hasAttribute('data-wait')) { ours.removeAttribute('data-wait'); ours.removeAttribute('aria-busy'); }
     ours ??= box.appendChild(Object.assign(document.createElement('div'), { className: 'scwr-ring' }));
     ours.setAttribute('role', 'img');
     ours.setAttribute('aria-label', label);
@@ -262,8 +271,8 @@
     ours.dataset.html = html;
     ours.innerHTML = html;
   }
-  // Facts, one a line, the label on the left and the figure on the right.
-  const fact = (label, value, title) => `<div${title ? ` title="${title}"` : ''}><dt class="gi-text-secondary">${label}</dt><dd>${value}</dd></div>`;
+  // A figure over its label, as the ring's own.
+  const figure = (value, label, title) => `<div title="${title}"><b>${value}</b><span class="gi-text-xs gi-text-secondary">${label}</span></div>`;
   function filled() {
     const [wins, losses] = record(stats.types);
     // Each finish the athlete has won or lost by, its record on the chip; pressed ones count.
@@ -274,31 +283,32 @@
         + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${hue(type)};"></span>`
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
-    const facts = [];
+    const figures = [];
     if (!document.querySelector(RING)) {
       const counted = [...picked].filter(t => stats.types[t]).sort((a, b) => order(a) - order(b)).map(nameOf).join(', ').toLowerCase();
-      facts.push(fact('Win rate', wins + losses ? `<b style="${tone(wins, losses)}">${rate(wins, losses)}</b> · <span class="scwr-record">${wl(wins, losses)}</span>` : 'No matches', `Share of matches won by ${counted || 'the finishes picked'}`));
+      figures.push(figure(wins + losses ? `<span style="${tone(wins, losses)}">${rate(wins, losses)}</span>` : '–', wins + losses ? `win rate · <span class="scwr-record">${wl(wins, losses)}</span>` : 'no matches', `Share of matches won by ${counted || 'the finishes picked'}`));
     }
     // Their wins by submission, out of the wins counted (the site's "By submission").
     const subs = stats.types.submission?.[0] ?? 0;
-    if (picked.has('submission') && wins) facts.push(fact('By submission', `<b>${rate(subs, wins - subs)}</b> of wins`, 'Wins by submission, out of the wins counted'));
+    if (picked.has('submission') && wins) figures.push(figure(rate(subs, wins - subs), 'by submission', `${plural(subs, 'win')} by submission, out of ${wins} counted`));
     // Their points on the scoreboard in the matches by the finishes picked whose score was read (readPoints).
     const pts = (stats.points ?? []).filter(m => picked.has(m.type)), scored = pts.filter(m => m.score);
     if (scored.length) {
       const [f, a] = scored.reduce(([f, a], m) => [f + m.score[0], a + m.score[1]], [0, 0]);
       const line = pointsLine(f, a, scored.length, pts.length);
-      facts.push(fact('Points', `<span class="scwr-record">${wl(f.toLocaleString(), a.toLocaleString())}</span> · <b>${line.each}</b> a match`,
-        `Points on the scoreboard, theirs and their opponents', ${line.total} over ${line.over} whose score was read, by the finishes counted; walkovers and stoppages have none`));
+      figures.push(figure(line.each, 'points a match', `Points on the scoreboard ${f.toLocaleString()}–${a.toLocaleString()}, ${line.total} over ${line.over} whose score was read, by the finishes counted; walkovers and stoppages have none`));
     }
-    // Every event at one belt: the belt, named beside its swatch.
-    if (plan.whole && plan.belt) facts.push(fact('Belt', `${swatch(plan.belt)}${plan.belt[0].toUpperCase()}${plan.belt.slice(1)}`, `Every event at ${plan.belt}`));
+    if (figures.length) html += `<div class="scwr-figures">${figures.join('')}</div>`;
+    // One quiet line under them: the belt when every event was at one, what they usually enter, and the
+    // walkover wins Smoothcomp's own count holds and this one doesn't.
+    const meta = [];
+    if (plan.whole && plan.belt) meta.push(`<span title="Every event at ${plan.belt}">${swatch(plan.belt)}${plan.belt[0].toUpperCase()}${plan.belt.slice(1)}</span>`);
     // The age group and weight class they entered most in the year up to their latest event.
-    const usual = [stats.usual?.age, stats.usual?.weight].filter(Boolean).join(' · ');
-    if (usual) facts.push(fact('Usually', esc(usual), 'The age group and weight class they entered most in the year up to their latest event'));
-    // The walkover wins Smoothcomp's own count holds and this one doesn't.
+    const usual = [stats.usual?.age, stats.usual?.weight].filter(Boolean).join(', ');
+    if (usual) meta.push(`<span title="The age group and weight class they entered most in the year up to their latest event">${esc(usual)}</span>`);
     const walkovers = (got['wins-and-medals']?.data?.win_method_breakdown ?? []).filter(t => finishOf(t.won_by) === 'walkover').reduce((n, t) => n + (Number(t.count) || 0), 0);
-    if (walkovers) facts.push(fact('Left out', plural(walkovers, 'walkover win'), 'Smoothcomp counts walkovers as wins; these figures leave them out'));
-    if (facts.length) html += `<dl class="scwr-facts">${facts.join('')}</dl>`;
+    if (walkovers) meta.push(`<span title="Smoothcomp counts walkovers as wins; these figures leave them out">${plural(walkovers, 'walkover win')} not counted</span>`);
+    if (meta.length) html += `<div class="scwr-meta gi-text-xs gi-text-secondary">${meta.join('<span aria-hidden="true">·</span>')}</div>`;
     // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
     const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
       : stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';
@@ -359,6 +369,9 @@
     const against = showing.startsWith('rival:') && showing.slice(6);
     const shown = against ? [...stats.losses, ...stats.wins].filter(m => person(m.opponent) === against).sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0))
       : stats.losses.filter(loss => showing === 'all' || loss.type === showing);
+    // The scoreboard at the end, theirs first, where its card was read (readPoints): by match id, else by where in the event it was.
+    const at = (m) => (m.id ?? m.match ? `#${m.id ?? m.match}` : `${m.event}|${m.division}|${m.stage}`);
+    const scores = new Map((stats.points ?? []).filter(m => m.score).map(m => [at(m), m.score]));
     const day = (date) => (Date.parse(date) ? new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '');
     return shown.map(loss => {
       const belt = plan.whole ? plan.belt : loss.date && plan.beltOf({ start_date: loss.date });
@@ -366,7 +379,7 @@
         + `<div class="scwr-loss-who">${named(loss, 'who')}${loss.club ? named(loss, 'club') : ''}</div>`
         + `<div class="scwr-loss-how gi-text-xs gi-text-secondary">${against ? `<span class="scwr-${loss.won ? 'won">Won' : 'lost">Lost'}</span>${loss.type ? '<span>·</span>' : ''}` : ''}`
         + (loss.type ? `<span class="gi-h-2 gi-w-2 gi-rounded-full" style="background: ${hue(loss.type)};"></span>`
-          + `<span class="scwr-${loss.won ? 'won' : 'lost'}">${esc(loss.how)}</span>${loss.stage ? `<span>·</span><span>${esc(loss.stage)}</span>` : ''}` : '')
+          + `<span class="scwr-${loss.won ? 'won' : 'lost'}">${esc(loss.how)}</span>${scores.has(at(loss)) ? `<span class="scwr-record gi-text-primary" title="Score: theirs, then the opponent's">${wl(...scores.get(at(loss)))}</span>` : ''}${loss.stage ? `<span>·</span><span>${esc(loss.stage)}</span>` : ''}` : '')
         // The bracket it was lost in, linked; then the event and its date.
         + (loss.division ? `<span>·</span>${loss.bracket ? `<a href="/${esc(locale())}/event/${Number(loss.event)}/bracket/${Number(loss.bracket)}">${esc(loss.division)}</a>` : `<span>${esc(loss.division)}</span>`}` : '') + '</div>'
         + `<div class="scwr-loss-how gi-text-xs gi-text-secondary"><a href="/${esc(locale())}/event/${Number(loss.event)}">${esc(loss.title ?? 'Event')}</a>${loss.date ? `<span>·</span><span>${day(loss.date)}</span>` : ''}</div></div>${belt ? swatch(belt).replace('<i ', `<i title="${belt} belt then" `) : ''}</li>`;
@@ -397,11 +410,12 @@
     dialog.showModal();
   }
   const draw = () => {
+    ring();
     const chart = document.querySelector(ajp ? CARD : `${CARD} > div`);
     if (!chart || !got['wins-and-medals'] || !got.skills || !Array.isArray(got['past-events']?.data) || !got['past-events'].meta?.total || !pastUrl) return;
     plan ??= SCWRProfile.planBelts(got.skills?.data);
     // Read once a visit: reading is true while it runs and false once done.
-    if (reading == null) readStats().catch(() => { plan.loading = false; if (stats?.reading) show({ ...stats, reading: null }); else draw(); });
+    if (reading == null) readStats().catch(() => { failed = true; plan.loading = false; if (stats?.reading) show({ ...stats, reading: null }); else draw(); });
     // See losses sits beside Smoothcomp's own See all wins, made of the same parts
     // (its scoped style attributes and its chevron) so the two read as a pair.
     const theirs = document.querySelector('.match-statistics-action button:not(.scwr-losses-open)');
@@ -412,7 +426,6 @@
       ours.querySelector('span').textContent = 'See losses';
       theirs.after(ours);
     }
-    ring();
     const stage = stats ? `done${rev}` : plan.loading ? 'loading' : '';
     const box = chart.querySelector('.scwr-more');
     if (!stage) return box?.remove();

@@ -16,12 +16,14 @@
 .scwr-ring circle { fill: none; stroke-width: 5; }
 .scwr-ring-figure { display: grid; justify-items: center; gap: 2px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .scwr-ring-figure > :first-child { font-weight: 600; letter-spacing: -0.02em; }
-/* The facts: one a line, label left and figure right, on the belt rows' width so the two line up. */
-.scwr-facts { display: grid; gap: 6px; width: 300px; max-width: 100%; margin: 0 auto 14px; }
-.scwr-facts > div { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
-.scwr-facts dt, .scwr-facts dd { margin: 0; font-weight: 400; white-space: nowrap; }
-.scwr-facts dd { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
-.scwr-facts b { font-weight: 600; }
+/* The figures sit side by side, each over its label like the ring's own, a hairline between. */
+.scwr-figures { display: flex; justify-content: center; padding-bottom: 12px; }
+.scwr-figures > div { display: grid; justify-items: center; gap: 4px; padding: 0 22px; white-space: nowrap; }
+.scwr-figures > div + div { border-left: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+.scwr-figures b { font-size: 20px; font-weight: 600; line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+/* Then one quiet line of what else is known, on one line. */
+.scwr-meta { display: flex; justify-content: center; align-items: center; gap: 6px; padding-bottom: 14px; white-space: nowrap; }
+.scwr-meta > span { display: inline-flex; align-items: center; gap: 6px; }
 .scwr-progress { text-align: center; padding-bottom: 10px; font-variant-numeric: tabular-nums; }
 /* Once read, the finish chips here carry each finish's wins and losses, so Smoothcomp's own
    wins-only chip row above them goes. */

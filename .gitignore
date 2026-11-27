@@ -2,5 +2,6 @@ node_modules/
 .DS_Store
 *.zip
 dist/
-.impeccable/
+.impeccable/hook.cache.json
+.impeccable/.impeccable/
 .wrangler/

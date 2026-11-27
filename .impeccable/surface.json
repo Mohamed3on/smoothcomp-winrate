@@ -1,0 +1,12 @@
+{
+  "title": "Choose the stats site's structure",
+  "question": "Three structures for the public Mat Stats site, all in the existing dark ledger look. Lock one.",
+  "options": [
+    {"id":"tape","kind":"assigned","kicker":"THE ROLL","label":"Tale of the tape","thesis":"Rankings on the left; pick any two rows and a pre-fight tale of the tape builds beside them.","palette":["#111316","#17191c","#79b3ea","#a9cff0","#e3b757"],"materials":["ledger table","head-to-head band"],"viewport":"Athlete rankings with quality filters fill the left; a sticky comparison column on the right compares two picked athletes or teams, figure by figure.","risk":"The comparison column is empty until two rows are picked, so it needs a good default (the top two).","html":"/Users/mohamed/personal/extensions/smoothcomp-winrate/.impeccable/sketches/tape.html"},
+    {"id":"board","kind":"dealt","label":"Belt standings board","thesis":"The home page as standings: a top-seven table per belt, like weight-class rankings, with top teams and the latest events under them.","palette":["#111316","#17191c","#79b3ea","#6c3fa0","#7a4a25"],"materials":["belt-coloured column heads","mini leaderboards"],"viewport":"A summary row (athletes, teams, events, matches read), then four belt columns of ranked athletes, then the top teams and latest events.","risk":"It's an overview first; full rankings sit one click deeper.","html":"/Users/mohamed/personal/extensions/smoothcomp-winrate/.impeccable/sketches/board.html"},
+    {"id":"calendar","kind":"dealt","label":"Season spine","thesis":"Events in date order are the spine; each one shows its podiums and team medal count, and rankings sit in a tab.","palette":["#111316","#17191c","#e3b757","#c3c9d2","#d59a68"],"materials":["event cards","podium rows"],"viewport":"A month index on the left; on the right, event cards with date, place, athlete count, the medal tally, the top team and the leading podiums.","risk":"Rankings, the main thing asked for, become secondary.","html":"/Users/mohamed/personal/extensions/smoothcomp-winrate/.impeccable/sketches/calendar.html"}
+  ],
+  "reroll": true,
+  "steer": true,
+  "buildPath": {"value":"code","toggle":false}
+}
