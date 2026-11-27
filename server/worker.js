@@ -4,7 +4,7 @@
 import '../rules.js';
 import { API, BOARD, CLUBS, EVENT_COUNTS, MERGE, TALLY } from './stats.js';
 import { budget } from './budget.js';
-import { PLACED, locate, notBjj } from './crawl.js';
+import { PLACED, locate, notBjj, mixed, bjjDivision } from './crawl.js';
 
 const { BELTS, finishOf, detailOf, beltOf, normalize, eventRecords, usualDivision, bracketOf, overSql, wonNothingSql, photo, words, regOf, Outcome, matchFinder } = globalThis.SCWRRules;
 
@@ -617,12 +617,20 @@ export { record };
 // once overloaded D1), its results, registrations, records, match lists and place in athletes' event lists deleted; its athletes
 // and academies are recounted, and an athlete or academy left with nothing kept at all is forgotten. Who's to recount goes into
 // meta 'purge' with the deletion, so a run cut short after it is finished by the next. The event itself stays listed.
+// A Ju-Jitsu or Grappling event (crawl.js mixed) is judged once its results are read: kept whole when a division says BJJ.
 export async function purge(env) {
   const left = await env.DB.prepare("SELECT v FROM meta WHERE k = 'purge'").first('v');
   if (left) return recount(env, JSON.parse(left));
-  const due = await env.DB.prepare(`SELECT v.site, v.event FROM events v WHERE ${notBjj('v')}
-    AND (v.athletes > 0 OR v.fought IS NOT NULL OR (v.site, v.event) IN (SELECT site, event FROM history UNION SELECT site, event FROM outcomes)) LIMIT 1`).first();
-  if (!due) return 0;
+  // Finding the next costs some 60k rows read (the athletes' event lists read once, up front): with none left, it rests an hour.
+  if (await env.DB.prepare("SELECT 1 FROM meta WHERE k = 'purge:idle' AND v > ?1").bind(Date.now() - 3600e3).first()) return 0;
+  const due = await env.DB.prepare(`WITH listed AS MATERIALIZED (SELECT site, event FROM history UNION SELECT site, event FROM outcomes)
+    SELECT v.site, v.event FROM events v WHERE ${notBjj('v')} AND iif(${mixed('v')},
+      v.fought = 1 AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND ${bjjDivision('e')}),
+      v.athletes > 0 OR v.fought IS NOT NULL OR EXISTS (SELECT 1 FROM listed l WHERE l.site = v.site AND l.event = v.event)) LIMIT 1`).first();
+  if (!due) {
+    await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('purge:idle', ?1)").bind(Date.now()).run();
+    return 0;
+  }
   const { site, event } = due;
   const at = (t, e = 'event') => `FROM ${t} WHERE site = ?1 AND ${e} = ?2`;
   const [users, clubs] = (await env.DB.batch([

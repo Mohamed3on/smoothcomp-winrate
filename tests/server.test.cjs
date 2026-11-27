@@ -742,10 +742,17 @@ test("what was kept of an event that isn't BJJ goes, and whoever is left with no
     13: { name: 'Jo Do', club: 'Judo Club', clubId: '503', entries: [{ division: 'Adult / -73 kg', place: 1, wins: { points: 2 }, losses: {} }] } } });
   await post('/record', { site, event: '902', records: { 12: [1, 0] }, meta: { ...meta, title: 'AIGA Grappling Series' }, read,
     athletes: { 12: entered(12, { division: 'Adult / -76 kg', place: 1, wins: { submission: 1 }, losses: {} }) } });
-  db.exec(`UPDATE events SET sports = '["1"]' WHERE event = '900'; UPDATE events SET sports = '["26"]' WHERE event = '901'; UPDATE events SET sports = '["32"]' WHERE event = '902'`);
-  const ranked = async () => (await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json()).rows.map((r) => [r.user, r.wins]);
-  assert.deepEqual(await ranked(), [['11', 4], ['12', 2], ['13', 2]]);
-  // The judo goes; the grappling event its title calls BJJ stays, as does all of the BJJ event.
+  // Ju-Jitsu events: one with a No-Gi division, one with fighting alone.
+  await post('/record', { site, event: '903', records: { 12: [1, 0] }, meta: { ...meta, title: 'Astana Tour' }, read,
+    athletes: { 12: entered(12, { division: 'MALE NO GI / (+18 years) / -62 kg', place: 1, wins: { submission: 1 }, losses: {} }) } });
+  await post('/record', { site, event: '904', records: { 13: [1, 0] }, meta: { ...meta, title: 'National Ju-Jitsu Tour' }, read,
+    athletes: { 13: { name: 'Jo Do', club: 'Judo Club', clubId: '503', entries: [{ division: 'MALE/FIGHTING / -62 kg', place: 1, wins: { points: 1 }, losses: {} }] } } });
+  db.exec(`UPDATE events SET sports = '["1"]' WHERE event = '900'; UPDATE events SET sports = '["26"]' WHERE event = '901'; UPDATE events SET sports = '["32"]' WHERE event = '902';
+    UPDATE events SET sports = '["2"]' WHERE event IN ('903', '904')`);
+  const ranked = async () => (await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json()).rows.map((r) => [r.user, r.wins]).sort();
+  assert.deepEqual(await ranked(), [['11', 4], ['12', 3], ['13', 3]]);
+  // The judo goes, and the Ju-Jitsu event with no BJJ division; the grappling event its title calls BJJ stays, and the
+  // Ju-Jitsu event with a No-Gi division, as does all of the BJJ event.
   // A run cut short after the deletion leaves who's to recount, and the next run finishes it.
   const real = DB.prepare;
   let cut = true;
@@ -754,10 +761,13 @@ test("what was kept of an event that isn't BJJ goes, and whoever is left with no
   assert.ok(db.prepare("SELECT v FROM meta WHERE k = 'purge'").get());
   cut = false;
   assert.equal(await purge(env), 1);
+  assert.equal(await purge(env), 1);
   assert.equal(await purge(env), 0);
   env.DB = DB;
-  assert.deepEqual(await ranked(), [['11', 3], ['12', 2]]);
-  assert.deepEqual(db.prepare('SELECT DISTINCT event FROM entries ORDER BY event').all().map((r) => r.event), ['900', '902']);
+  // With none left it rests an hour, then looks again.
+  assert.ok(db.prepare("SELECT v FROM meta WHERE k = 'purge:idle'").get());
+  assert.deepEqual(await ranked(), [['11', 3], ['12', 3]]);
+  assert.deepEqual(db.prepare('SELECT DISTINCT event FROM entries ORDER BY event').all().map((r) => r.event), ['900', '902', '903']);
   assert.deepEqual(db.prepare('SELECT user FROM people ORDER BY user').all().map((r) => r.user), ['11', '12']);
   assert.deepEqual(db.prepare('SELECT club_id FROM clubs ORDER BY club_id').all().map((r) => r.club_id), ['501', '502']);
   assert.deepEqual({ ...db.prepare("SELECT athletes, fought FROM events WHERE event = '901'").get() }, { athletes: 0, fought: null });

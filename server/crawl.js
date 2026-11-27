@@ -294,7 +294,14 @@ const WORDS = ['bjj', 'jiu%jitsu', 'jiujitsu', 'ne-waza', 'newaza', 'ne waza', '
   'жиу', 'ЖИУ', 'реппл', 'РЕППЛ', 'рэппл', 'РЭППЛ'];
 export const notBjj = (v) => `(${v}.sports IS NOT NULL AND NOT EXISTS (SELECT 1 FROM json_each(${v}.sports) j WHERE j.value IN (${BJJ.map((x) => `'${x}'`).join(', ')}))
   AND NOT (${WORDS.map((w) => `coalesce(${v}.title, '') LIKE '%${w}%'`).join(' OR ')}))`;
-const other = (site, event) => `EXISTS (SELECT 1 FROM events o WHERE o.site = ${site} AND o.event = ${event} AND ${notBjj('o')})`;
+// Ju-Jitsu (2, 17) and Grappling (32) events often hold BJJ divisions (Gi, No-Gi, Ne-Waza) beside fighting and wrestling ones
+// under a title that doesn't say so ("Astana Ju-Jitsu Tour", "Ramadan Cup"): they are read, and kept when a division name
+// says BJJ (worker.js purge). Its words are matched whole: "gi" in "Kyorugi" or "Girls" isn't one.
+const MIXED = ['2', '17', '32'];
+export const mixed = (v) => `EXISTS (SELECT 1 FROM json_each(${v}.sports) j WHERE j.value IN (${MIXED.map((x) => `'${x}'`).join(', ')}))`;
+const DIVISION = ['gi', 'nogi', 'no gi', 'ne waza', 'newaza', 'bjj', 'jiu jitsu', 'jiujitsu', 'adcc'];
+export const bjjDivision = (e) => `(${[...DIVISION.map((w) => `% ${w} %`), '%grappl%', '%submission%'].map((w) => `(' ' || replace(replace(replace(replace(${e}.division, '/', ' '), '(', ' '), ')', ' '), '-', ' ') || ' ') LIKE '${w}'`).join(' OR ')})`;
+const other = (site, event) => `EXISTS (SELECT 1 FROM events o WHERE o.site = ${site} AND o.event = ${event} AND ${notBjj('o')} AND NOT ${mixed('o')})`;
 
 // Where an event stands in the queue (crawls.priority, higher first; one someone viewed is 3, ahead of all): nearest Berlin
 // first (the user's bias), in bands of 100, 350, 700, 1,500 and 3,000 km, then in each band Smoothcomp's events an athlete we
