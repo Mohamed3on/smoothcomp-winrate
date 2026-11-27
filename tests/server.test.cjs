@@ -746,8 +746,16 @@ test("what was kept of an event that isn't BJJ goes, and whoever is left with no
   const ranked = async () => (await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json()).rows.map((r) => [r.user, r.wins]);
   assert.deepEqual(await ranked(), [['11', 4], ['12', 2], ['13', 2]]);
   // The judo goes; the grappling event its title calls BJJ stays, as does all of the BJJ event.
+  // A run cut short after the deletion leaves who's to recount, and the next run finishes it.
+  const real = DB.prepare;
+  let cut = true;
+  env.DB = { ...DB, prepare: (sql) => (cut && sql.startsWith('DELETE FROM people') ? { bind: () => ({ run: async () => { throw new Error('overloaded'); } }) } : real(sql)) };
+  await assert.rejects(purge(env));
+  assert.ok(db.prepare("SELECT v FROM meta WHERE k = 'purge'").get());
+  cut = false;
   assert.equal(await purge(env), 1);
   assert.equal(await purge(env), 0);
+  env.DB = DB;
   assert.deepEqual(await ranked(), [['11', 3], ['12', 2]]);
   assert.deepEqual(db.prepare('SELECT DISTINCT event FROM entries ORDER BY event').all().map((r) => r.event), ['900', '902']);
   assert.deepEqual(db.prepare('SELECT user FROM people ORDER BY user').all().map((r) => r.user), ['11', '12']);

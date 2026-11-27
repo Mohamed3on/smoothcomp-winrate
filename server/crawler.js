@@ -35,8 +35,8 @@ export default {
     if (at.getUTCHours() === 3 && at.getUTCMinutes() === 15) await env.SELF.fetch('https://crawler/list', { headers: { 'x-crawl-key': env.CRAWL_KEY } });
     // The academies list's totals over those who competed in the last two years, once an hour (stats.js keepRecent).
     if (at.getUTCMinutes() === 20) for (const site of ['smoothcomp.com', 'ajptour.com']) await keepRecent(env, site).catch((e) => console.error('recent', site, e?.message));
-    // What was kept of events that aren't BJJ goes, a few every five minutes (worker.js purge).
-    if (at.getUTCMinutes() % 5 === 2) await purge(env).catch((e) => console.error('purge', e?.message));
+    // What was kept of events that aren't BJJ goes, an event a minute (worker.js purge).
+    await purge(env).catch((e) => console.error('purge', e?.message));
     // One academy whose page names no place, looked up on Google Maps, every ten minutes.
     if (at.getUTCMinutes() % 10 === 5) await findClubs(env);
     // Academies' pages, a few each minute, for where each academy says it is; and upcoming events' pages, for how many entered.

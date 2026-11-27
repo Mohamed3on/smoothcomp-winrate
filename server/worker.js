@@ -613,37 +613,43 @@ export default {
 // The crawler Worker (crawler.js) saves an event's results the way a results page does, or, where a
 // results page already did, adds each athlete's matches to its rows and leaves the rest as published.
 export { record };
-// What was kept of events that aren't BJJ (crawl.js notBjj), whoever sent it: a few at a time from the crawler's cron, each one's
-// results, registrations, records, match lists and place in athletes' event lists go; its athletes and academies are recounted,
-// and an athlete or academy left with nothing kept at all is forgotten. The event itself stays listed (the events list leaves it out).
-export async function purge(env, take = 10) {
-  const { results: due } = await env.DB.prepare(`SELECT v.site, v.event FROM events v WHERE ${notBjj('v')}
-    AND (v.athletes > 0 OR v.fought IS NOT NULL OR (v.site, v.event) IN (SELECT site, event FROM history UNION SELECT site, event FROM outcomes)) LIMIT ?1`).bind(take).all();
-  for (const site of SITES) {
-    const events = due.filter((v) => v.site === site).map((v) => v.event);
-    if (!events.length) continue;
-    const ids = JSON.stringify(events);
-    const at = (t, e = 'event') => `FROM ${t} WHERE site = ?1 AND ${e} IN (SELECT value FROM json_each(?2))`;
-    const [users, clubs] = (await env.DB.batch([
-      env.DB.prepare(`SELECT user ${at('entries')} UNION SELECT user ${at('history', '+event')} UNION SELECT user ${at('outcomes', '+event')}`).bind(site, ids),
-      env.DB.prepare(`SELECT DISTINCT +club_id AS club_id ${at('entries')} AND +club_id IS NOT NULL`).bind(site, ids),
-    ])).map((r) => r.results);
-    await env.DB.batch(['entries', 'records', 'reads', 'crawls', 'history', 'outcomes'].map((t) => env.DB.prepare(`DELETE ${at(t)}`).bind(site, ids)));
-    await env.DB.batch(events.map((event) => env.DB.prepare(EVENT_COUNTS).bind(site, event)));
-    const all = users.map((r) => r.user);
-    for (let i = 0; i < all.length; i += 2000) {
-      const some = all.slice(i, i + 2000);
-      await retally(env, site, some);
-      const none = ['entries', 'history', 'outcomes', 'athletes', 'profiles', 'belts', 'records'].map((t) => `NOT EXISTS (SELECT 1 FROM ${t} x WHERE x.site = ?1 AND x.user = people.user)`).join(' AND ');
-      await env.DB.prepare(`DELETE FROM people WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ${none}`).bind(site, JSON.stringify(some)).run();
-    }
-    const academies = JSON.stringify(clubs.map((r) => r.club_id));
-    await env.DB.prepare(CLUBS).bind(site, academies).run();
-    const gone = `site = ?1 AND club_id IN (SELECT value FROM json_each(?2)) AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.club_id = `;
-    await env.DB.batch([env.DB.prepare(`DELETE FROM clubs WHERE ${gone}clubs.club_id)`).bind(site, academies),
-      env.DB.prepare(`DELETE FROM club_places WHERE ${gone}club_places.club_id)`).bind(site, academies)]);
+// What was kept of events that aren't BJJ (crawl.js notBjj), whoever sent it: one event a minute from the crawler's cron (ten at
+// once overloaded D1), its results, registrations, records, match lists and place in athletes' event lists deleted; its athletes
+// and academies are recounted, and an athlete or academy left with nothing kept at all is forgotten. Who's to recount goes into
+// meta 'purge' with the deletion, so a run cut short after it is finished by the next. The event itself stays listed.
+export async function purge(env) {
+  const left = await env.DB.prepare("SELECT v FROM meta WHERE k = 'purge'").first('v');
+  if (left) return recount(env, JSON.parse(left));
+  const due = await env.DB.prepare(`SELECT v.site, v.event FROM events v WHERE ${notBjj('v')}
+    AND (v.athletes > 0 OR v.fought IS NOT NULL OR (v.site, v.event) IN (SELECT site, event FROM history UNION SELECT site, event FROM outcomes)) LIMIT 1`).first();
+  if (!due) return 0;
+  const { site, event } = due;
+  const at = (t, e = 'event') => `FROM ${t} WHERE site = ?1 AND ${e} = ?2`;
+  const [users, clubs] = (await env.DB.batch([
+    env.DB.prepare(`SELECT user ${at('entries')} UNION SELECT user ${at('history', '+event')} UNION SELECT user ${at('outcomes', '+event')}`).bind(site, event),
+    env.DB.prepare(`SELECT DISTINCT +club_id AS club_id ${at('entries')} AND +club_id IS NOT NULL`).bind(site, event),
+  ])).map((r) => r.results);
+  const job = { site, users: users.map((r) => r.user), clubs: clubs.map((r) => r.club_id) };
+  await env.DB.batch([env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('purge', ?1)").bind(JSON.stringify(job)),
+    ...['entries', 'records', 'reads', 'crawls', 'history', 'outcomes'].map((t) => env.DB.prepare(`DELETE ${at(t)}`).bind(site, event)),
+    env.DB.prepare(EVENT_COUNTS).bind(site, event)]);
+  return recount(env, job);
+}
+
+async function recount(env, { site, users, clubs }) {
+  const none = ['entries', 'history', 'outcomes', 'athletes', 'profiles', 'belts', 'records'].map((t) => `NOT EXISTS (SELECT 1 FROM ${t} x WHERE x.site = ?1 AND x.user = people.user)`).join(' AND ');
+  for (let i = 0; i < users.length; i += 400) {
+    const some = users.slice(i, i + 400);
+    await retally(env, site, some);
+    await env.DB.prepare(`DELETE FROM people WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2)) AND ${none}`).bind(site, JSON.stringify(some)).run();
   }
-  return due.length;
+  const academies = JSON.stringify(clubs);
+  await env.DB.prepare(CLUBS).bind(site, academies).run();
+  const gone = `site = ?1 AND club_id IN (SELECT value FROM json_each(?2)) AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.club_id = `;
+  await env.DB.batch([env.DB.prepare(`DELETE FROM clubs WHERE ${gone}clubs.club_id)`).bind(site, academies),
+    env.DB.prepare(`DELETE FROM club_places WHERE ${gone}club_places.club_id)`).bind(site, academies),
+    env.DB.prepare("DELETE FROM meta WHERE k = 'purge'")]);
+  return 1;
 }
 
 export async function addBouts(env, site, event, athletes) {
