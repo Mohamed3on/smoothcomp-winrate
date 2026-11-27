@@ -49,9 +49,11 @@ const seen = new WeakMap();
 export async function budget(env, now = Date.now(), fresh = false) {
   let got = seen.get(env.DB);
   if (fresh || !got || now - got.read > 60e3) {
-    const row = await env.DB.prepare("SELECT v FROM meta WHERE k = 'budget'").first('v').catch(() => null);
-    seen.set(env.DB, (got = { read: now, kept: row ? JSON.parse(row) : null }));
+    const row = await env.DB.prepare("SELECT (SELECT v FROM meta WHERE k = 'budget') AS v, (SELECT v FROM meta WHERE k = 'pause') AS pause").first().catch(() => null);
+    seen.set(env.DB, (got = { read: now, kept: row?.v ? JSON.parse(row.v) : null, pause: row?.pause ?? 0 }));
   }
+  // A pause set by hand (meta 'pause' = until, ms) stops all writing, as 'stop' does: for a migration.
+  if (got.pause > now) return 'stop';
   const { kept } = got;
   if (!kept || now - kept.at > STALE) return kept?.state === 'stop' ? 'stop' : 'slow';
   return kept.state;

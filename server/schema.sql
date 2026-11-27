@@ -57,6 +57,9 @@ CREATE TABLE IF NOT EXISTS events (
 );
 -- One row per athlete per division. A results page's rows (fought = 1) replace
 -- the registration list's (fought = 0), which only say who entered.
+-- The tables written per athlete (entries, tallies, board, board_own, club_board) are WITHOUT ROWID: D1 bills a new row in a
+-- rowid table keyed on several columns twice (the row and its key's index), one WITHOUT ROWID once (measured 2026-11-27).
+-- D1 was rebuilt to match by hand (copy, check, swap); people and events keep rowids, which their search indexes use.
 CREATE TABLE IF NOT EXISTS entries (
   site TEXT NOT NULL,
   event TEXT NOT NULL,
@@ -71,7 +74,7 @@ CREATE TABLE IF NOT EXISTS entries (
   at INTEGER NOT NULL,
   bouts TEXT, -- each match in the division: won, finish, opponent and their user, round (JSON)
   PRIMARY KEY (site, event, user, division)
-);
+) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS entries_user ON entries (site, user);
 -- When each layer of an event's entries (fought: 0 registrations, 1 results) was last read: an older read
 -- arriving after a newer one changes nothing, and the event page says how fresh each layer is.
@@ -164,7 +167,7 @@ CREATE TABLE IF NOT EXISTS tallies (
   -- The events their profile lists that they didn't show at (stats.js missed), left out of listed and last.
   absent INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (site, user)
-);
+) WITHOUT ROWID;
 -- One row per athlete with everything a ranking shows (stats.js BOARD), rebuilt with their tally:
 -- who they are, and wins per finish group (w_: career or results; rw_/rl_: the record's won and lost;
 -- sl_: results losses), so a ranking sums the columns of the finishes counted.
@@ -181,7 +184,7 @@ CREATE TABLE IF NOT EXISTS board (
   -- The bracket they rank in (rules.js bracketOf: m/f, age group, weight class), from their divisions (worker.js retally). Taken by ALTER TABLE on D1.
   sex TEXT, age TEXT, weight INTEGER,
   PRIMARY KEY (site, user)
-);
+) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS board_club ON board (site, club_id);
 -- A board row of each account that shares its person with another (stats.js MERGE), as that account alone gives it:
 -- the board holds every such account's person, summed from these.
@@ -195,7 +198,7 @@ CREATE TABLE IF NOT EXISTS board_own (
   sl_submission INTEGER, sl_points INTEGER, sl_walkover INTEGER, sl_decision INTEGER, sl_disqualification INTEGER, sl_stoppage INTEGER, sl_fastest_escape INTEGER, sl_other INTEGER,
   sex TEXT, age TEXT, weight INTEGER,
   PRIMARY KEY (site, user)
-);
+) WITHOUT ROWID;
 -- The default ranking's wins and losses (every finish but walkovers, in rules.js FINISHES order, as stats.js careersOf
 -- sums them: wins, then lost), a person's other accounts on a site apart (dup): the athletes ranking reads its page and its count off it. A query that must not walk it
 -- (an academy's athletes) writes +wins; without that the academies list walked it once per academy and reset D1 (2026-11-24).
@@ -275,7 +278,7 @@ CREATE TABLE IF NOT EXISTS club_board (
   site TEXT NOT NULL, club_id TEXT NOT NULL, athletes INTEGER NOT NULL, wins INTEGER NOT NULL, submission INTEGER NOT NULL, points INTEGER NOT NULL,
   gold INTEGER NOT NULL, silver INTEGER NOT NULL, bronze INTEGER NOT NULL, won INTEGER NOT NULL DEFAULT 0, lost INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (site, club_id)
-);
+) WITHOUT ROWID;
 -- club_board over the athletes who competed in the last two years (stats.js keepRecent, hourly from the crawler).
 CREATE TABLE IF NOT EXISTS club_recent (
   site TEXT NOT NULL, club_id TEXT NOT NULL, athletes INTEGER NOT NULL, wins INTEGER NOT NULL, submission INTEGER NOT NULL, points INTEGER NOT NULL,
