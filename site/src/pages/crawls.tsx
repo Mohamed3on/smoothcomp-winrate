@@ -9,8 +9,18 @@ import { get } from '@/lib/api';
 import { useFilters } from '@/lib/filters';
 import { date, fmt } from '@/lib/format';
 
-interface Crawl { site: string; event: string; title: string | null; city: string | null; start: string | null; at: number; matches: number | null; named?: number | null; missed?: number | null; tried?: number | null }
+interface Crawl { site: string; event: string; title: string | null; city: string | null; start: string | null; at: number; matches: number | null; named?: number | null; missed?: number | null; tried?: number | null; priority: number }
 interface Data { states: Record<string, number>; hours: { hour: number; n: number }[]; reading: Crawl[]; latest: Crawl[] }
+
+// Why an event sits where it does in the queue: crawls.priority read back through server/crawl.js RANK (3 = someone opened an
+// athlete or academy that competed there; else -(4 × distance band + 1 for AJP + 2 unless an athlete we hold competed there)).
+const BANDS = ['Under 100 km from Berlin', '100–350 km from Berlin', '350–700 km from Berlin', '700–1,500 km from Berlin', '1,500–3,000 km from Berlin', 'Over 3,000 km from Berlin, or place unknown'];
+const why = (p: number) => {
+  if (p >= 3) return 'Opened on the site: someone looked at an athlete or academy that competed there';
+  if (p > 0) return 'In Germany (the queue order before 26 Nov)';
+  const n = -p;
+  return [BANDS[Math.min(5, Math.floor(n / 4))], n % 4 < 2 ? 'athletes we know competed' : 'no athletes we know', n % 2 ? 'AJP (after Smoothcomp)' : null].filter(Boolean).join(' · ');
+};
 
 const ago = (at: number) => {
   const s = Math.max(0, (Date.now() - at) / 1000);
@@ -33,9 +43,10 @@ export function CrawlsPage() {
     <Link href={f.linkOn(`/event/${c.event}`, c.site)} className="font-medium hover:text-primary">{c.title ?? `Event ${c.event}`}</Link>
   );
   const where = (c: Crawl) => [c.city, date(c.start), c.site === 'ajptour.com' ? 'AJP Tour' : null].filter(Boolean).join(' · ');
+  const order = (c: Crawl) => <span className="text-xs text-muted-foreground">Why: {why(c.priority)}</span>;
   return (
     <div className="flex flex-col gap-6">
-      <PageHead title="Crawler" text="Events the server reads itself, newest first. Refreshes every 30 seconds." />
+      <PageHead title="Crawler" text="Events the server reads itself. Events someone opened on the site come first. After that the queue goes by distance from Berlin, then events where athletes we know competed, then Smoothcomp before AJP, then newest first. Refreshes every 30 seconds." />
       <Card className="py-0"><dl className="grid grid-cols-2 sm:grid-cols-4 sm:divide-x">
         <Stat label="Finished, last 24 hours">{fmt(day)}</Stat>
         <Stat label="Reading now">{fmt(data.states.reading ?? 0)}</Stat>
@@ -58,7 +69,7 @@ export function CrawlsPage() {
           <div key={`${c.site} ${c.event}`} className="flex flex-col gap-1.5 border-b px-5 py-3 text-sm last:border-0">
             <div className="flex flex-wrap items-baseline justify-between gap-x-4">{event(c)}<span className="text-xs text-muted-foreground tabular-nums">{fmt(c.tried)} of {fmt(c.matches)} matches asked · {ago(c.at)}</span></div>
             <div className="h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, ((c.tried ?? 0) / Math.max(1, c.matches ?? 0)) * 100)}%` }} /></div>
-            <span className="text-xs text-muted-foreground">{where(c)}</span>
+            <span className="text-xs text-muted-foreground">{where(c)}</span>{order(c)}
           </div>
         ))}</Card>
       </section>}
@@ -72,7 +83,7 @@ export function CrawlsPage() {
           <TableBody>{data.latest.map((c) => (
             <TableRow key={`${c.site} ${c.event}`}>
               <TableCell className="pl-5 align-top text-muted-foreground" title={new Date(c.at).toLocaleString()}>{ago(c.at)}</TableCell>
-              <TableCell className="whitespace-normal"><div className="flex flex-col gap-0.5">{event(c)}<span className="text-xs text-muted-foreground">{where(c)}</span></div></TableCell>
+              <TableCell className="whitespace-normal"><div className="flex flex-col gap-0.5">{event(c)}<span className="text-xs text-muted-foreground">{where(c)}</span>{order(c)}</div></TableCell>
               <TableCell className="text-right align-top tabular-nums">{fmt(c.matches)}</TableCell>
               <TableCell className="pr-5 text-right align-top tabular-nums" title={c.missed ? `${fmt(c.missed)} sides left unnamed` : undefined}>{fmt(c.named)}</TableCell>
             </TableRow>

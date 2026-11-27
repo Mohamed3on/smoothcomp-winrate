@@ -792,9 +792,9 @@ async function crawls(env) {
   const [states, hours, reading, latest] = (await env.DB.batch([
     env.DB.prepare('SELECT state, count(*) AS n FROM crawls GROUP BY state'),
     env.DB.prepare("SELECT at / 3600000 * 3600000 AS hour, count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1 GROUP BY 1 ORDER BY 1").bind(day),
-    env.DB.prepare(`SELECT site, event, title, city, start, at, json_array_length(data, '$.matches') AS matches, json_array_length(data, '$.tried') AS tried
+    env.DB.prepare(`SELECT site, event, title, city, start, at, priority, json_array_length(data, '$.matches') AS matches, json_array_length(data, '$.tried') AS tried
       FROM crawls WHERE state = 'reading' AND data IS NOT NULL ORDER BY at DESC`),
-    env.DB.prepare(`SELECT site, event, title, city, start, at, data ->> '$.matches' AS matches, data ->> '$.named' AS named, data ->> '$.missed' AS missed
+    env.DB.prepare(`SELECT site, event, title, city, start, at, priority, data ->> '$.matches' AS matches, data ->> '$.named' AS named, data ->> '$.missed' AS missed
       FROM crawls WHERE state = 'done' ORDER BY at DESC LIMIT 100`),
   ])).map((r) => r.results);
   return json({ states: Object.fromEntries(states.map((s) => [s.state, s.n])), hours, reading, latest });
