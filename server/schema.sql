@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS events (
 -- The tables written per athlete (entries, tallies, board, board_own, club_board) are WITHOUT ROWID: D1 bills a new row in a
 -- rowid table keyed on several columns twice (the row and its key's index), one WITHOUT ROWID once (measured 2026-11-27).
 -- D1 was rebuilt to match by hand (copy, check, swap); people and events keep rowids, which their search indexes use.
+-- board needs ANALYZE statistics (sqlite_stat1) since: without them SQLite walked every athlete of a site through the
+-- primary key instead of board_club (the academies list took 12 s and D1 answered "overloaded"). Run ANALYZE board
+-- again after rebuilding it or its indexes.
 CREATE TABLE IF NOT EXISTS entries (
   site TEXT NOT NULL,
   event TEXT NOT NULL,
