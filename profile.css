@@ -7,13 +7,22 @@
   transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 @starting-style { .scwr-more { opacity: 0; } }
-/* The win rate leads the block at the size Smoothcomp gives its own key figure's label. */
-.scwr-rate { display: flex; justify-content: center; align-items: baseline; gap: 6px; padding-top: 4px; }
-.scwr-progress { text-align: center; padding-top: 4px; font-variant-numeric: tabular-nums; }
-.scwr-usual { text-align: center; padding-top: 4px; }
-.scwr-points { text-align: center; padding-top: 4px; font-variant-numeric: tabular-nums; }
-.scwr-rate > .scwr-belt { align-self: center; }
-.scwr-rate-figure { font-size: 22px; font-weight: 600; line-height: 1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+/* Our ring takes the place of Smoothcomp's canvas and its count, in the same box: the
+   matches counted, each finish's wins in its chip's hue, the losses as the bare track. */
+.gi-relative:has(> .scwr-ring) > :not(.scwr-ring) { visibility: hidden; }
+.scwr-ring { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1); }
+@starting-style { .scwr-ring { opacity: 0; } }
+.scwr-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
+.scwr-ring circle { fill: none; stroke-width: 5; }
+.scwr-ring-figure { display: grid; justify-items: center; gap: 2px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.scwr-ring-figure > :first-child { font-weight: 600; letter-spacing: -0.02em; }
+/* The facts: one a line, label left and figure right, on the belt rows' width so the two line up. */
+.scwr-facts { display: grid; gap: 6px; width: 300px; max-width: 100%; margin: 0 auto 14px; }
+.scwr-facts > div { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.scwr-facts dt, .scwr-facts dd { margin: 0; font-weight: 400; white-space: nowrap; }
+.scwr-facts dd { display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.scwr-facts b { font-weight: 600; }
+.scwr-progress { text-align: center; padding-bottom: 10px; font-variant-numeric: tabular-nums; }
 /* Once read, the finish chips here carry each finish's wins and losses, so Smoothcomp's own
    wins-only chip row above them goes. */
 .match-statistics-content > div:has(> .scwr-more[data-stage^='done']) > .gi-flex-wrap { display: none; }
@@ -130,7 +139,7 @@
 .scwr-loss-how { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin-top: 2px; }
 .scwr-loss-how > :first-child { flex: none; max-width: 100%; }
 .scwr-loss a { color: inherit; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; border-radius: 2px; transition: text-decoration-color 150ms cubic-bezier(0.23, 1, 0.32, 1); }
-.scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 12px 0 18px; }
+.scwr-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; padding: 0 0 18px; }
 .scwr-belt-split {
   display: grid;
   gap: 8px;

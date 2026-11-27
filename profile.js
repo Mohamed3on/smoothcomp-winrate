@@ -217,9 +217,9 @@
     rev++;
     draw();
   }
-  // Placeholders hold the shape of what is being read: the rate, its chips, and a row per belt.
-  const skeleton = () => '<div class="scwr-rate"><i class="scwr-skel" style="width: 150px; height: 12px"></i></div>'
-    + `<div class="scwr-chips">${[96, 72, 80].map(w => `<i class="scwr-skel" style="width: ${w}px; height: 20px; border-radius: 999px"></i>`).join('')}</div>`
+  // Placeholders hold the shape of what is being read: the chips, the facts, and a row per belt.
+  const skeleton = () => `<div class="scwr-chips">${[96, 72, 80].map(w => `<i class="scwr-skel" style="width: ${w}px; height: 20px; border-radius: 999px"></i>`).join('')}</div>`
+    + `<div class="scwr-facts">${[96, 64, 120].map(w => `<div><i class="scwr-skel" style="width: 72px; height: 10px"></i><i class="scwr-skel" style="width: ${w}px; height: 10px"></i></div>`).join('')}</div>`
     + (plan.whole ? '' : `<div class="scwr-belt-split">${'<div class="scwr-split-row"><i class="scwr-skel" style="height: 8px"></i><i class="scwr-skel" style="height: 12px"></i><i class="scwr-skel" style="height: 6px"></i><i class="scwr-skel" style="height: 10px"></i></div>'.repeat(plan.shown)}</div>`);
   const record = (types) => [...picked].reduce(([w, l], type) => [w + (types[type]?.[0] ?? 0), l + (types[type]?.[1] ?? 0)], [0, 0]);
   const rate = SCWRRules.winRate;
@@ -227,40 +227,82 @@
   const tone = (w, l) => `color: ${SCWRRules.winTone(w, l)}`;
   // Wins read green and losses red, the dash between them neutral.
   const wl = (w, l) => `<span class="scwr-won">${w}</span><span class="scwr-dash">–</span><span class="scwr-lost">${l}</span>`;
+  // The finishes they have won or lost by, the most matches first.
+  const played = (type) => stats.types[type][0] + stats.types[type][1];
+  const finishes = () => Object.keys(stats.types).sort((a, b) => played(b) - played(a) || order(a) - order(b));
+  // Smoothcomp's wins ring counts walkovers as wins. Ours rings the matches counted instead: each
+  // finish's wins in its hue, the chips' order, then the losses as the bare track, the win rate inside.
+  // AJP draws an older ring this doesn't find, so there the rate leads the facts instead.
+  const RING = `${CARD} .gi-relative:has(> [data-pc-name="chart"])`;
+  function ring() {
+    const box = stats && document.querySelector(RING);
+    if (!box) return;
+    const [w, l] = record(stats.types), all = w + l;
+    const parts = [...finishes().filter(t => picked.has(t) && stats.types[t][0]).map(t => [stats.types[t][0], hue(t)]), [l, 'color-mix(in srgb, currentColor 16%, transparent)']].filter(([n]) => n);
+    // Lengths on a circle of 100; a hair apart where segments meet.
+    const gap = parts.length > 1 ? 1.4 : 0;
+    let at = 0;
+    const arcs = parts.map(([n, color]) => {
+      const len = (n / all) * 100;
+      const arc = `<circle cx="50" cy="50" r="46" pathLength="100" stroke="${color}" stroke-dasharray="${Math.max(0.5, len - gap).toFixed(2)} 100" stroke-dashoffset="${(-at).toFixed(2)}"/>`;
+      at += len;
+      return arc;
+    }).join('') || '<circle cx="50" cy="50" r="46" stroke="color-mix(in srgb, currentColor 16%, transparent)"/>';
+    const counted = finishes().filter(t => picked.has(t) && stats.types[t][0]).map(t => `${stats.types[t][0]} by ${nameOf(t).toLowerCase()}`).join(', ');
+    const label = all ? `${rate(w, l)} of ${all} matches won: ${counted}; ${l} lost. Walkovers are not counted.` : 'No matches by these finishes';
+    const html = `<svg viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg><div class="scwr-ring-figure gi-text-primary">`
+      + (all ? `<span class="gi-text-3xl" style="${tone(w, l)}">${rate(w, l)}</span><span class="scwr-record gi-text-sm">${wl(w, l)}</span>`
+        : '<span class="gi-text-3xl">–</span><span class="gi-text-secondary gi-text-xs">No matches</span>') + '</div>';
+    let ours = box.querySelector(':scope > .scwr-ring');
+    if (ours?.dataset.html === html) return;
+    ours ??= box.appendChild(Object.assign(document.createElement('div'), { className: 'scwr-ring' }));
+    ours.setAttribute('role', 'img');
+    ours.setAttribute('aria-label', label);
+    ours.title = label;
+    ours.dataset.html = html;
+    ours.innerHTML = html;
+  }
+  // Facts, one a line, the label on the left and the figure on the right.
+  const fact = (label, value, title) => `<div${title ? ` title="${title}"` : ''}><dt class="gi-text-secondary">${label}</dt><dd>${value}</dd></div>`;
   function filled() {
     const [wins, losses] = record(stats.types);
-    const counted = [...picked].filter(t => stats.types[t]).sort((a, b) => order(a) - order(b)).map(nameOf).join(', ').toLowerCase();
-    const belt = plan.whole && plan.belt ? swatch(plan.belt).replace('<i ', `<i role="img" aria-label="Every event at ${plan.belt}" title="Every event at ${plan.belt}" `) : '';
-    let html = `<div class="scwr-rate" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
-      + (wins + losses ? `<span class="scwr-rate-figure" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
-        // Their wins by submission, out of the wins counted (the site's "By submission").
-        + (picked.has('submission') && wins ? `<span class="gi-text-secondary" title="Wins by submission, out of the wins counted">· ${rate(stats.types.submission?.[0] ?? 0, wins - (stats.types.submission?.[0] ?? 0))} by submission</span>` : '')
-        : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
-    // Their points on the scoreboard in the matches by the finishes picked whose score was read (readPoints).
-    const pts = (stats.points ?? []).filter(m => picked.has(m.type)), got = pts.filter(m => m.score);
-    if (got.length) {
-      const [f, a] = got.reduce(([f, a], m) => [f + m.score[0], a + m.score[1]], [0, 0]);
-      const line = pointsLine(f, a, got.length, pts.length);
-      html += `<div class="scwr-points gi-text-xs gi-text-secondary" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, by the finishes counted; walkovers and stoppages have none">`
-        + `Points <span class="scwr-record">${wl(f.toLocaleString(), a.toLocaleString())}</span> · <span class="gi-font-medium">${line.each}</span> a match · ${line.total} over ${line.over}</div>`;
-    }
-    // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
-    const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
-      : stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';
-    if (note) html += `<div class="scwr-progress gi-text-xs gi-text-secondary" role="status">${note}</div>`;
-    // The age group and weight class they entered most in the year up to their latest event.
-    const usual = [stats.usual?.age, stats.usual?.weight].filter(Boolean).join(' · ');
-    if (usual) html += `<div class="scwr-usual gi-text-xs gi-text-secondary" title="The age group and weight class they entered most in the year up to their latest event">Usually ${esc(usual)}</div>`;
-    // Each finish the athlete has won or lost by, its record on the chip, the most
-    // matches first; pressed ones count.
-    const matches = (type) => stats.types[type][0] + stats.types[type][1];
-    const offered = Object.keys(stats.types).sort((a, b) => matches(b) - matches(a) || order(a) - order(b));
-    html += `<div class="scwr-chips" role="group" aria-label="Finishes counted">${offered.map(type => {
+    // Each finish the athlete has won or lost by, its record on the chip; pressed ones count.
+    // Its dot is its colour in the ring above, so the chips are the ring's key too.
+    let html = `<div class="scwr-chips" role="group" aria-label="Finishes counted">${finishes().map(type => {
       const [w, l] = stats.types[type];
       return `<button type="button" class="scwr-type gi-flex gi-items-center gi-gap-1.5 gi-py-0.5 gi-px-2 gi-text-xs gi-border gi-border-divider-secondary gi-rounded-full" data-type="${type}" aria-pressed="${picked.has(type)}">`
         + `<span class="gi-h-2.5 gi-w-2.5 gi-rounded-full" style="background: ${hue(type)};"></span>`
         + `<span class="gi-font-medium">${nameOf(type)}</span><span class="scwr-record">${wl(w, l)}</span></button>`;
     }).join('')}</div>`;
+    const facts = [];
+    if (!document.querySelector(RING)) {
+      const counted = [...picked].filter(t => stats.types[t]).sort((a, b) => order(a) - order(b)).map(nameOf).join(', ').toLowerCase();
+      facts.push(fact('Win rate', wins + losses ? `<b style="${tone(wins, losses)}">${rate(wins, losses)}</b> · <span class="scwr-record">${wl(wins, losses)}</span>` : 'No matches', `Share of matches won by ${counted || 'the finishes picked'}`));
+    }
+    // Their wins by submission, out of the wins counted (the site's "By submission").
+    const subs = stats.types.submission?.[0] ?? 0;
+    if (picked.has('submission') && wins) facts.push(fact('By submission', `<b>${rate(subs, wins - subs)}</b> of wins`, 'Wins by submission, out of the wins counted'));
+    // Their points on the scoreboard in the matches by the finishes picked whose score was read (readPoints).
+    const pts = (stats.points ?? []).filter(m => picked.has(m.type)), scored = pts.filter(m => m.score);
+    if (scored.length) {
+      const [f, a] = scored.reduce(([f, a], m) => [f + m.score[0], a + m.score[1]], [0, 0]);
+      const line = pointsLine(f, a, scored.length, pts.length);
+      facts.push(fact('Points', `<span class="scwr-record">${wl(f.toLocaleString(), a.toLocaleString())}</span> · <b>${line.each}</b> a match`,
+        `Points on the scoreboard, theirs and their opponents', ${line.total} over ${line.over} whose score was read, by the finishes counted; walkovers and stoppages have none`));
+    }
+    // Every event at one belt: the belt, named beside its swatch.
+    if (plan.whole && plan.belt) facts.push(fact('Belt', `${swatch(plan.belt)}${plan.belt[0].toUpperCase()}${plan.belt.slice(1)}`, `Every event at ${plan.belt}`));
+    // The age group and weight class they entered most in the year up to their latest event.
+    const usual = [stats.usual?.age, stats.usual?.weight].filter(Boolean).join(' · ');
+    if (usual) facts.push(fact('Usually', esc(usual), 'The age group and weight class they entered most in the year up to their latest event'));
+    // The walkover wins Smoothcomp's own count holds and this one doesn't.
+    const walkovers = (got['wins-and-medals']?.data?.win_method_breakdown ?? []).filter(t => finishOf(t.won_by) === 'walkover').reduce((n, t) => n + (Number(t.count) || 0), 0);
+    if (walkovers) facts.push(fact('Left out', plural(walkovers, 'walkover win'), 'Smoothcomp counts walkovers as wins; these figures leave them out'));
+    if (facts.length) html += `<dl class="scwr-facts">${facts.join('')}</dl>`;
+    // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
+    const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
+      : stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';
+    if (note) html += `<div class="scwr-progress gi-text-xs gi-text-secondary" role="status">${note}</div>`;
     // Nobody beating them twice is itself worth saying, when they have lost at all.
     // The headline goes to the rivals they are furthest behind (losses less wins), all
     // who tie on it; none when they are level with or ahead of every rival.
@@ -370,6 +412,7 @@
       ours.querySelector('span').textContent = 'See losses';
       theirs.after(ours);
     }
+    ring();
     const stage = stats ? `done${rev}` : plan.loading ? 'loading' : '';
     const box = chart.querySelector('.scwr-more');
     if (!stage) return box?.remove();
@@ -409,6 +452,7 @@
     try { localStorage.setItem(PICKED, JSON.stringify([...picked])); } catch {}
     box.dataset.settled = '';
     box.innerHTML = filled();
+    ring();
     box.querySelector(`.scwr-type[data-type="${type}"]`)?.focus();
   });
   const { open, send } = XMLHttpRequest.prototype;
