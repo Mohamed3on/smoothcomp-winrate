@@ -36,7 +36,8 @@ export default {
     // The academies list's totals over those who competed in the last two years, once an hour (stats.js keepRecent).
     if (at.getUTCMinutes() === 20) for (const site of ['smoothcomp.com', 'ajptour.com']) await keepRecent(env, site).catch((e) => console.error('recent', site, e?.message));
     // What was kept of events that aren't BJJ goes, an event a minute (worker.js purge).
-    await purge(env).catch((e) => console.error('purge', e?.message));
+    // Paused while the BJJ rule learns to read division names.
+    // await purge(env).catch((e) => console.error('purge', e?.message));
     // One academy whose page names no place, looked up on Google Maps, every ten minutes.
     if (at.getUTCMinutes() % 10 === 5) await findClubs(env);
     // Academies' pages, a few each minute, for where each academy says it is; and upcoming events' pages, for how many entered.
