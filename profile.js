@@ -97,7 +97,8 @@
       shared.add(e.id);
     }
     if (known.size) show(tally(local.length ? local : [...known.values()]));
-    else { plan.loading = true; draw(); }
+    // Placeholders only for a read that takes a while: one that lands sooner opens straight onto its figures.
+    else setTimeout(() => { if (!stats && !failed) { plan.loading = true; draw(); } }, 1000);
     // The events since the newest kept one: the page has the first page of them, and
     // further pages are read only while none of a page is kept (all at once when none is).
     const all = whole || !known.size;
@@ -151,7 +152,7 @@
     show({ ...tally(events), missing: Math.max(0, missing), total });
     reading = false;
     shareProfile();
-    readPoints(events, { site, user, key, kept: kept?.scores ?? {} }).catch(() => {});
+    readPoints(events, { site, user, key, kept: kept?.scores ?? {} }).catch(() => { if (!stats.points) show({ ...stats, points: [] }); });
   }
   // Their points on the scoreboard (stats.points, profile-model.js scoresOf): the scores Mat Stats holds (their results'
   // matches, and the cards kept by match id), then the cards of the rest read here by match id (Smoothcomp answers them
@@ -234,42 +235,58 @@
   // finish's wins in its hue, the chips' order, then the losses as the bare track, the win rate inside.
   // AJP draws an older ring this doesn't find, so there the rate leads the facts instead.
   const RING = `${CARD} .gi-relative:has(> [data-pc-name="chart"])`;
-  // Until the matches are counted the ring is a bare track, so Smoothcomp's count never shows first; it comes
-  // back only when nothing will be counted (no events, or the read failed).
+  // Until the matches are counted the ring is its bare track, shown in the frame Smoothcomp's goes, so their count
+  // never shows first; theirs comes back only when nothing will be counted (no events, or the read failed). Once
+  // counted the arcs sweep in over the track, once; after that a chip toggled slides them to their new lengths.
+  const SVG = 'http://www.w3.org/2000/svg';
+  const TRACK = '<svg class="scwr-ring-track" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46"/></svg>';
   function ring() {
     const box = document.querySelector(RING);
     if (!box) return;
+    let ours = box.querySelector(':scope > .scwr-ring');
     if (!stats) {
-      const ours = box.querySelector(':scope > .scwr-ring');
       if (failed || got['past-events']?.meta?.total === 0) return ours?.remove();
-      if (!ours) box.insertAdjacentHTML('beforeend', '<div class="scwr-ring" data-wait aria-busy="true"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" stroke="color-mix(in srgb, currentColor 12%, transparent)"/></svg><i class="scwr-skel" style="width: 56px; height: 22px"></i></div>');
+      if (!ours) box.insertAdjacentHTML('beforeend', `<div class="scwr-ring" aria-busy="true">${TRACK}</div>`);
       return;
     }
     const [w, l] = record(stats.types), all = w + l;
-    const parts = [...finishes().filter(t => picked.has(t) && stats.types[t][0]).map(t => [stats.types[t][0], hue(t)]), [l, 'color-mix(in srgb, currentColor 16%, transparent)']].filter(([n]) => n);
-    // Lengths on a circle of 100; a hair apart where segments meet.
-    const gap = parts.length > 1 ? 1.4 : 0;
-    let at = 0;
-    const arcs = parts.map(([n, color]) => {
-      const len = (n / all) * 100;
-      const arc = `<circle cx="50" cy="50" r="46" pathLength="100" stroke="${color}" stroke-dasharray="${Math.max(0.5, len - gap).toFixed(2)} 100" stroke-dashoffset="${(-at).toFixed(2)}"/>`;
-      at += len;
-      return arc;
-    }).join('') || '<circle cx="50" cy="50" r="46" stroke="color-mix(in srgb, currentColor 16%, transparent)"/>';
-    const counted = finishes().filter(t => picked.has(t) && stats.types[t][0]).map(t => `${stats.types[t][0]} by ${nameOf(t).toLowerCase()}`).join(', ');
-    const label = all ? `${rate(w, l)} of ${all} matches won: ${counted}; ${l} lost. Walkovers are not counted.` : 'No matches by these finishes';
-    const html = `<svg viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg><div class="scwr-ring-figure gi-text-primary">`
-      + (all ? `<span class="gi-text-3xl" style="${tone(w, l)}">${rate(w, l)}</span><span class="gi-text-secondary gi-text-xs">win rate</span><span class="scwr-record gi-text-xs">${wl(w, l)}</span>`
-        : '<span class="gi-text-3xl">–</span><span class="gi-text-secondary gi-text-xs">No matches</span>') + '</div>';
-    let ours = box.querySelector(':scope > .scwr-ring');
-    if (ours?.dataset.html === html) return;
-    if (ours?.hasAttribute('data-wait')) { ours.removeAttribute('data-wait'); ours.removeAttribute('aria-busy'); }
-    ours ??= box.appendChild(Object.assign(document.createElement('div'), { className: 'scwr-ring' }));
-    ours.setAttribute('role', 'img');
+    const won = finishes().filter(t => picked.has(t) && stats.types[t][0]);
+    const parts = [...won.map(t => [t, stats.types[t][0], hue(t)]), ['lost', l, 'color-mix(in srgb, currentColor 22%, transparent)']].filter(([, n]) => n);
+    const figure = all ? `<span class="gi-text-3xl" style="${tone(w, l)}">${rate(w, l)}</span><span class="gi-text-secondary gi-text-xs">win rate</span><span class="scwr-record gi-text-xs">${wl(w, l)}</span>`
+      : '<span class="gi-text-3xl">–</span><span class="gi-text-secondary gi-text-xs">No matches</span>';
+    const key = JSON.stringify(parts) + figure;
+    if (ours?.dataset.key === key) return;
+    const fresh = !ours?.querySelector('.scwr-ring-arcs');
+    if (fresh) {
+      ours?.remove();
+      box.insertAdjacentHTML('beforeend', `<div class="scwr-ring" role="img" data-sweep>${TRACK}<svg class="scwr-ring-arcs" viewBox="0 0 100 100" aria-hidden="true"></svg><div class="scwr-ring-figure gi-text-primary"></div></div>`);
+      ours = box.lastElementChild;
+    }
+    ours.dataset.key = key;
+    const label = all ? `${rate(w, l)} of ${all} matches won: ${won.map(t => `${stats.types[t][0]} by ${nameOf(t).toLowerCase()}`).join(', ')}; ${l} lost. Walkovers are not counted.` : 'No matches by these finishes';
     ours.setAttribute('aria-label', label);
     ours.title = label;
-    ours.dataset.html = html;
-    ours.innerHTML = html;
+    ours.querySelector('.scwr-ring-figure').innerHTML = figure;
+    // One circle a part, kept by its finish so it slides; lengths on a circle of 100, a hair apart where parts
+    // meet. A finish no longer counted shrinks to nothing where it was, and one counted again grows from nothing.
+    const arcs = ours.querySelector('.scwr-ring-arcs'), gap = parts.length > 1 ? 1.4 : 0, shown = new Set();
+    let at = 0;
+    for (const [k, n, color] of parts) {
+      let arc = arcs.querySelector(`[data-k="${k}"]`);
+      if (!arc) {
+        arc = arcs.appendChild(document.createElementNS(SVG, 'circle'));
+        for (const [name, value] of [['cx', 50], ['cy', 50], ['r', 46], ['pathLength', 100], ['data-k', k]]) arc.setAttribute(name, value);
+        arc.style.strokeDashoffset = (-at).toFixed(2);
+        arc.style.strokeDasharray = '0 100';
+        if (!fresh) arc.getBoundingClientRect();
+      }
+      arc.style.stroke = color;
+      arc.style.strokeDasharray = `${Math.max(0.5, (n / all) * 100 - gap).toFixed(2)} 100`;
+      arc.style.strokeDashoffset = (-at).toFixed(2);
+      at += (n / all) * 100;
+      shown.add(k);
+    }
+    for (const arc of arcs.children) if (!shown.has(arc.dataset.k)) arc.style.strokeDasharray = '0 100';
   }
   // A figure over its label, as the ring's own.
   const figure = (value, label, title) => `<div title="${title}"><b>${value}</b><span class="gi-text-xs gi-text-secondary">${label}</span></div>`;
@@ -297,7 +314,7 @@
       const [f, a] = scored.reduce(([f, a], m) => [f + m.score[0], a + m.score[1]], [0, 0]);
       const line = pointsLine(f, a, scored.length, pts.length);
       figures.push(figure(line.each, 'points a match', `Points on the scoreboard ${f.toLocaleString()}–${a.toLocaleString()}, ${line.total} over ${line.over} whose score was read, by the finishes counted; walkovers and stoppages have none`));
-    }
+    } else if (!stats.points && wins + losses) figures.push(figure('<i class="scwr-skel" style="width: 40px; height: 20px"></i>', 'points a match', 'Reading the scores'));
     if (figures.length) html += `<div class="scwr-figures">${figures.join('')}</div>`;
     // One quiet line under them: the belt when every event was at one, what they usually enter, and the
     // walkover wins Smoothcomp's own count holds and this one doesn't.
@@ -308,10 +325,11 @@
     if (usual) meta.push(`<span title="The age group and weight class they entered most in the year up to their latest event">${esc(usual)}</span>`);
     const walkovers = (got['wins-and-medals']?.data?.win_method_breakdown ?? []).filter(t => finishOf(t.won_by) === 'walkover').reduce((n, t) => n + (Number(t.count) || 0), 0);
     if (walkovers) meta.push(`<span title="Smoothcomp counts walkovers as wins; these figures leave them out">${plural(walkovers, 'walkover win')} not counted</span>`);
-    if (meta.length) html += `<div class="scwr-meta gi-text-xs gi-text-secondary">${meta.join('<span aria-hidden="true">·</span>')}</div>`;
-    // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
-    const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
-      : stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';
+    // While the match lists come in, how far it has got stands in for that line, so nothing shifts when it ends.
+    if (stats.reading) html += `<div class="scwr-meta gi-text-xs gi-text-secondary" role="status">Reading events · ${stats.reading[0]} of ${stats.reading[1]}</div>`;
+    else if (meta.length) html += `<div class="scwr-meta gi-text-xs gi-text-secondary">${meta.join('<span aria-hidden="true">·</span>')}</div>`;
+    // After, the events whose match lists Smoothcomp never answers.
+    const note = !stats.reading && stats.missing ? `${stats.missing} of ${plural(stats.total, 'event')} not counted: Smoothcomp won't load their matches` : '';
     if (note) html += `<div class="scwr-progress gi-text-xs gi-text-secondary" role="status">${note}</div>`;
     // Nobody beating them twice is itself worth saying, when they have lost at all.
     // The headline goes to the rivals they are furthest behind (losses less wins), all

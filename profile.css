@@ -10,10 +10,13 @@
 /* Our ring takes the place of Smoothcomp's canvas and its count, in the same box: the
    matches counted, each finish's wins in its chip's hue, the losses as the bare track. */
 .gi-relative:has(> .scwr-ring) > :not(.scwr-ring) { visibility: hidden; }
-.scwr-ring { position: absolute; inset: 0; display: grid; place-items: center; transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1); }
-@starting-style { .scwr-ring { opacity: 0; } }
+.scwr-ring { position: absolute; inset: 0; display: grid; place-items: center; }
 .scwr-ring svg { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
 .scwr-ring circle { fill: none; stroke-width: 5; }
+.scwr-ring-track circle { stroke: color-mix(in srgb, currentColor 9%, transparent); }
+/* How far round the arcs have swept in (the mask on them), all the way once they have. */
+@property --scwr-sweep { syntax: '<angle>'; inherits: false; initial-value: 360deg; }
+.scwr-ring-arcs { mask-image: conic-gradient(from 90deg, #000 var(--scwr-sweep), transparent 0); }
 .scwr-ring-figure { display: grid; justify-items: center; gap: 2px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .scwr-ring-figure > :first-child { font-weight: 600; letter-spacing: -0.02em; }
 /* The figures sit side by side, each over its label like the ring's own, a hairline between. */
@@ -25,9 +28,9 @@
 .scwr-meta { display: flex; justify-content: center; align-items: center; gap: 6px; padding-bottom: 14px; white-space: nowrap; }
 .scwr-meta > span { display: inline-flex; align-items: center; gap: 6px; }
 .scwr-progress { text-align: center; padding-bottom: 10px; font-variant-numeric: tabular-nums; }
-/* Once read, the finish chips here carry each finish's wins and losses, so Smoothcomp's own
+/* From the first placeholder, the finish chips here carry each finish's wins and losses, so Smoothcomp's own
    wins-only chip row above them goes. */
-.match-statistics-content > div:has(> .scwr-more[data-stage^='done']) > .gi-flex-wrap { display: none; }
+.match-statistics-content > div:has(.scwr-ring, > .scwr-more) > .gi-flex-wrap { display: none; }
 /* A finish chip in Smoothcomp's own pill, pressed when its finish counts. */
 :is(.scwr-type, .scwr-loss-filter, .scwr-losses-open, .scwr-losses-close, .scwr-rival[data-rival]) {
   color: inherit;
@@ -220,6 +223,14 @@
   }
   @starting-style { .scwr-more { height: 0; padding-block: 0; } }
   .scwr-skel { animation: scwr-skel-pulse 1.2s ease-in-out infinite; }
+  /* The first figures fade in over the placeholders; later updates and chip toggles (settled) just change. */
+  .scwr-more:not([data-settled]) > * { transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1); }
+  @starting-style { .scwr-more:not([data-settled]) > * { opacity: 0; } }
+  /* Once counted, the arcs sweep round from the top over the track and the rate rises in; once a visit. */
+  .scwr-ring[data-sweep] .scwr-ring-arcs { animation: scwr-sweep 300ms cubic-bezier(0.23, 1, 0.32, 1); }
+  .scwr-ring[data-sweep] .scwr-ring-figure { animation: scwr-rise 200ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+  /* A chip toggled slides each arc to its new length and place. */
+  .scwr-ring-arcs circle { transition: stroke-dasharray 250ms cubic-bezier(0.77, 0, 0.175, 1), stroke-dashoffset 250ms cubic-bezier(0.77, 0, 0.175, 1); }
   /* The dialog rises out of a slight scale, and the dim fades with it. */
   .scwr-losses-dialog, .scwr-losses-dialog::backdrop {
     transition: opacity 200ms cubic-bezier(0.23, 1, 0.32, 1), transform 200ms cubic-bezier(0.23, 1, 0.32, 1), overlay 200ms allow-discrete, display 200ms allow-discrete;
@@ -239,6 +250,13 @@
 }
 @keyframes scwr-split-grow { from { transform: scaleX(0); } }
 @keyframes scwr-skel-pulse { 50% { opacity: 0.4; } }
+@keyframes scwr-fade { from { opacity: 0; } }
+@keyframes scwr-sweep { from { --scwr-sweep: 0deg; } }
+@keyframes scwr-rise { from { opacity: 0; scale: 0.97; } }
+/* With less motion, the counted ring only fades in. */
+@media (prefers-reduced-motion: reduce) {
+  .scwr-ring[data-sweep] :is(.scwr-ring-arcs, .scwr-ring-figure) { animation: scwr-fade 150ms cubic-bezier(0.23, 1, 0.32, 1); }
+}
 /* AJP Tour's older profile: the block takes a row of its own under the wins ring and its
    legend, and the Smoothcomp utility classes it uses, which AJP doesn't ship, are filled in. */
 .user-statistics:has(> .scwr-more) { flex-wrap: wrap; }
