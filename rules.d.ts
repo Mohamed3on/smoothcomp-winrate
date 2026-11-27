@@ -25,6 +25,7 @@ declare global {
     finishOf(code: unknown): string;
     finishSql(column: string): string;
     SCORELESS: string[];
+    pointsLine(pointsFor: number, pointsAgainst: number, scored: number, total: number): { each: string | null; total: string; over: string };
     detailOf(code: unknown): string | null;
     howOf(code: unknown): string;
     BELTS: readonly string[];

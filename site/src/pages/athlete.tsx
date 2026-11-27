@@ -13,7 +13,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, matchFinder, normalize, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, matchFinder, normalize, pointsLine, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -209,6 +209,7 @@ function CareerStats({ career, f, points }: { career: Athlete | null; f: Filters
     ...(career.events ? [['Wins per event', (career.wins / career.events).toFixed(1)] as [string, React.ReactNode]] : []),
     ...(career.wins > 0 && f.counted('submission') ? [['By submission', `${Math.round((career.submission / career.wins) * 100)}%`] as [string, React.ReactNode]] : []),
   ] : [];
+  const line = pointsLine(points.for, points.against, points.scored, points.total);
   return (
     <div className="flex flex-wrap items-start gap-x-10 gap-y-4 border-t pt-4">
       {stats.length > 0 && <dl className="flex flex-wrap gap-x-10 gap-y-3" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career?.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
@@ -219,7 +220,7 @@ function CareerStats({ career, f, points }: { career: Athlete | null; f: Filters
           <dt className="text-xs text-muted-foreground">Points</dt>
           <dd className="text-lg tabular-nums"><Record w={points.for} l={points.against} /></dd>
           <dd className="text-xs text-muted-foreground tabular-nums">
-            {points.scored > 0 && <><span className="font-medium text-foreground/85">{diff(Math.round(((points.for - points.against) / points.scored) * 10) / 10)}</span> a match · </>}{diff(points.for - points.against)} over {points.scored === points.total ? plural(points.total, 'match') : `${fmt(points.scored)} of ${plural(points.total, 'match')}`}
+            {line.each && <><span className="font-medium text-foreground/85">{line.each}</span> a match · </>}{line.total} over {line.over}
           </dd>
         </div>
         {points.unscored.length > 0 && <ReadScores targets={points.unscored} route="athlete" />}
@@ -233,8 +234,6 @@ const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <dt className="order-first text-xs text-muted-foreground">{label}</dt>
   </div>
 );
-// A point differential, signed: +174, −12, ±0.
-const diff = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${fmt(Math.abs(n))}`;
 // Points scored and conceded over the matches whose score was read, and the events with a match still to read.
 interface Points { for: number; against: number; scored: number; total: number; unscored: Target[] }
 

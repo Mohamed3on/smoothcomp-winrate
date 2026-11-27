@@ -31,6 +31,15 @@ globalThis.SCWRRules = (() => {
   };
   // The finishes whose score is never read: a walkover has none, and a stoppage ends a match its points don't settle.
   const SCORELESS = ['walkover', 'stoppage'];
+  // A points line (the extension's profile, the site's athlete page): the differential a match over the matches whose
+  // score was read (none while none is), the total, and how many matches that is.
+  const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n).toLocaleString('en')}`;
+  const matchCount = (n) => `${n.toLocaleString('en')} match${n === 1 ? '' : 'es'}`;
+  const pointsLine = (pf, pa, scored, total) => ({
+    each: scored ? signed(Math.round(((pf - pa) / scored) * 10) / 10) : null,
+    total: signed(pf - pa),
+    over: scored === total ? matchCount(total) : `${scored.toLocaleString('en')} of ${matchCount(total)}`,
+  });
   // The same rule as a SQL expression over a column of codes.
   const finishSql = (column) => `CASE ${RULES.map(([finish, patterns]) => `WHEN ${patterns.map((p) => `${column} LIKE '${p}'`).join(' OR ')} THEN '${finish}'`).join(' ')} ELSE 'other' END`;
   // The detail a code gives: "submission_armbar" is "Submission (armbar)"; none for a bare one.
@@ -636,5 +645,5 @@ globalThis.SCWRRules = (() => {
   // (server/stats.js academyTotals): the site keeps a reader's settings for them apart from the athletes' (site lib/filters.ts).
   const ACADEMY_OWN = ['wins', 'events'];
 
-  return { unplaced, divisionResults, matchFinder, Outcome, photo, words, regOf, ACADEMY_OWN, overAt, overSql, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  return { unplaced, divisionResults, matchFinder, Outcome, photo, words, regOf, ACADEMY_OWN, overAt, overSql, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, pointsLine, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

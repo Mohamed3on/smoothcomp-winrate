@@ -13,7 +13,7 @@
   if (ajp) document.documentElement.classList.add('scwr-ajp');
   const CARD = ajp ? '.user-statistics' : '.match-statistics-content';
   // The rules apart from the page: profile-model.js, and an event's Outcome (rules.js).
-  const { FINISHES, LABELS, finishOf, normalize: person } = SCWRRules;
+  const { FINISHES, LABELS, finishOf, pointsLine, normalize: person } = SCWRRules;
   const { clean } = SCWRRules.Outcome;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
@@ -239,11 +239,9 @@
     const pts = (stats.points ?? []).filter(m => picked.has(m.type)), got = pts.filter(m => m.score);
     if (got.length) {
       const [f, a] = got.reduce(([f, a], m) => [f + m.score[0], a + m.score[1]], [0, 0]);
-      const matches = (n) => `${n.toLocaleString()} match${n === 1 ? '' : 'es'}`;
-      const diff = (n) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n).toLocaleString()}`;
+      const line = pointsLine(f, a, got.length, pts.length);
       html += `<div class="scwr-points gi-text-xs gi-text-secondary" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, by the finishes counted; walkovers and stoppages have none">`
-        + `Points <span class="scwr-record">${wl(f.toLocaleString(), a.toLocaleString())}</span> · <span class="gi-font-medium">${diff(Math.round(((f - a) / got.length) * 10) / 10)}</span> a match · ${diff(f - a)}`
-        + ` over ${got.length === pts.length ? matches(pts.length) : `${got.length.toLocaleString()} of ${matches(pts.length)}`}</div>`;
+        + `Points <span class="scwr-record">${wl(f.toLocaleString(), a.toLocaleString())}</span> · <span class="gi-font-medium">${line.each}</span> a match · ${line.total} over ${line.over}</div>`;
     }
     // While the match lists come in, how far it has got; after, the events whose match lists Smoothcomp never answers.
     const note = stats.reading ? `Reading events · ${stats.reading[0]} of ${stats.reading[1]}`
