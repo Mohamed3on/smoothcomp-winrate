@@ -506,6 +506,8 @@ globalThis.SCWRRules = (() => {
       }
       const cards = await read(out);
       out.forEach((m, i) => {
+        // Never asked (the read stopped first): asked again next time.
+        if (cards[i] === undefined) return;
         tried.add(m[0]);
         const card = cards[i];
         if (!card || card instanceof Error) return;

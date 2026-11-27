@@ -12,6 +12,7 @@ const AthletePage = lazy(() => import('@/pages/athlete').then((m) => ({ default:
 import { AcademyPage } from '@/pages/academy';
 import { EventPage } from '@/pages/event';
 import { DivisionPage } from '@/pages/division';
+import { CrawlsPage } from '@/pages/crawls';
 import { Empty } from '@/components/empty';
 // Dev only: the Demo data / Worst case switch (src/dev).
 const DataToggle = import.meta.env.DEV ? lazy(() => import('@/dev/data-toggle')) : null;
@@ -22,7 +23,7 @@ export function App() {
   useEffect(() => { scrollTo(0, 0); }, [location]);
   // Each page's address keeps only the filters it reads.
   useEffect(() => f.strip(KEPT.filter((k) => !usedBy(location).includes(k))), [location]); // eslint-disable-line react-hooks/exhaustive-deps
-  const section = location.startsWith('/academ') ? 'academies' : location.startsWith('/event') ? 'events' : 'athletes';
+  const section = location.startsWith('/crawls') ? null : location.startsWith('/academ') ? 'academies' : location.startsWith('/event') ? 'events' : 'athletes';
   const pickSite = (v: string) => {
     // Ids are per site, so a profile page goes back to its list.
     const list = location.match(/^\/(athlete|academy|event)\//)?.[1];
@@ -63,6 +64,7 @@ export function App() {
           <Route path="/academy/:id">{(p) => <AcademyPage id={p.id} />}</Route>
           <Route path="/event/:id/division">{(p) => <DivisionPage id={p.id} />}</Route>
           <Route path="/event/:id">{(p) => <EventPage id={p.id} />}</Route>
+          <Route path="/crawls"><CrawlsPage /></Route>
           <Route><Empty title="No page here" text="Try the athlete ranking instead." /></Route>
         </Switch>
       </main>

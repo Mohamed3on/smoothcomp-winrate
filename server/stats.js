@@ -785,4 +785,19 @@ async function summary(env, params) {
   return json(row);
 }
 
-export const API = { athletes, teams, athlete, team, events, event, known, division, search, summary, countries, places };
+// The crawler's stream (site /crawls): the queue by state, events finished per hour over the last day, what the
+// lanes hold now (cards asked of the matches), and the latest finished, newest first.
+async function crawls(env) {
+  const day = Date.now() - 864e5;
+  const [states, hours, reading, latest] = (await env.DB.batch([
+    env.DB.prepare('SELECT state, count(*) AS n FROM crawls GROUP BY state'),
+    env.DB.prepare("SELECT at / 3600000 * 3600000 AS hour, count(*) AS n FROM crawls WHERE state = 'done' AND at >= ?1 GROUP BY 1 ORDER BY 1").bind(day),
+    env.DB.prepare(`SELECT site, event, title, city, start, at, json_array_length(data, '$.matches') AS matches, json_array_length(data, '$.tried') AS tried
+      FROM crawls WHERE state = 'reading' AND data IS NOT NULL ORDER BY at DESC`),
+    env.DB.prepare(`SELECT site, event, title, city, start, at, data ->> '$.matches' AS matches, data ->> '$.named' AS named, data ->> '$.missed' AS missed
+      FROM crawls WHERE state = 'done' ORDER BY at DESC LIMIT 100`),
+  ])).map((r) => r.results);
+  return json({ states: Object.fromEntries(states.map((s) => [s.state, s.n])), hours, reading, latest });
+}
+
+export const API = { athletes, teams, athlete, team, events, event, known, division, search, summary, countries, places, crawls };

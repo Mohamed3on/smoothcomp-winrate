@@ -502,7 +502,7 @@ const ROUTES = { '/lookup': lookup, '/keep': keep, '/record': record, '/roster':
 // served, and a list is served as stored and made again behind it, at most once a minute, so nobody
 // waits on a list being counted again. Stamping meta 'reset' (after a deploy changes a reply's shape)
 // makes every copy stored before it again before it is served. The crawler's results stamp neither.
-const FRESH = { athletes: 600, teams: 600, event: 600, division: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60, places: 30 * 86400 };
+const FRESH = { athletes: 600, teams: 600, event: 600, division: 600, team: 600, events: 600, search: 600, countries: 3600, summary: 600, athlete: 60, places: 30 * 86400, crawls: 30 };
 const STALE_OK = new Set(['athletes', 'teams', 'event', 'division', 'team', 'events', 'search', 'countries', 'summary', 'places']);
 async function cached(request, ctx, name, env, make) {
   const cache = caches.default;

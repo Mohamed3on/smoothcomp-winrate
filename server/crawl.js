@@ -18,7 +18,8 @@ const ROUND = 300; // bracket cards asked for at a time
 const AT_ONCE = 6;
 // Smoothcomp answers a placed crawler in about 100 ms. When the median of a lane's last 30 requests
 // passes this, it is straining (crawling at 80 requests a second took it to a second for everyone),
-// so the lane asks one at a time; past twice this even so, it stops until the next minute.
+// so the lane asks one at a time; past twice this even so, it stops until the next minute. Through the relay the
+// wait is mostly the relay's own (650–870 ms from the box on 2026-11-27, which stopped every lane), so there it only goes one at a time.
 const SLOW = 300;
 const DAY = 864e5;
 // Rows an event read writes to D1, about (entries, people, board, tallies): events are read while the day's
@@ -42,7 +43,7 @@ function client(run = RUN, env = {}) {
   const left = () => (Date.now() < until ? BUDGET - used : 0);
   const get = async (url) => {
     const median = () => (recent.length >= 30 ? [...recent].sort((a, b) => a - b)[15] : 0);
-    if (median() > 2 * SLOW) throw new Busy('slow');
+    if (median() > 2 * SLOW && !(env.RELAY && Date.now() < relayUntil)) throw new Busy('slow');
     // Waiting its turn while slow; the turn is taken in the same tick the wait ends, so one goes at a time.
     while (median() > SLOW && open) await new Promise((r) => setTimeout(r, 20));
     if (!left()) throw new Busy('budget');
@@ -74,7 +75,7 @@ function client(run = RUN, env = {}) {
   return { get, left, report };
 }
 
-// A few at a time; the first refusal stops the rest.
+// A few at a time; the first refusal stops the rest, carrying what was read before it (`partial`).
 async function each(items, work) {
   const out = [];
   let next = 0, stop = null;
@@ -84,7 +85,7 @@ async function each(items, work) {
       try { out[i] = await work(items[i]); } catch (e) { if (e instanceof Busy) stop = e; else out[i] = e; }
     }
   }));
-  if (stop) throw stop;
+  if (stop) throw Object.assign(stop, { partial: out });
   return out;
 }
 
@@ -105,11 +106,17 @@ async function schedule(get, base) {
 }
 
 // Every side named from the matches' bracket cards (rules.js nameSides), ROUND at a time, within the run's requests.
-const name = (get, host, data) => nameSides(data, () => {
-  const room = Math.min(ROUND, Math.max(0, data.left() - 1));
-  if (!room) throw new Busy('budget');
-  return room;
-}, (matches) => each(matches, (m) => get(`${host}/en/getBracketMatchData/${m[0]}`)));
+// A lane stopped mid-round keeps the cards it read (the rest are asked next run), then stops.
+const name = (get, host, data) => {
+  let stop;
+  return nameSides(data, () => {
+    if (stop) throw stop;
+    const room = Math.min(ROUND, Math.max(0, data.left() - 1));
+    if (!room) throw new Busy('budget');
+    return room;
+  }, (matches) => each(matches, (m) => get(`${host}/en/getBracketMatchData/${m[0]}`))
+    .catch((e) => { if (!(e instanceof Busy)) throw e; stop = e; return e.partial; }));
+};
 
 // An event list page's events (`var events = [...]`, as /en/events/upcoming and /past print it): each
 // one's title, date, city, coordinates, sports (Smoothcomp's ids) and page.
