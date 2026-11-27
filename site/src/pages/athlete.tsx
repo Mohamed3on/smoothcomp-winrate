@@ -219,7 +219,7 @@ function CareerStats({ career, f, points }: { career: Athlete | null; f: Filters
           <dt className="text-xs text-muted-foreground">Points</dt>
           <dd className="text-lg tabular-nums"><Record w={points.for} l={points.against} /></dd>
           <dd className="text-xs text-muted-foreground tabular-nums">
-            {points.scored > 0 && <><span className="font-medium text-foreground/85">{diff(Math.round(((points.for - points.against) / points.scored) * 10) / 10)}</span> a match · </>}{diff(points.for - points.against)} over{points.scored === points.total ? plural(points.total, 'match') : `${fmt(points.scored)} of ${plural(points.total, 'match')}`}
+            {points.scored > 0 && <><span className="font-medium text-foreground/85">{diff(Math.round(((points.for - points.against) / points.scored) * 10) / 10)}</span> a match · </>}{diff(points.for - points.against)} over {points.scored === points.total ? plural(points.total, 'match') : `${fmt(points.scored)} of ${plural(points.total, 'match')}`}
           </dd>
         </div>
         {points.unscored.length > 0 && <ReadScores targets={points.unscored} route="athlete" />}
