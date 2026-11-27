@@ -233,6 +233,8 @@
     const belt = plan.whole && plan.belt ? swatch(plan.belt).replace('<i ', `<i role="img" aria-label="Every event at ${plan.belt}" title="Every event at ${plan.belt}" `) : '';
     let html = `<div class="scwr-rate" title="Share of matches won by ${counted || 'the finishes picked'}">${belt}`
       + (wins + losses ? `<span class="scwr-rate-figure" style="${tone(wins, losses)}">${rate(wins, losses)}</span><span class="gi-text-secondary">win rate ·</span><span class="scwr-record">${wl(wins, losses)}</span>`
+        // Their wins by submission, out of the wins counted (the site's "By submission").
+        + (picked.has('submission') && wins ? `<span class="gi-text-secondary" title="Wins by submission, out of the wins counted">· ${rate(stats.types.submission?.[0] ?? 0, wins - (stats.types.submission?.[0] ?? 0))} by submission</span>` : '')
         : '<span class="gi-text-secondary">No matches by these finishes</span>') + '</div>';
     // Their points on the scoreboard in the matches by the finishes picked whose score was read (readPoints).
     const pts = (stats.points ?? []).filter(m => picked.has(m.type)), got = pts.filter(m => m.score);

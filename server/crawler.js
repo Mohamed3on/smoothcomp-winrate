@@ -10,6 +10,20 @@ import { keepRecent } from './stats.js';
 
 const LANES = 3;
 
+// A stall gets a Telegram message (secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID), checked hourly, at most one every six
+// hours: no event finished in three hours while events wait (on 2026-11-27 none finished for eleven, unnoticed).
+async function watch(env, state) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
+  const now = Date.now();
+  const row = await env.DB.prepare(`SELECT (SELECT max(at) FROM crawls WHERE state = 'done') AS last,
+    (SELECT count(*) FROM crawls WHERE state IN ('queued', 'reading') AND next <= ?1) AS due, (SELECT v FROM meta WHERE k = 'alert:stall') AS told`).bind(now).first();
+  if (!row.due || now - (row.last ?? 0) < 3 * 3600e3 || now - (row.told ?? 0) < 6 * 3600e3) return;
+  const text = `Mat Stats crawler: no event finished in ${Math.floor((now - (row.last ?? 0)) / 3600e3)} h, ${row.due} waiting (budget ${state}). https://matstats.mohamed3on.com/crawls`;
+  const sent = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text }) });
+  if (sent.ok) await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('alert:stall', ?1)").bind(now).run();
+}
+
 export default {
   async fetch(request, env) {
     if (!env.CRAWL_KEY || request.headers.get('x-crawl-key') !== env.CRAWL_KEY) return new Response(null, { status: 404 });
@@ -29,6 +43,7 @@ export default {
     // D1's usage, read every ten minutes: while it nears what the plan includes, the crawler rests (budget.js).
     if (at.getUTCMinutes() % 10 === 0) await checkBudget(env).catch((e) => console.error('budget', e?.message));
     const state = await budget(env, Date.now(), true);
+    if (at.getUTCMinutes() === 45) await watch(env, state).catch((e) => console.error('watch', e?.message));
     if (state !== 'ok') return;
     if (at.getUTCMinutes() % 30 === 0) await queue(env);
     // The last year's events are listed once a day, before the 03:30 refill queues them.
