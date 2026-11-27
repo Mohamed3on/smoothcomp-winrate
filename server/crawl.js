@@ -283,12 +283,18 @@ export async function listEvents(env) {
   }
 }
 
-// BJJ only (the user's call, 2026-11-26): an event the events lists name sports for is read when one of them is Jiu-Jitsu,
-// gi or no-gi (its ADCC and Submission Wrestling rules too; stats.js SPORTS); judo, MMA, wrestling, kempo and the rest
-// took a quarter of the events read and a fifth of the matches. One with no sport named (from an athlete's event list) is read.
-const BJJ = ['1', '7', '4', '3'];
-const other = (site, event) => `EXISTS (SELECT 1 FROM events o WHERE o.site = ${site} AND o.event = ${event} AND o.sports IS NOT NULL
-  AND NOT EXISTS (SELECT 1 FROM json_each(o.sports) j WHERE j.value IN (${BJJ.map((x) => `'${x}'`).join(', ')})))`;
+// BJJ only (the user's call, 2026-11-26): an event the events lists name sports for is BJJ when one of them is Jiu-Jitsu,
+// gi or no-gi (its ADCC and Submission Wrestling rules too; stats.js SPORTS) or Ne-Waza (23), or its title says so: Grappling (32),
+// Ju-Jitsu (2) and the rest hold BJJ events among wrestling and ju-jitsu fighting ("AIGA Grappling", "Lebanese National | Gi & No-Gi").
+// Judo, MMA, wrestling, kempo and the rest took a quarter of the events read and a fifth of the matches: they aren't read, and
+// what was kept of them goes (worker.js purge). One with no sport named (from an athlete's event list) is read.
+// LIKE folds case for ASCII only, so the Cyrillic words come in both cases.
+const BJJ = ['1', '7', '4', '3', '23'];
+const WORDS = ['bjj', 'jiu%jitsu', 'jiujitsu', 'ne-waza', 'newaza', 'ne waza', 'nogi', 'no-gi', 'no gi', 'grappl', 'submission', 'sub only', 'adcc',
+  'жиу', 'ЖИУ', 'реппл', 'РЕППЛ', 'рэппл', 'РЭППЛ'];
+export const notBjj = (v) => `(${v}.sports IS NOT NULL AND NOT EXISTS (SELECT 1 FROM json_each(${v}.sports) j WHERE j.value IN (${BJJ.map((x) => `'${x}'`).join(', ')}))
+  AND NOT (${WORDS.map((w) => `coalesce(${v}.title, '') LIKE '%${w}%'`).join(' OR ')}))`;
+const other = (site, event) => `EXISTS (SELECT 1 FROM events o WHERE o.site = ${site} AND o.event = ${event} AND ${notBjj('o')})`;
 
 // Where an event stands in the queue (crawls.priority, higher first; one someone viewed is 3, ahead of all): nearest Berlin
 // first (the user's bias), in bands of 100, 350, 700, 1,500 and 3,000 km, then in each band Smoothcomp's events an athlete we

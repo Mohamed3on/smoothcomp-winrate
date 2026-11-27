@@ -726,3 +726,31 @@ test('the crawler queues BJJ events alone, and those no events list names a spor
   await queue({ DB });
   assert.deepEqual(db.prepare('SELECT event FROM crawls ORDER BY event').all().map((r) => r.event), ['1', '3', '4']);
 });
+
+test("what was kept of an event that isn't BJJ goes, and whoever is left with nothing is forgotten", async () => {
+  const worker = (await import('../server/worker.js')).default;
+  const { purge } = await import('../server/worker.js');
+  const { API } = await import('../server/stats.js');
+  const { DB, db } = d1();
+  const env = { DB };
+  const post = (path, body) => worker.fetch(new Request(`https://matstats.test${path}`, { method: 'POST', body: JSON.stringify(body) }), env, {});
+  const site = 'smoothcomp.com', read = Date.now();
+  const entered = (who, entry) => ({ ...athletes[who], entries: [entry] });
+  await post('/record', { site, event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read });
+  await post('/record', { site, event: '901', records: { 11: [1, 1], 13: [2, 0] }, meta: { ...meta, title: 'Judo Cup' }, read, athletes: {
+    11: entered(11, { division: 'Adult / -73 kg', place: 2, wins: { points: 1 }, losses: { points: 1 } }),
+    13: { name: 'Jo Do', club: 'Judo Club', clubId: '503', entries: [{ division: 'Adult / -73 kg', place: 1, wins: { points: 2 }, losses: {} }] } } });
+  await post('/record', { site, event: '902', records: { 12: [1, 0] }, meta: { ...meta, title: 'AIGA Grappling Series' }, read,
+    athletes: { 12: entered(12, { division: 'Adult / -76 kg', place: 1, wins: { submission: 1 }, losses: {} }) } });
+  db.exec(`UPDATE events SET sports = '["1"]' WHERE event = '900'; UPDATE events SET sports = '["26"]' WHERE event = '901'; UPDATE events SET sports = '["32"]' WHERE event = '902'`);
+  const ranked = async () => (await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json()).rows.map((r) => [r.user, r.wins]);
+  assert.deepEqual(await ranked(), [['11', 4], ['12', 2], ['13', 2]]);
+  // The judo goes; the grappling event its title calls BJJ stays, as does all of the BJJ event.
+  assert.equal(await purge(env), 1);
+  assert.equal(await purge(env), 0);
+  assert.deepEqual(await ranked(), [['11', 3], ['12', 2]]);
+  assert.deepEqual(db.prepare('SELECT DISTINCT event FROM entries ORDER BY event').all().map((r) => r.event), ['900', '902']);
+  assert.deepEqual(db.prepare('SELECT user FROM people ORDER BY user').all().map((r) => r.user), ['11', '12']);
+  assert.deepEqual(db.prepare('SELECT club_id FROM clubs ORDER BY club_id').all().map((r) => r.club_id), ['501', '502']);
+  assert.deepEqual({ ...db.prepare("SELECT athletes, fought FROM events WHERE event = '901'").get() }, { athletes: 0, fought: null });
+});

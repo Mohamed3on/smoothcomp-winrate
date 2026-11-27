@@ -53,8 +53,8 @@ function place(params) {
 // Great-circle kilometres from the place bound at `at` (its latitude, then longitude at the next
 // number) to a row's coordinates; null where either is unknown.
 const KM = (lat, lng, at) => `(6371 * acos(min(1, max(-1, sin(radians(?${at})) * sin(radians(${lat})) + cos(radians(?${at})) * cos(radians(${lat})) * cos(radians(${lng} - ?${at + 1}))))))`;
-// The grappling sports' ids on Smoothcomp: Jiu-Jitsu (Gi); Jiu-Jitsu (NoGi), its ADCC and Submission Wrestling rules; Luta Livre.
-const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3', '24'] };
+// The grappling sports' ids on Smoothcomp: Jiu-Jitsu (Gi); Jiu-Jitsu (NoGi), its ADCC and Submission Wrestling rules; Luta Livre; Ne-Waza.
+const SPORTS = { gi: ['1'], nogi: ['7', '4', '3'], grappling: ['1', '7', '4', '3', '24', '23'] };
 
 // Each athlete's totals, kept up to date as results, match lists and event lists arrive, so a
 // ranking reads one row per athlete instead of every result. Per finish, as [won, lost]:
