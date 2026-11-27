@@ -2,24 +2,16 @@ import { Link } from 'wouter';
 import { CircleDashed, ExternalLink, Lock } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { flag } from '@/lib/rules';
 import { WIN_TYPES, type Filters } from '@/lib/filters';
 import { ageOf, fmt, initials, plural, typeName } from '@/lib/format';
 import type { Types } from '@/lib/api';
 
-// Regions Unicode has no flag for are drawn, sized to sit level with the emoji.
-const svg = (...shapes: string[]) => `<svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true" style="border-radius:2px">${shapes.join('')}</svg>`;
-const band = (y: number, h: number, fill: string) => `<rect y="${y}" width="16" height="${h}" fill="${fill}"/>`;
-const DRAWN: Record<string, string> = {
-  'ru-cri': svg(band(0, 12, '#0f8f3f'), band(5.2, 1.6, '#fff'), band(6.8, 5.2, '#c8102e'), '<rect width="2.6" height="12" fill="#e8a020"/>'),
-  'ru-da': svg(band(0, 12, '#0f8f3f'), band(4, 4, '#1e4fa3'), band(8, 4, '#c8102e')),
-  krd: svg(band(0, 12, '#e03a3e'), band(4, 4, '#fff'), band(8, 4, '#1a8f4c'), '<circle cx="8" cy="6" r="2.1" fill="#f5c518"/>'),
-};
-const GLYPH: Record<string, string> = { 'gb-eng': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', 'gb-sct': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}', 'gb-wls': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}', kos: '\u{1F1FD}\u{1F1F0}' };
 export function Flag({ code, name, className }: { code: string | null; name?: string | null; className?: string }) {
   const c = (code ?? '').toLowerCase();
   const label = name ?? c.toUpperCase();
-  if (DRAWN[c]) return <span role="img" aria-label={label} title={label} className="inline-flex" dangerouslySetInnerHTML={{ __html: DRAWN[c] }} />;
-  const glyph = GLYPH[c] ?? (/^[a-z]{2}$/.test(c) ? String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 97)) : null);
+  const glyph = flag(c);
+  if (glyph?.startsWith('<')) return <span role="img" aria-label={label} title={label} className="inline-flex" dangerouslySetInnerHTML={{ __html: glyph }} />;
   return glyph ? <span role="img" aria-label={label} title={label} className={cn('leading-none', className)}>{glyph}</span> : null;
 }
 

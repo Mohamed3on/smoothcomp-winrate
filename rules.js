@@ -31,6 +31,10 @@ globalThis.SCWRRules = (() => {
   };
   // The finishes whose score is never read: a walkover has none, and a stoppage ends a match its points don't settle.
   const SCORELESS = ['walkover', 'stoppage'];
+  // A win rate as a percentage, none without a match: never 0% with a win nor 100% with a loss.
+  const winRate = (w, l) => (w != null && l != null && w + l ? `${Math.min(Math.max(Math.round((w / (w + l)) * 100), w ? 1 : 0), l ? 99 : 100)}%` : null);
+  // Its colour, red at 40% and under to green at 85% and over.
+  const winTone = (w, l) => `oklch(0.8 0.14 ${25 + 120 * Math.min(1, Math.max(0, (w / (w + l) - 0.4) / 0.45))})`;
   // A points line (the extension's profile, the site's athlete page): the differential a match over the matches whose
   // score was read (none while none is), the total, and how many matches that is.
   const signed = (n) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(n).toLocaleString('en')}`;
@@ -641,9 +645,30 @@ globalThis.SCWRRules = (() => {
     return { lat: pinned ? lat : null, lng: pinned ? lng : null, city: words(p.city, 100), country: /^[A-Z]{2}$/.test(p.country_code ?? '') ? p.country_code : null, address: words(p.address, 200) };
   }
 
+  // A country's flag: Smoothcomp uses ISO alpha-2 and its own codes for a handful of regions. Unicode has glyphs
+  // for only four of those (the three British nations and Kosovo), so the rest are drawn, sized and rounded to sit
+  // level with the emoji beside them: a glyph, or markup (starting "<"), or none.
+  const svg = (...shapes) => `<svg viewBox="0 0 16 12" width="16" height="12" aria-hidden="true" style="border-radius:2px">${shapes.join('')}</svg>`;
+  const band = (y, h, fill) => `<rect y="${y}" width="16" height="${h}" fill="${fill}"/>`;
+  const FLAG = {
+    'gb-eng': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}',
+    'gb-sct': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}',
+    'gb-wls': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}',
+    kos: '\u{1F1FD}\u{1F1F0}',
+    // Chechnya: a gold ornament band at the hoist over a green/white/red tricolour.
+    'ru-cri': svg(band(0, 12, '#0f8f3f'), band(5.2, 1.6, '#fff'), band(6.8, 5.2, '#c8102e'), '<rect width="2.6" height="12" fill="#e8a020"/>'),
+    'ru-da': svg(band(0, 12, '#0f8f3f'), band(4, 4, '#1e4fa3'), band(8, 4, '#c8102e')),
+    krd: svg(band(0, 12, '#e03a3e'), band(4, 4, '#fff'), band(8, 4, '#1a8f4c'), '<circle cx="8" cy="6" r="2.1" fill="#f5c518"/>'),
+  };
+  const flag = (code) => {
+    const c = String(code ?? '').toLowerCase();
+    if (FLAG[c]) return FLAG[c];
+    return /^[a-z]{2}$/.test(c) ? String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 97)) : null;
+  };
+
   // The list filters (Min. wins, Min. events) that an academies list reads as each academy's own totals, not its athletes'
   // (server/stats.js academyTotals): the site keeps a reader's settings for them apart from the athletes' (site lib/filters.ts).
   const ACADEMY_OWN = ['wins', 'events'];
 
-  return { unplaced, divisionResults, matchFinder, Outcome, photo, words, regOf, ACADEMY_OWN, overAt, overSql, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, pointsLine, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  return { unplaced, divisionResults, matchFinder, Outcome, photo, words, regOf, ACADEMY_OWN, overAt, overSql, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, winRate, winTone, pointsLine, flag, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

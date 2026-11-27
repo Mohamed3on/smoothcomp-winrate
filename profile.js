@@ -15,7 +15,7 @@
   // The rules apart from the page: profile-model.js, and an event's Outcome (rules.js).
   const { FINISHES, LABELS, finishOf, pointsLine, normalize: person } = SCWRRules;
   const { clean } = SCWRRules.Outcome;
-  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const { plural, esc } = SCWRSite;
   const swatch = (b) => `<i class="scwr-belt" data-belt="${b}"></i>`;
   // Smoothcomp's finishes come finer than its own chips name them ("submission_armbar",
   // "decision_unanimous", "double-dq"); each counts under the chip its finish names (rules.js).
@@ -34,7 +34,6 @@
   try { picked = new Set(JSON.parse(localStorage.getItem(PICKED)).map(finishOf)); } catch {} // an older "escape" is a fastest escape
   if (!picked?.size) picked = new Set(['submission', 'fastest_escape', 'points', 'decision']);
   // Text from Smoothcomp (names, clubs, event titles) goes into markup escaped.
-  const esc = (text) => String(text ?? '').replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   // A refusal (a 429, or the failed fetch Cloudflare's challenge makes of one) is
   // tried again after 1, 2, 4 and 8 s. Some pages Smoothcomp never answers (Cloudflare
   // gives up on them after two minutes), so a page given 15 s fails for good.
@@ -223,9 +222,9 @@
     + `<div class="scwr-chips">${[96, 72, 80].map(w => `<i class="scwr-skel" style="width: ${w}px; height: 20px; border-radius: 999px"></i>`).join('')}</div>`
     + (plan.whole ? '' : `<div class="scwr-belt-split">${'<div class="scwr-split-row"><i class="scwr-skel" style="height: 8px"></i><i class="scwr-skel" style="height: 12px"></i><i class="scwr-skel" style="height: 6px"></i><i class="scwr-skel" style="height: 10px"></i></div>'.repeat(plan.shown)}</div>`);
   const record = (types) => [...picked].reduce(([w, l], type) => [w + (types[type]?.[0] ?? 0), l + (types[type]?.[1] ?? 0)], [0, 0]);
-  const rate = (w, l) => `${Math.round((w / (w + l)) * 100)}%`;
+  const rate = SCWRRules.winRate;
   // A rate takes its hue from red at 40% or under, through amber, to green at 85% and over.
-  const tone = (w, l) => `color: oklch(0.8 0.14 ${25 + 120 * Math.min(1, Math.max(0, (w / (w + l) - 0.4) / 0.45))})`;
+  const tone = (w, l) => `color: ${SCWRRules.winTone(w, l)}`;
   // Wins read green and losses red, the dash between them neutral.
   const wl = (w, l) => `<span class="scwr-won">${w}</span><span class="scwr-dash">–</span><span class="scwr-lost">${l}</span>`;
   function filled() {

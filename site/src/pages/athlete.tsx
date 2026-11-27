@@ -12,8 +12,8 @@ import { Empty } from '@/components/empty';
 import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record } from '@/components/stats';
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
-import { ageOf, beltAt, date, fmt, isUpcoming, plural, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, matchFinder, normalize, pointsLine, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
+import { ageOf, beltAt, date, fmt, isUpcoming, plural, rate, typeName, winsOf } from '@/lib/format';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, matchFinder, normalize, pointsLine, winTone, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -38,9 +38,8 @@ const SITE_NAME = (site: string) => (site === 'ajptour.com' ? 'AJP Tour' : 'Smoo
 
 // Every finish is counted under its group (rules.js): an older match list's "escape" is a fastest escape.
 const dot = (t: string) => `var(--color-win-${finishOf(t)}, var(--color-win-other))`;
-const pct = (w: number, l: number) => `${Math.round((w / (w + l)) * 100)}%`;
 // A rate's hue runs from red at 40% or under, through amber, to green at 85% and over, as on the profile.
-const tone = (w: number, l: number) => ({ color: `oklch(0.8 0.14 ${25 + 120 * Math.min(1, Math.max(0, (w / (w + l) - 0.4) / 0.45))})` });
+const tone = (w: number, l: number) => ({ color: winTone(w, l) });
 
 // Their record event by event, as the rankings count it (rules.js eventRecords).
 type Records = ReturnType<typeof eventRecords>;
@@ -183,11 +182,11 @@ function BeltSplit({ split }: { split: Split[] }) {
   return (
     <ul className="flex w-full max-w-md flex-col gap-2 lg:w-md lg:shrink-0" aria-label="Win rate at each belt">
       {split.map(({ belt, w, l, events }) => {
-        const label = !events ? `No events at ${belt} yet` : `${w + l ? `${pct(w, l)} of matches won` : "No matches by these finishes"} at ${belt}: ${plural(w, "win")} and ${l} loss${l === 1 ? "" : "es"} in ${plural(events, "event")}`;
+        const label = !events ? `No events at ${belt} yet` : `${w + l ? `${rate(w, l)} of matches won` : "No matches by these finishes"} at ${belt}: ${plural(w, "win")} and ${l} loss${l === 1 ? "" : "es"} in ${plural(events, "event")}`;
         return (
           <li key={belt} title={label} aria-label={label} className="grid grid-cols-[22px_3rem_1fr_4.5rem] items-center gap-3">
             <Belt belt={belt} />
-            <b className="text-right font-semibold tabular-nums" style={w + l ? tone(w, l) : undefined}>{w + l ? pct(w, l) : <span className="text-muted-foreground">–</span>}</b>
+            <b className="text-right font-semibold tabular-nums" style={w + l ? tone(w, l) : undefined}>{w + l ? rate(w, l) : <span className="text-muted-foreground">–</span>}</b>
             <span className="h-1.5 overflow-hidden rounded-full bg-muted">
               {w + l > 0 && <span className="block h-full rounded-full shadow-[inset_0_0_0_1px_rgb(255_255_255/0.2)]" style={{ width: `${(w / (w + l)) * 100}%`, background: BELT_COLOUR[belt] }} />}
             </span>
@@ -254,7 +253,7 @@ function RecordBand({ fins, f, over, split, career, points }: { fins: Finish[]; 
       <div className="flex min-w-0 flex-col gap-4">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           {w + l ? <>
-            <span className="text-5xl font-semibold tracking-tight" style={tone(w, l)}>{pct(w, l)}</span>
+            <span className="text-5xl font-semibold tracking-tight" style={tone(w, l)}>{rate(w, l)}</span>
             <span className="text-muted-foreground">win rate</span>
             <span className="text-xl"><Record w={w} l={l} /></span>
             <span className="text-sm text-muted-foreground">{over}</span>

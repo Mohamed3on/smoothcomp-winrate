@@ -25,6 +25,9 @@ declare global {
     finishOf(code: unknown): string;
     finishSql(column: string): string;
     SCORELESS: string[];
+    winRate(won: number | null | undefined, lost: number | null | undefined): string | null;
+    winTone(won: number, lost: number): string;
+    flag(code: string | null | undefined): string | null;
     pointsLine(pointsFor: number, pointsAgainst: number, scored: number, total: number): { each: string | null; total: string; over: string };
     detailOf(code: unknown): string | null;
     howOf(code: unknown): string;

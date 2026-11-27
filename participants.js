@@ -568,7 +568,7 @@ function readLists() {
 // its place; participants.css hides the original. Each column is drawn like
 // Smoothcomp's own: a figure over a muted line, as the birth year sits over the age.
 const COLUMNS = ['Wins', 'Medals'];
-const plural = (n, word, words = `${word}s`) => `${n} ${n === 1 ? word : words}`;
+const { plural, esc } = SCWRSite;
 // A zero steps back to Smoothcomp's muted ink, so the eye lands on the figures that count.
 const column = (n, figure, line) => `<div><div${n ? '' : ' class="muted"'}>${figure}</div><div class="muted font-size-tiny">${line}</div></div>`;
 // Medals as their colours, each with its count; a colour never won steps back.
@@ -710,7 +710,6 @@ function queue() {
 // Who is signed in is known once the list mounts: Cloudflare's Rocket Loader runs
 // the page's inline scripts, `window.userId` among them, after this one.
 let me;
-const esc = (text) => text.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 let panel;
 let picking = 0;
 
