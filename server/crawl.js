@@ -312,6 +312,14 @@ const READ_MIXED = ['2', '17'];
 const DIVISION = ['gi', 'nogi', 'no gi', 'ne waza', 'newaza', 'bjj', 'jiu jitsu', 'jiujitsu', 'adcc'];
 export const bjjDivision = (e) => `(${[...DIVISION.map((w) => `% ${w} %`), '%grappl%', '%submission%'].map((w) => `(' ' || replace(replace(replace(replace(${e}.division, '/', ' '), '(', ' '), ')', ' '), '-', ' ') || ' ') LIKE '${w}'`).join(' OR ')})`;
 const other = (site, event) => `EXISTS (SELECT 1 FROM events o WHERE o.site = ${site} AND o.event = ${event} AND ${notBjj('o')} AND NOT ${mixed('o', READ_MIXED)})`;
+// Adults first (the user's call, 2026-11-27): an event whose title names only kids ("Kids Open", "- YOUTH", "Kinder und
+// Jugendliche", "U14, U16, U18") isn't read; one that names adults beside them ("Kids & Adults", "Gi, NoGi & Kids") is.
+const KIDS = ['kid', 'youth', 'junior', 'juvenil', 'teens', 'child', 'infantil', 'kinder', 'jugend', 'enfant', 'u12', 'u14', 'u16', 'u18',
+  'детск', 'Детск', 'ДЕТСК', 'юнош', 'Юнош', 'ЮНОШ'];
+const ADULTS = ['adult', 'master', 'senior', 'veteran', 'mayores', 'female', 'white belt', 'absolut', 'erwachsen', '& kid', '+ kid', ' and kid', 'with kid',
+  'взросл', 'Взросл', 'ВЗРОСЛ'];
+const words = (t, list) => `(${list.map((w) => `coalesce(${t}, '') LIKE '%${w}%'`).join(' OR ')})`;
+export const kidsOnly = (t) => `(${words(t, KIDS)} AND NOT ${words(t, ADULTS)})`;
 
 // Where an event stands in the queue (crawls.priority, higher first; one someone viewed is 3, ahead of all): nearest Berlin
 // first (the user's bias), in bands of 100, 350, 700, 1,500 and 3,000 km, then in each band Smoothcomp's events an athlete we
@@ -325,25 +333,25 @@ export const RANK = (site, lat, lng, country, city, known) => `-(4 * coalesce(${
 // Every known event that has ended with no results, in RANK's order, newest first; ids from profiles' event lists too.
 // Those queued already are skipped before their entries are looked through.
 export async function queue(env) {
-  await env.DB.prepare(`DELETE FROM crawls WHERE state = 'queued' AND ${other('crawls.site', 'crawls.event')}`).run();
+  await env.DB.prepare(`DELETE FROM crawls WHERE (state = 'queued' AND ${other('crawls.site', 'crawls.event')}) OR (state IN ('queued', 'reading') AND ${kidsOnly('crawls.title')})`).run();
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at, priority)
     SELECT k.site, k.event, 'queued', max(k.start), max(k.title), max(k.city), 0, ?1, ${RANK('k.site', 'max(k.lat)', 'max(k.lng)', 'max(k.country)', 'max(k.city)', 'max(k.known)')} FROM (
       SELECT site, event, start, title, city, lat, lng, country, 0 AS known FROM events
       UNION ALL SELECT site, event, start, title, city, NULL, NULL, NULL, 1 FROM history) k
-    WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = k.site AND c.event = k.event) AND NOT ${other('k.site', 'k.event')}
+    WHERE k.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = k.site AND c.event = k.event) AND NOT ${other('k.site', 'k.event')} AND NOT ${kidsOnly('k.title')}
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = k.site AND e.event = k.event AND e.fought = 1)
     GROUP BY k.site, k.event`).bind(Date.now()).run();
   // Events a results page sent without matches: read for those alone. Event by event through the
   // event key, skipping those queued already, instead of walking every entry.
   await env.DB.prepare(`INSERT OR IGNORE INTO crawls (site, event, state, start, title, city, next, at, priority)
     SELECT v.site, v.event, 'queued', v.start, v.title, v.city, 0, ?1, ${RANK('v.site', 'v.lat', 'v.lng', 'v.country', 'v.city', '0')} FROM events v
-    WHERE v.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = v.site AND c.event = v.event) AND NOT ${other('v.site', 'v.event')}
+    WHERE v.start < datetime('now', '-1 day') AND NOT EXISTS (SELECT 1 FROM crawls c WHERE c.site = v.site AND c.event = v.event) AND NOT ${other('v.site', 'v.event')} AND NOT ${kidsOnly('v.title')}
       AND EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1)
       AND NOT EXISTS (SELECT 1 FROM entries e WHERE e.site = v.site AND e.event = v.event AND e.fought = 1 AND e.bouts IS NOT NULL)`).bind(Date.now()).run();
   // Results can still be corrected after an event: one read under ten days after it started is
   // read again once ten days have passed.
   await env.DB.prepare(`UPDATE crawls SET state = 'queued', data = NULL, next = 0, tries = 0 WHERE state = 'done' AND wrote IS NOT NULL
-    AND wrote < unixepoch(start) * 1000 + 864000000 AND unixepoch('now') > unixepoch(start) + 864000 AND NOT ${other('crawls.site', 'crawls.event')}`).run();
+    AND wrote < unixepoch(start) * 1000 + 864000000 AND unixepoch('now') > unixepoch(start) + 864000 AND NOT ${other('crawls.site', 'crawls.event')} AND NOT ${kidsOnly('crawls.title')}`).run();
 }
 
 // run: how long the lane reads (at most RUN).
