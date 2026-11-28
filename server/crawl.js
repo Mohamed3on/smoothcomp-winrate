@@ -256,10 +256,11 @@ export async function findClubs(env) {
   return found ? 1 : 0;
 }
 
-// Older events, ARCHIVE pages a site a day past the last year's (about 320 events): the crawler reads them
-// after the recent ones, within its daily share. The page reached is kept in meta, and the walk stops once
-// the database passes 9 GB (D1 holds 10).
-const ARCHIVE = 8;
+// Older events, ARCHIVE pages a site a day past the last year's (about 960 events): the crawler reads them
+// after the recent ones, within its daily share (an event writes ~1.3k rows since rankings went nightly, so the
+// share reads ~900 a day; past that only the queue grows, not the writes). The page reached is kept in meta, and
+// the walk stops once the database passes 9 GB (D1 holds 10).
+const ARCHIVE = 24;
 
 export async function listEvents(env) {
   const since = new Date(Date.now() - 365 * DAY).toISOString().slice(0, 10);
