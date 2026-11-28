@@ -3,8 +3,9 @@
 // GraphQL analytics, through the CF_ANALYTICS_TOKEN secret, read only), over the last 30 days and today, and
 // keeps a verdict in meta 'budget':
 //   ok
-//   slow: past 70% of a month's allowance, or a day past its thirtieth: the crawler, event listing and
-//         academy lookups stop
+//   slow: past 70% of a month's allowance, or a day's writes past a thirtieth of it: the crawler, event
+//         listing and academy lookups stop. A day's reads don't count: past the allowance they cost $1 a
+//         billion, and crawler.js tells Telegram of a runaway within the hour
 //   stop: past 90%: uploads stop being stored too (the site still reads what it holds)
 // A verdict older than an hour (the analytics unanswered) counts as slow for the background work.
 export const INCLUDED = { written: 50e6, read: 25e9 };
@@ -12,10 +13,10 @@ export const DATABASE = '63a2b393-f89d-4642-9ad7-e578cb2638e9';
 export const ACCOUNT = '4223bb20bcc0a82da474e80ddd02370a';
 const STALE = 3600e3;
 
-export function verdict({ written, read, writtenToday, readToday }) {
+export function verdict({ written, read, writtenToday }) {
   if (written >= 0.9 * INCLUDED.written || read >= 0.9 * INCLUDED.read) return 'stop';
   if (written >= 0.7 * INCLUDED.written || read >= 0.7 * INCLUDED.read
-    || writtenToday >= INCLUDED.written / 30 || readToday >= INCLUDED.read / 30) return 'slow';
+    || writtenToday >= INCLUDED.written / 30) return 'slow';
   return 'ok';
 }
 

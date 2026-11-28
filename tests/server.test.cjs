@@ -341,6 +341,7 @@ test('D1 usage near what the plan includes rests the crawler, then stops uploads
   const { verdict, budget } = await import('../server/budget.js');
   assert.equal(verdict({ written: 10e6, read: 5e9, writtenToday: 0.5e6, readToday: 0.2e9 }), 'ok');
   assert.equal(verdict({ written: 10e6, read: 5e9, writtenToday: 1.7e6, readToday: 0.2e9 }), 'slow');
+  assert.equal(verdict({ written: 10e6, read: 5e9, writtenToday: 0.5e6, readToday: 0.9e9 }), 'ok');
   assert.equal(verdict({ written: 36e6, read: 5e9, writtenToday: 0, readToday: 0 }), 'slow');
   assert.equal(verdict({ written: 10e6, read: 23e9, writtenToday: 0, readToday: 0 }), 'stop');
   const { DB } = d1();
