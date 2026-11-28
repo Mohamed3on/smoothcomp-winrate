@@ -401,7 +401,7 @@ test('D1 usage near what the plan includes rests the crawler, then stops uploads
 test("an athlete's belt is at least the lowest belt of every division they entered", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
-  const { DB } = d1();
+  const { DB, db } = d1();
   const env = { DB };
   const post = (path, body) => posted(worker, env, path, body);
   // Purple in 2024; in 2026 a Brown/Black division, which names no one belt. A kids' green belt never lifts an adult white.
@@ -432,8 +432,11 @@ test("an athlete's belt is at least the lowest belt of every division they enter
     24: { name: 'Al Ba', belt: 'Brown', entries: [{ division: 'Male Gi / Brown / Master 2 (36+) / -84,9 kg', place: 1, wins: { submission: 4 }, losses: {} }] },
   }, read: Date.now() });
   const page = async (id) => (await (await API.athlete(env, new URLSearchParams(`site=smoothcomp.com&id=${id}`))).json()).bracket;
-  assert.deepEqual(await page('24'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 1, of: 2 });
-  assert.deepEqual(await page('21'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 2, of: 2 });
+  assert.deepEqual(await page('24'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 1, of: 2, rated: null });
+  assert.deepEqual(await page('21'), { sex: 'm', age: 'Master', weight: 85, belt: 'brown', rank: 2, of: 2, rated: null });
+  // Rated, they're placed by rating among those rated there too: 21 rated above 24 leads by rating, trails by wins.
+  db.exec("INSERT INTO ratings (site, user, rating, mean, doubt, matches) VALUES ('smoothcomp.com', '21', 1900, 2200, 150, 12), ('smoothcomp.com', '24', 1700, 2000, 150, 9)");
+  assert.deepEqual([(await page('21')).rated, (await page('21')).rank, (await page('24')).rated], [{ rank: 1, of: 2 }, 2, { rank: 2, of: 2 }]);
   // Their profile's belt list ends at blue, yet they entered a purple division since (athlete 1296744): they competed up, and stay blue.
   await post('/record', { site: 'smoothcomp.com', event: '954', records: { 25: [1, 0] }, meta: { ...meta, start: '2026-11-14T07:00:00Z' }, athletes: {
     25: { name: 'Max Up', belt: 'Blue', entries: [{ division: 'Men Gi / Purple / Middle Weight (80 Kg to 84.9 Kg) / Master (30+)', place: 1, wins: { points: 1 }, losses: {} }] },

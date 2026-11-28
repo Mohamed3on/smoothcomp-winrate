@@ -531,8 +531,14 @@ async function athlete(env, params) {
     ? await env.DB.prepare(`WITH ${careersOf(f.off, 'AND weight = ?2 AND age = ?3 AND sex IS ?4 AND belt IS ?5 AND dup = 0')}
         SELECT count(*) AS of, count(*) FILTER (WHERE wins > ?6) + 1 AS rank FROM careers WHERE (wins > 0 OR lost > 0) AND (?7 = '' OR last >= ?7)`)
       .bind(accounts[held].site, career.weight, career.age, career.sex, career.belt, career.wins, f.since).first() : null;
+  // And by rating among those rated there, as the rankings by rating narrowed to it order them (rating.js; the page leads with it).
+  const rated = bracket && career.rating != null
+    ? await env.DB.prepare(`WITH ${careersOf(f.off, 'AND weight = ?2 AND age = ?3 AND sex IS ?4 AND belt IS ?5 AND dup = 0')}
+        SELECT count(*) AS of, count(*) FILTER (WHERE rt.rating > ?6) + 1 AS rank FROM careers CROSS JOIN ratings rt ON rt.site = ?1 AND rt.user = careers.user
+        WHERE (wins > 0 OR lost > 0) AND (?7 = '' OR last >= ?7)`)
+      .bind(accounts[held].site, career.weight, career.age, career.sex, career.belt, career.rating, f.since).first() : null;
   return json({
-    bracket: bracket && { sex: career.sex, age: career.age, weight: career.weight, belt: career.belt, rank: bracket.rank, of: bracket.of },
+    bracket: bracket && { sex: career.sex, age: career.age, weight: career.weight, belt: career.belt, rank: bracket.rank, of: bracket.of, rated: rated && { rank: rated.rank, of: rated.of } },
     history: each.flatMap((a) => a.history).sort(newest),
     // The board sums each account's person (MERGE): this account's row, else another's.
     career,
