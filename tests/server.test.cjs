@@ -5,12 +5,14 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
+const plans = require('./plans.cjs');
 
 // D1's statement and batch, over node:sqlite.
 function d1() {
   const db = new DatabaseSync(':memory:');
   db.exec(fs.readFileSync('server/schema.sql', 'utf8'));
   const statement = (sql, args = []) => {
+    plans.record(sql);
     const run = (how) => {
       const s = db.prepare(sql);
       s.setAllowUnknownNamedParameters?.(true);
@@ -808,4 +810,27 @@ test("results reach the rankings at the nightly rebuild, and an athlete's own pa
   await DB.prepare("DELETE FROM board").run();
   await rebuild(env, Date.now() + 2000);
   assert.deepEqual(ranked(), []);
+});
+
+test('a slow or wasteful D1 query is told once in six hours; ANALYZE, schema changes and cheap queries never', async () => {
+  const { slowQueries, SLOW } = await import('../server/crawler.js');
+  const g = (query, rowsRead, queryDurationMs, count = 1) => ({ count, sum: { rowsRead: rowsRead * count }, avg: { rowsRead, queryDurationMs }, dimensions: { query } });
+  const now = Date.parse('2026-11-28T12:00:00Z');
+  const groups = [g('SELECT DISTINCT e.event FROM entries mine  JOIN people p', 5.6e6, 33e3), g('SELECT 1 FROM tiny', 10, 2, 900), g('ANALYZE people', 3e6, 1000), g('CREATE INDEX x ON entries (site)', 2e6, 2000), g('SELECT slow()', 10, 12e3)];
+  const found = slowQueries(groups, {}, now);
+  assert.deepEqual(found.map(([key]) => key), ['SELECT DISTINCT e.event FROM entries mine JOIN people p', 'SELECT slow()']);
+  assert.match(found[0][1], /5,600,000 rows, 33\.0 s a run, ×1/);
+  // Told an hour ago: quiet; seven hours ago: told again.
+  assert.deepEqual(slowQueries(groups, Object.fromEntries(found.map(([key]) => [key, now - 3600e3])), now), []);
+  assert.equal(slowQueries(groups, Object.fromEntries(found.map(([key]) => [key, now - 7 * 3600e3])), now).length, 2);
+  // An hour reading past the day's share, paced by the hour, is told on its own.
+  assert.deepEqual(slowQueries([g('SELECT cheap', 1000, 5, Math.ceil(SLOW.readHour / 1000) + 1)], {}, now).map(([key]) => key), ['hour']);
+});
+
+// Last: every statement the tests above ran, explained as D1 would plan it (plans.cjs).
+test('no query walks a big table that fixtures/walks.json does not list', () => {
+  const { unlisted, stale, statements } = plans.check();
+  assert.ok(statements > 50, `only ${statements} statements recorded`);
+  assert.deepEqual(unlisted.map(([stats, sql, walk]) => `${walk} (${stats})\n    in ${sql.slice(0, 400)}`), [], 'a query walks a big table: fix its plan (pin the join, use the index), or list it with WALKS=write');
+  assert.deepEqual(stale, [], 'walks.json lists walks no query makes any more: rewrite it with WALKS=write');
 });

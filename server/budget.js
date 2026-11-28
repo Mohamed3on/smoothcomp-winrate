@@ -8,8 +8,8 @@
 //   stop: past 90%: uploads stop being stored too (the site still reads what it holds)
 // A verdict older than an hour (the analytics unanswered) counts as slow for the background work.
 export const INCLUDED = { written: 50e6, read: 25e9 };
-const DATABASE = '63a2b393-f89d-4642-9ad7-e578cb2638e9';
-const ACCOUNT = '4223bb20bcc0a82da474e80ddd02370a';
+export const DATABASE = '63a2b393-f89d-4642-9ad7-e578cb2638e9';
+export const ACCOUNT = '4223bb20bcc0a82da474e80ddd02370a';
 const STALE = 3600e3;
 
 export function verdict({ written, read, writtenToday, readToday }) {

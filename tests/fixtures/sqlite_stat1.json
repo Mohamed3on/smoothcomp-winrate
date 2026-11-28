@@ -1,0 +1,167 @@
+[
+  {
+    "tbl": "athletes",
+    "idx": "sqlite_autoindex_athletes_1",
+    "stat": "7177 3589 1 1"
+  },
+  {
+    "tbl": "belts",
+    "idx": "sqlite_autoindex_belts_1",
+    "stat": "118 59 1"
+  },
+  {
+    "tbl": "board",
+    "idx": "board",
+    "stat": "351293 175647 1"
+  },
+  {
+    "tbl": "board",
+    "idx": "board_bracket",
+    "stat": "351293 175647 8569 2008 799 158"
+  },
+  {
+    "tbl": "board",
+    "idx": "board_club",
+    "stat": "351293 175647 13"
+  },
+  {
+    "tbl": "board",
+    "idx": "board_counted",
+    "stat": "351293 175647 1706 748 262 209 23 11 3 3 2 2 2 1"
+  },
+  {
+    "tbl": "board",
+    "idx": "board_ranked",
+    "stat": "351293 175647 87824 1068 104"
+  },
+  {
+    "tbl": "board_own",
+    "idx": "board_own",
+    "stat": "21734 10867 1"
+  },
+  {
+    "tbl": "cards",
+    "idx": "sqlite_autoindex_cards_1",
+    "stat": "745 373 1"
+  },
+  {
+    "tbl": "club_board",
+    "idx": "club_board",
+    "stat": "32419 16210 1"
+  },
+  {
+    "tbl": "club_places",
+    "idx": "sqlite_autoindex_club_places_1",
+    "stat": "29662 14831 1"
+  },
+  {
+    "tbl": "club_recent",
+    "idx": "sqlite_autoindex_club_recent_1",
+    "stat": "27483 13742 1"
+  },
+  {
+    "tbl": "clubs",
+    "idx": "sqlite_autoindex_clubs_1",
+    "stat": "29671 14836 1"
+  },
+  {
+    "tbl": "crawls",
+    "idx": "crawls_due",
+    "stat": "4780 266 3"
+  },
+  {
+    "tbl": "crawls",
+    "idx": "crawls_next",
+    "stat": "7001 2334 3"
+  },
+  {
+    "tbl": "crawls",
+    "idx": "sqlite_autoindex_crawls_1",
+    "stat": "7001 3501 1"
+  },
+  {
+    "tbl": "entries",
+    "idx": "entries",
+    "stat": "779545 389773 347 2 1"
+  },
+  {
+    "tbl": "entries",
+    "idx": "entries_club",
+    "stat": "779545 389773 27"
+  },
+  {
+    "tbl": "entries",
+    "idx": "entries_user",
+    "stat": "779545 389773 3"
+  },
+  {
+    "tbl": "events",
+    "idx": "events_start",
+    "stat": "9444 4722 5"
+  },
+  {
+    "tbl": "events",
+    "idx": "sqlite_autoindex_events_1",
+    "stat": "9444 4722 1"
+  },
+  {
+    "tbl": "history",
+    "idx": "sqlite_autoindex_history_1",
+    "stat": "19163 9582 5 1"
+  },
+  {
+    "tbl": "meta",
+    "idx": "sqlite_autoindex_meta_1",
+    "stat": "10 1"
+  },
+  {
+    "tbl": "outcomes",
+    "idx": "sqlite_autoindex_outcomes_1",
+    "stat": "1932 966 8 1"
+  },
+  {
+    "tbl": "people",
+    "idx": "people_club",
+    "stat": "365944 182972 13"
+  },
+  {
+    "tbl": "people",
+    "idx": "people_country",
+    "stat": "365944 182972 846 842"
+  },
+  {
+    "tbl": "people",
+    "idx": "people_ident",
+    "stat": "365944 1 1 1"
+  },
+  {
+    "tbl": "people",
+    "idx": "sqlite_autoindex_people_1",
+    "stat": "365944 182972 1"
+  },
+  {
+    "tbl": "profiles",
+    "idx": "sqlite_autoindex_profiles_1",
+    "stat": "107 54 1"
+  },
+  {
+    "tbl": "reads",
+    "idx": "sqlite_autoindex_reads_1",
+    "stat": "2567 1284 1 1"
+  },
+  {
+    "tbl": "records",
+    "idx": "records_user",
+    "stat": "388858 194429 2"
+  },
+  {
+    "tbl": "records",
+    "idx": "sqlite_autoindex_records_1",
+    "stat": "388858 194429 226 1"
+  },
+  {
+    "tbl": "tallies",
+    "idx": "tallies",
+    "stat": "352945 176473 1"
+  }
+]

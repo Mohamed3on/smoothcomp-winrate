@@ -27,3 +27,10 @@ service = "mat-stats-crawler"
 
 [triggers]
 crons = ["* * * * *"]
+
+# Its logs kept a few days (Workers Logs); Issues groups its failures (exceptions, console.error) and alerts on them.
+[observability]
+enabled = true
+
+[observability.issues]
+enabled = true

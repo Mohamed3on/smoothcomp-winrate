@@ -22,6 +22,10 @@ directory = "../site/dist"
 not_found_handling = "single-page-application"
 run_worker_first = ["/*", "!/assets/*", "!/icon.svg"]
 
-# Each request's errors kept a few days (Workers Logs), so a failure can be read after the fact.
+# Each request's errors kept a few days (Workers Logs), so a failure can be read after the fact; Issues groups failures
+# (exceptions, 5xx, console.error) and alerts on them.
 [observability]
+enabled = true
+
+[observability.issues]
 enabled = true
