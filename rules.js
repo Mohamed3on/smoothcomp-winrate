@@ -620,6 +620,18 @@ globalThis.SCWRRules = (() => {
     const [x, y] = [seedKey(a), seedKey(b)];
     return x.reduce((order, n, i) => order || (y[i] === n ? 0 : y[i] > n ? 1 : -1), 0);
   };
+  // Seeds rated (server/rating.js: `strength`, their rating's mean): where two athletes of one belt both have one, it calls
+  // their match better than the record does (71.2% against 69.1% of 25.8k such matches, 2026-11-28), so the rated trade
+  // places among those the seed key gave them, strongest first; everyone else keeps theirs. sorted: rows in seed order.
+  const byRating = (sorted, seedOf) => {
+    const seeds = sorted.map(seedOf), out = [...sorted];
+    for (const belt of new Set(seeds.map((s) => s.belt))) {
+      const at = seeds.flatMap((s, i) => (s.belt === belt && s.strength != null ? [i] : []));
+      const best = at.map((i) => [sorted[i], seeds[i].strength]).sort((x, y) => y[1] - x[1]);
+      at.forEach((i, k) => { out[i] = best[k][0]; });
+    }
+    return out;
+  };
   // A medal call is sure when the athlete's rate or wins per event is known and nobody else in the
   // bracket has the same belt, rate, matches and wins per event; else it is a maybe.
   const sureSeed = (seeds, i) => {
@@ -672,5 +684,5 @@ globalThis.SCWRRules = (() => {
   // (server/stats.js academyTotals): the site keeps a reader's settings for them apart from the athletes' (site lib/filters.ts).
   const ACADEMY_OWN = ['wins', 'events'];
 
-  return { unplaced, divisionResults, matchFinder, Outcome, photo, words, regOf, ACADEMY_OWN, overAt, overSql, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, winRate, winTone, pointsLine, flag, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
+  return { unplaced, divisionResults, matchFinder, Outcome, photo, words, regOf, ACADEMY_OWN, overAt, overSql, wonNothingSql, presentSql, missedSql, showed, rated, seedKey, bySeed, byRating, sureSeed, normalize, FINISHES, LABELS, finishOf, finishSql, SCORELESS, winRate, winTone, pointsLine, flag, detailOf, howOf, BELTS, beltsIn, beltOf, isGrade, eventRecords, noShow, playedSql, totals, beltSplit, rivalsOf, divisionOf, usualDivision, WEIGHTS, weightName, bracketOf, placeOf, roundOf, isPool, poolPlaces, scheduleOf, knownSides, nameSides, eventResults, registeredIn, clubPlace };
 })();

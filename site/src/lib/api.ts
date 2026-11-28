@@ -44,6 +44,8 @@ export interface EventEntry extends Entry {
   career_wins: number | null; career_source: 'career' | 'results' | null; career_types: string | null; career_won?: number | null; career_lost?: number | null; career_events?: number | null; career_gold?: number | null;
   // Their academy's athletes' record (club_board), which breaks the seed's ties (rules.js seedKey).
   club_won?: number | null; club_lost?: number | null;
+  // Their rating's mean, where they're rated (server/rating.js): the rated trade seed places among themselves by it (rules.js byRating).
+  strength?: number | null;
   // Its matches with no score read yet.
   open?: Bout[];
 }

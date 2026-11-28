@@ -18,7 +18,7 @@ import { resetAction } from '@/pages/athletes';
 import { cn } from '@/lib/utils';
 import { once, sizeEvent } from '@/lib/smoothcomp';
 import { DivisionLink } from '@/pages/division';
-import { beltOf, bySeed, overAt, rated, sureSeed } from '@/lib/rules';
+import { beltOf, byRating, bySeed, overAt, rated, sureSeed } from '@/lib/rules';
 
 // The medal a bracket's seeding points to (rules.js, as in the extension): first gold, second silver, third
 // bronze, fourth nothing. Seeded by win rate where a record is known, then wins per event and career wins.
@@ -70,12 +70,12 @@ const tallyOf = (e: EventEntry, f: Filters) => {
   return [winsOf(t, f.counted), f.counted('submission') ? Number(t.submission) || 0 : 0, f.counted('points') ? Number(t.points) || 0 : 0];
 };
 const seedOf = (r: Ranked) => ({ belt: beltOf(r.division) ?? r.belt, won: r.career_won, lost: r.career_lost, wins: r.tally?.[0], events: r.career_events, gold: r.career_gold, submission: r.tally?.[1], points: r.tally?.[2], born: r.born,
-  academy: r.club_won != null && r.club_lost != null ? [r.club_won, r.club_lost] as [number, number] : null });
+  academy: r.club_won != null && r.club_lost != null ? [r.club_won, r.club_lost] as [number, number] : null, strength: r.strength });
 const byCareer = (a: Ranked, b: Ranked) => bySeed(seedOf(a), seedOf(b)) || a.user.localeCompare(b.user);
 // One bracket's athletes in seed order, or by place once decided; while undecided and still to fight
 // (open), the top three carry the medal their seed points to.
 export function seeded<T extends EventEntry>(name: string, list: T[], f: Filters, open: boolean): (T & Seeded)[] {
-  const rows = list.map((r) => ({ ...r, tally: tallyOf(r, f), career: tallyOf(r, f)?.[0] ?? null, call: null as Call | null })).sort(byCareer);
+  const rows = byRating(list.map((r) => ({ ...r, tally: tallyOf(r, f), career: tallyOf(r, f)?.[0] ?? null, call: null as Call | null })).sort(byCareer), seedOf);
   const decided = rows.some((r) => r.place != null);
   if (decided) rows.sort((a, b) => (a.place ?? 999) - (b.place ?? 999) || byCareer(a, b));
   rows.forEach((r, i) => {

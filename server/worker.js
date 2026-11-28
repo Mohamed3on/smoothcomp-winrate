@@ -129,6 +129,9 @@ async function lookup(env, { site, users, clubs = [] }) {
   const rated = await env.DB.prepare('SELECT user, rec FROM tallies WHERE site = ?1 AND rec IS NOT NULL AND user IN (SELECT value FROM json_each(?2))')
     .bind(site, JSON.stringify(users)).all();
   kept.records = Object.fromEntries(rated.results.map((row) => [row.user, JSON.parse(row.rec)]));
+  // Each one rated (rating.js), their rating's mean: a bracket seeds the rated among themselves by it (rules.js byRating).
+  const strengths = await env.DB.prepare('SELECT user, mean FROM ratings WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))').bind(site, JSON.stringify(users)).all();
+  kept.ratings = Object.fromEntries(strengths.results.map((row) => [row.user, row.mean]));
   // When the latest event each athlete entered was over (rules.js overAt), so a career read before it is read again.
   const over = overSql('v');
   const ended = await env.DB.prepare(`SELECT user, max(${over}) AS ended FROM entries e JOIN events v USING (site, event)

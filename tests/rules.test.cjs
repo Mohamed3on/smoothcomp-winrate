@@ -215,3 +215,13 @@ test('a bracket is whom, the age group without its level, and the nearest weight
   assert.equal(weightName(85), '−85 kg');
   assert.equal(weightName(101), '+100 kg');
 });
+
+test('the rated trade seed places among themselves by strength, belt by belt; everyone else keeps their place', () => {
+  const { byRating } = context.SCWRRules;
+  // In seed order: a rated blue (1700), an unrated blue, a rated blue (1900), a rated purple (1500) and one (1800).
+  const rows = [
+    { id: 'a', belt: 'blue', strength: 1700 }, { id: 'b', belt: 'blue' }, { id: 'c', belt: 'blue', strength: 1900 },
+    { id: 'd', belt: 'purple', strength: 1500 }, { id: 'e', belt: 'purple', strength: 1800 },
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(byRating(rows, (r) => r).map((r) => r.id))), ['c', 'b', 'a', 'e', 'd']);
+});

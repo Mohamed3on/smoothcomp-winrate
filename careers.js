@@ -90,6 +90,7 @@ const SCWRCareers = (() => {
   const records = {};
   const absent = {};
   const academies = {};
+  const ratings = {}; // each rated athlete's rating mean (server/rating.js), which seeds the rated among themselves
   const lists = {}; // how many events of each athlete's match lists the shared cache keeps
   const lookup = (users, clubs = []) => looked = Promise.all([looked, ready.then(() => ask({ op: 'shared', users, clubs })).then(kept => {
     Object.assign(seen, kept.seen);
@@ -97,10 +98,11 @@ const SCWRCareers = (() => {
     Object.assign(absent, kept.absent);
     Object.assign(over, kept.ended);
     Object.assign(academies, kept.academies);
+    Object.assign(ratings, kept.ratings);
     for (const user of users) lists[user] = kept.lists?.[user] ?? 0;
     merge(kept);
     // Academies reseed every athlete asked after.
-    const told = new Set(Object.keys(kept.academies ?? {}).length ? users : [...Object.keys(kept.seen ?? {}), ...Object.keys(kept.records ?? {}), ...Object.keys(kept.ended ?? {})]);
+    const told = new Set(Object.keys(kept.academies ?? {}).length ? users : [...Object.keys(kept.seen ?? {}), ...Object.keys(kept.records ?? {}), ...Object.keys(kept.ended ?? {}), ...Object.keys(kept.ratings ?? {})]);
     if (told.size) changed(told);
   }).catch(() => {})]);
 
@@ -304,7 +306,7 @@ const SCWRCareers = (() => {
       waiting.shift()?.();
     }
   }
-  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records, absent, academies, readMatches, short,
+  return { careers, ranks, ready, save, signature, query, next, lookup, seen, records, absent, academies, ratings, readMatches, short,
     fresh: user => current(careers[user], 'careers', String(user)),
     isReading: user => reading.has(`careers:${user}`), paused: () => paused,
     readCareer: (user, events) => read('careers', user, events), readRank: user => read('ranks', user),

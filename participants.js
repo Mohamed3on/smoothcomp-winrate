@@ -85,12 +85,13 @@ const recordOf = (user) => {
   const record = SCWRCareers.records?.[user];
   return record ? Object.entries(record).reduce(([w, l], [type, [a, b]]) => (counted(type) ? [w + a, l + b] : [w, l]), [0, 0]) : null;
 };
-// What a bracket seeds them by (rules.js seedKey): belt, then win rate where a record is known, then wins per event, their academy's win rate, and so on.
+// What a bracket seeds them by (rules.js seedKey): belt, then win rate where a record is known, then wins per event, their academy's win rate, and so on;
+// and their rating's strength, by which the rated trade places among themselves (rules.js byRating).
 const seedOf = (r) => {
   const t = tally(r.user_id);
   const [won, lost] = recordOf(r.user_id) ?? [];
   return { belt: belt(r.user_id ?? r.id), won, lost, wins: t?.[0], events: eventsOf(r.user_id), gold: fresh(r.user_id) ? careers[r.user_id].medals?.[0] : undefined, submission: t?.[1], points: t?.[2], born: r.age == null ? null : -r.age,
-    academy: r.club_id ? SCWRCareers.academies?.[String(r.club_id)] : null };
+    academy: r.club_id ? SCWRCareers.academies?.[String(r.club_id)] : null, strength: r.user_id ? SCWRCareers.ratings?.[r.user_id] : null };
 };
 
 // How much of a whole-event read is still to come: the athletes among these
@@ -120,9 +121,10 @@ function rank(group, lead = 2) {
     const own = lead === 2 ? SCWRRules.seedKey(seedOf(r)) : [t[lead], ...t];
     return [...own, ...seenRate(r.user_id), -(r.age ?? Infinity), -place.get(r.id)];
   };
-  return group.registrations.map((r) => [r, key(r)])
+  const sorted = group.registrations.map((r) => [r, key(r)])
     .sort(([, a], [, b]) => a.reduce((order, x, i) => order || b[i] - x, 0))
     .map(([r]) => r);
+  return lead === 2 ? SCWRRules.byRating(sorted, seedOf) : sorted;
 }
 
 // The medal a bracket's seeding points to at each place: first gold, second silver,

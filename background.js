@@ -190,7 +190,7 @@ async function lookup({ users, clubs }, sender) {
   if (!site || !users.length) return {};
   const response = await fetch(`${SERVER}/lookup`, { method: 'POST', body: JSON.stringify({ site, users, clubs }), signal: AbortSignal.timeout(10000) });
   const given = response.ok ? await response.json() : {};
-  const kept = { careers: {}, ranks: {}, seen: {}, ended: {}, records: {}, absent: {}, academies: {}, lists: {} };
+  const kept = { careers: {}, ranks: {}, seen: {}, ended: {}, records: {}, absent: {}, academies: {}, lists: {}, ratings: {} };
   for (const [id, seen] of Object.entries(given.seen ?? {})) if (validUser(id) && Array.isArray(seen) && seen.length === 3 && seen.every(Number.isSafeInteger)) kept.seen[id] = seen;
   // A record is [won, lost] by finish.
   const pair = (p) => Array.isArray(p) && p.length === 2 && p.every((n) => Number.isSafeInteger(n) && n >= 0);
@@ -199,6 +199,8 @@ async function lookup({ users, clubs }, sender) {
   }
   // Each academy's athletes' [won, lost].
   for (const [id, p] of Object.entries(given.academies ?? {})) if (/^\d{1,12}$/.test(id) && pair(p)) kept.academies[id] = p;
+  // Their rating's mean, where they're rated (server/rating.js).
+  for (const [id, n] of Object.entries(given.ratings ?? {})) if (validUser(id) && Number.isSafeInteger(n)) kept.ratings[id] = n;
   // How many events of their match lists are kept.
   for (const [id, n] of Object.entries(given.lists ?? {})) if (validUser(id) && Number.isSafeInteger(n) && n >= 0) kept.lists[id] = n;
   // How many of the events their profile lists they didn't show at.
