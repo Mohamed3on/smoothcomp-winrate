@@ -12,7 +12,7 @@ const { beltOf, divisionOf, finishOf } = globalThis.SCWRRules;
 const K = Math.LN10 / 400;
 const GAP = 150;
 const TAU = 150;
-// Kept and ranked: athletes rated with less doubt than this (69k of 174k adults on Smoothcomp, 2026-11-28), by mean - 2 doubt.
+// Kept and ranked: athletes rated with less doubt than this (69k of 174k adults on Smoothcomp, 2026-11-28), by mean - 3 doubt: at 2, five good matches outranked 8-1 over twelve.
 export const DOUBT = 200;
 // White 0 … black 4; null unknown.
 export const beltStep = (belt) => { const i = ADULT.indexOf(belt); return i < 0 ? null : i; };
@@ -150,7 +150,7 @@ export async function rerate(env, now = Date.now(), rest) {
     }
     const rows = [];
     for (const [user, x] of rate(pack.done(), careers)) {
-      if (x.doubt < DOUBT) rows.push([user, Math.round(x.mean - 2 * x.doubt), Math.round(x.mean), Math.round(x.doubt), x.matches]);
+      if (x.doubt < DOUBT) rows.push([user, Math.round(x.mean - 3 * x.doubt), Math.round(x.mean), Math.round(x.doubt), x.matches]);
     }
     const keep = new Set(rows.map((row) => row[0]));
     const { results: had } = await env.DB.prepare('SELECT user FROM ratings WHERE site = ?1').bind(site).all();

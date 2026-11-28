@@ -365,7 +365,7 @@ CREATE TABLE IF NOT EXISTS cards (
   PRIMARY KEY (site, match)
 );
 -- Each athlete's rating (rating.js rerate, nightly), only theirs rated with doubt under rating.js DOUBT: `rating` is
--- mean - 2 doubt, what the rankings sort by, so a short record ranks below a long one as strong; `matches` those it counts.
+-- mean - 3 doubt, what the rankings sort by, so a short record ranks below a long one as strong; `matches` those it counts.
 CREATE TABLE IF NOT EXISTS ratings (
   site TEXT NOT NULL, user TEXT NOT NULL, rating INTEGER NOT NULL, mean INTEGER NOT NULL, doubt INTEGER NOT NULL, matches INTEGER NOT NULL,
   PRIMARY KEY (site, user)

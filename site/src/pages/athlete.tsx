@@ -581,7 +581,7 @@ export function AthletePage({ id }: { id: string }) {
             </Popover>}
             {/* Rated, their place by rating leads (it orders a bracket better than wins: 70.0% of matches against 65.9%), wins beside it. */}
             {data.bracket?.rated && data.career?.rating != null && <Link href={f.link(`/athletes?${new URLSearchParams({ sort: 'rating', ...(data.bracket.sex && { sex: data.bracket.sex }), age: data.bracket.age, weight: String(data.bracket.weight), ...(data.bracket.belt && { belt: data.bracket.belt }) })}`)}
-              title={`Their place by rating among the athletes rated in their age group, weight class and belt. Rating ${data.career.rating}: how strong they are from whom they beat and lost to at the events read, ${data.career.mean} ± ${2 * (data.career.doubt ?? 0)} from ${data.career.rated} matches, ranked at the lower end`} className="text-foreground hover:text-primary">
+              title={`Their place by rating among the athletes rated in their age group, weight class and belt. Rating ${data.career.rating}: how strong they are from whom they beat and lost to at the events read, ${data.career.mean} ± ${3 * (data.career.doubt ?? 0)} from ${data.career.rated} matches, ranked at the lower end`} className="text-foreground hover:text-primary">
               <b className="font-semibold tabular-nums">#{data.bracket.rated.rank}</b> of {data.bracket.rated.of} rated {bracketName(data.bracket)}
             </Link>}
             {data.bracket && <Link href={f.link(`/athletes?${new URLSearchParams({ ...(data.bracket.sex && { sex: data.bracket.sex }), age: data.bracket.age, weight: String(data.bracket.weight), ...(data.bracket.belt && { belt: data.bracket.belt }) })}`)}
@@ -589,7 +589,7 @@ export function AthletePage({ id }: { id: string }) {
               <b className="font-semibold tabular-nums">#{data.bracket.rank}</b> of {data.bracket.of} {data.bracket.rated ? 'by wins' : `${bracketName(data.bracket)} by wins`}
             </Link>}
             {!data.bracket && data.career?.rating != null && <Link href={f.link('/athletes?sort=rating')}
-              title={`How strong they are from whom they beat and lost to at the events read: ${data.career.mean} ± ${2 * (data.career.doubt ?? 0)}, from ${data.career.rated} matches; ranked at the lower end. Opens the rankings by rating`} className="text-foreground hover:text-primary">
+              title={`How strong they are from whom they beat and lost to at the events read: ${data.career.mean} ± ${3 * (data.career.doubt ?? 0)}, from ${data.career.rated} matches; ranked at the lower end. Opens the rankings by rating`} className="text-foreground hover:text-primary">
               Rating <b className="font-semibold tabular-nums">{data.career.rating}</b>
             </Link>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}

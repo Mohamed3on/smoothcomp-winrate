@@ -163,7 +163,7 @@ test('ratings weigh whom an athlete beat, start a newcomer from their career, an
   await rerate(env, Date.parse('2026-10-20'), async () => {});
   const kept = db.prepare('SELECT user, rating, mean, doubt, matches FROM ratings ORDER BY rating DESC').all();
   assert.deepEqual(kept.map((k) => [k.user, k.matches]), [['11', 15], ['12', 15]]);
-  assert.ok(kept[0].rating > kept[1].rating && kept.every((k) => k.doubt < 200 && k.rating === Math.round(k.mean - 2 * k.doubt) || Math.abs(k.rating - (k.mean - 2 * k.doubt)) <= 1));
+  assert.ok(kept[0].rating > kept[1].rating && kept.every((k) => k.doubt < 200 && Math.abs(k.rating - (k.mean - 3 * k.doubt)) <= 1));
   const ranked = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=rating'))).json();
   assert.deepEqual([ranked.rows.map((a) => [a.user, a.rating]), ranked.total], [kept.map((k) => [k.user, k.rating]), 2]);
   const total = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=rating&part=total'))).json();
