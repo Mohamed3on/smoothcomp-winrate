@@ -17,7 +17,7 @@
  "SELECT club_id, athletes, wins, submission, points, gold, silver, bronze, won, lost FROM club_recent WHERE site = ?1 | club_recent: SEARCH club_recent USING INDEX sqlite_autoindex_club_recent_1 (site=?)",
  "SELECT count(*) AS total FROM board INDEXED BY board_counted WHERE site = ?1 AND dup = 0 AND ((((w_submission + rl_submission > 0) * 1 + (w_stoppage + rl_stoppa | board: SEARCH board USING COVERING INDEX board_counted (ANY(site) AND ANY(<expr>) AND ANY(<expr>) AND ANY(<expr>) AND dup=? AND born>? AND born<?)",
  "SELECT count(*) AS total FROM board INDEXED BY board_counted WHERE site = ?1 AND dup = 0 AND ((((w_submission + rl_submission > 0) * 1 + (w_stoppage + rl_stoppa | board: SEARCH board USING COVERING INDEX board_counted (site=?)",
- "SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country FROM entries e LEFT JOIN events | entries: SEARCH e USING PRIMARY KEY (site=?)",
+ "SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, e.approved, v.title, v.start, v.city, v.country FROM entries e LEFT | entries: SEARCH e USING PRIMARY KEY (site=?)",
  "SELECT e.event, v.title, v.start, v.city, v.country, count(DISTINCT e.user) AS athletes, max(e.fought) AS fought, sum(e.place = 1) AS gold, sum(e.place = 2) AS  | entries: SEARCH e USING PRIMARY KEY (site=?)",
  "SELECT e.user, e.event, e.division, e.wins, e.losses, v.start FROM json_each(?2) us CROSS JOIN entries e ON e.site = ?1 AND e.user = us.value LEFT JOIN events v | entries: SEARCH e USING PRIMARY KEY (site=?)",
  "SELECT event, division, bouts FROM entries WHERE site = ?1 AND user = ?2 AND fought = 1 AND bouts IS NOT NULL | entries: SEARCH entries USING PRIMARY KEY (site=?)",

@@ -682,7 +682,7 @@ function Upcoming({ list, f }: { list: Row[]; f: Filters }) {
         <Card key={row.id} className="gap-2 px-5 py-4">
           <div className="flex items-baseline justify-between gap-3"><EventLink row={row} f={f} /><span className="shrink-0 text-sm text-primary">{date(row.start)}</span></div>
           {row.city && <span className="text-xs text-muted-foreground">{row.city}</span>}
-          {row.read?.length ? <ul className="flex flex-col gap-1 text-sm text-muted-foreground">{row.read.map((e) => <li key={e.division}>{e.division}</li>)}</ul>
+          {row.read?.length ? <ul className="flex flex-col gap-1 text-sm text-muted-foreground">{row.read.map((e) => <li key={e.division} className={e.approved === 0 ? 'opacity-60' : undefined}>{e.division}{e.approved === 0 && ' · not approved'}</li>)}</ul>
             : <span className="text-sm text-muted-foreground">Registered; divisions show once the participants page is read.</span>}
         </Card>
       ))}
@@ -694,6 +694,7 @@ export function AthletePage({ id }: { id: string }) {
   const f = useFilters();
   const [against, setAgainst] = useState<Rival | null>(null);
   const [show, setShow] = useState<Show>('all');
+  const [unapproved, setUnapproved] = useState(false);
   const { data, isLoading, error, isPlaceholderData } = useApi<Data>('athlete', { site: f.site, off: f.query.off, active: f.query.active, id }, true, 0);
   // Opened here, so search offers it again first.
   const name = !isPlaceholderData && (data?.person?.name ?? data?.career?.name);
@@ -712,6 +713,9 @@ export function AthletePage({ id }: { id: string }) {
   const all = rows(entries, history, outcomes);
   const upcoming = all.filter((r) => isUpcoming(r.start) && !r.read?.some((e) => e.fought));
   const past = all.filter((r) => !upcoming.includes(r));
+  // Registrations the organiser hasn't approved yet (participants.js reads it) wait behind a toggle; an event with only those goes with them.
+  const waiting = upcoming.flatMap((r) => r.read?.filter((e) => e.approved === 0) ?? []).length;
+  const listed = unapproved ? upcoming : upcoming.flatMap((r) => { const read = r.read?.filter((e) => e.approved !== 0); return read?.length === 0 ? [] : [{ ...r, read }]; });
   // An event begun in the last 30 days with no results read yet: their last three of the month are read on asking (read-now.tsx).
   const month = all.filter((r) => r.start && Date.parse(r.start) <= Date.now() && Date.parse(r.start) >= Date.now() - 30 * 864e5);
   const lately = month.some((r) => !r.read?.some((e) => e.fought));
@@ -793,8 +797,16 @@ export function AthletePage({ id }: { id: string }) {
 
       {upcoming.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">Upcoming</h2>
-          <Upcoming list={upcoming} f={f} />
+          <div className="flex min-h-9 flex-wrap items-center gap-x-3 gap-y-2">
+            <h2 className="text-lg font-semibold tracking-tight">Upcoming</h2>
+            {waiting > 0 && (
+              <button type="button" aria-pressed={unapproved} onClick={() => setUnapproved(!unapproved)}
+                className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-full border border-input px-3 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-primary/15 aria-pressed:text-foreground">
+                Not approved<b className="font-semibold text-foreground">{waiting}</b>
+              </button>
+            )}
+          </div>
+          {listed.length > 0 ? <Upcoming list={listed} f={f} /> : <p className="text-sm text-muted-foreground">Only registrations the organiser hasn’t approved yet.</p>}
         </section>
       )}
 

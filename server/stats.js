@@ -468,7 +468,7 @@ async function teams(env, params) {
 const account = (env, f, site, user) => [
   env.DB.prepare(`WITH ${careersOf(f.off)} SELECT careers.*, rt.rating, rt.mean, rt.doubt, rt.matches AS rated FROM careers LEFT JOIN ratings rt ON rt.site = ?1 AND rt.user = careers.user WHERE careers.user = ?4`).bind(site, f.off, Date.now() - KEPT, user),
   env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(site, user),
-  env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
+  env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, e.approved, v.title, v.start, v.city, v.country
     FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()}
       -- A registration in an event whose results are read and that has ended (as the event page judges it): they didn't show.
       AND NOT (e.fought = 0 AND v.fought = 1 AND ${overSql('v')} < unixepoch('now') * 1000)

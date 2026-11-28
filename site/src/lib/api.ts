@@ -16,6 +16,8 @@ export interface Team {
 export interface Entry {
   event: string; user: string; division: string; club: string | null; club_id: string | null; place: number | null; wins: Types; losses: Types; fought: number; at?: number;
   title?: string | null; start?: string | null; city?: string | null; bouts?: Bout[] | null; site?: string;
+  // A registration approved by the organiser (1) or not yet (0); null where unknown.
+  approved?: number | null;
 }
 // One match of a division, as the results read give it: won or lost, its finish, who they met and in which round.
 export interface Bout {

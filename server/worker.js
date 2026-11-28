@@ -229,7 +229,9 @@ export function upload(event, meta, athletes, now = Date.now()) {
       const division = words(e?.division, 200);
       if (!division) continue;
       const place = Number.isSafeInteger(e.place) && e.place > 0 && e.place < 1000 ? e.place : null;
-      entries.push({ user, division, club, clubId, place, wins: JSON.stringify(tally(e.wins)), losses: JSON.stringify(tally(e.losses)), bouts: bouts(e.bouts) });
+      // A registration's approval by the organiser (participants.js); a results read and older installs send none.
+      const approved = typeof e.approved === 'boolean' ? Number(e.approved) : null;
+      entries.push({ user, division, club, clubId, place, wins: JSON.stringify(tally(e.wins)), losses: JSON.stringify(tally(e.losses)), bouts: bouts(e.bouts), approved });
     }
   }
   return { about, people, entries, history };
@@ -274,14 +276,14 @@ async function identify(env, site, event, meta, athletes, fought, read = Date.no
   if (event) {
     const layer = Number(fought);
     const newer = 'NOT EXISTS (SELECT 1 FROM reads WHERE site = ?1 AND event = ?2 AND fought = ?3 AND at > ?4)';
-    const cols = ['club', 'club_id', 'place', 'wins', 'losses', 'fought', 'bouts'];
+    const cols = ['club', 'club_id', 'place', 'wins', 'losses', 'fought', 'bouts', 'approved'];
     returning.push(statements.length);
     statements.push(env.DB.prepare(`DELETE FROM entries WHERE site = ?1 AND event = ?2 AND fought = ?3 AND ${newer}
       AND (user, division) NOT IN (SELECT value ->> 'user', value ->> 'division' FROM json_each(?5)) RETURNING user`)
       .bind(site, event, layer, read, JSON.stringify(entries)));
     returning.push(statements.length);
-    statements.push(env.DB.prepare(`INSERT INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at, bouts)
-      SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4, value ->> 'bouts' FROM json_each(?5) WHERE ${newer}
+    statements.push(env.DB.prepare(`INSERT INTO entries (site, event, user, division, club, club_id, place, wins, losses, fought, at, bouts, approved)
+      SELECT ?1, ?2, value ->> 'user', value ->> 'division', value ->> 'club', value ->> 'clubId', value ->> 'place', value ->> 'wins', value ->> 'losses', ?3, ?4, value ->> 'bouts', value ->> 'approved' FROM json_each(?5) WHERE ${newer}
       ON CONFLICT (site, event, user, division) DO UPDATE SET ${cols.map((c) => `${c} = excluded.${c}`).join(', ')}, at = excluded.at
       WHERE ${layer ? '' : 'entries.fought = 0 AND '}(${cols.map((c) => `entries.${c}`).join(', ')}) IS NOT (${cols.map((c) => `excluded.${c}`).join(', ')})
       RETURNING user`)

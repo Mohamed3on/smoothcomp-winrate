@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS entries (
   fought INTEGER NOT NULL,
   at INTEGER NOT NULL,
   bouts TEXT, -- each match in the division: won, finish, opponent and their user, round (JSON)
+  -- A registration approved by the organiser (1) or not yet (0); null for results and reads sent before it.
+  -- Added by ALTER TABLE ... ADD COLUMN on D1.
+  approved INTEGER,
   PRIMARY KEY (site, event, user, division)
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS entries_user ON entries (site, user);

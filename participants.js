@@ -830,7 +830,7 @@ async function shareRoster() {
     const a = athletes[r.user_id] ??= { name: `${r.firstname ?? ''} ${r.lastname ?? ''}`, club: r.clubName, clubId: r.club_id ? String(r.club_id) : null,
       country: r.cn, countryName: r.country, belt: belt(r.user_id), age: /^\d{4}$/.test(r.birth) ? year - Number(r.birth) : r.age === '' || r.age == null ? null : Number(r.age) + year - now,
       photo: r.profile_image_id && !/placeholder/i.test(r.profile_image ?? '') ? r.profile_image : null, entries: [] };
-    a.entries.push({ division: g.name });
+    a.entries.push({ division: g.name, approved: r.approved === 1 });
   }
   document.dispatchEvent(new CustomEvent('scwr:request', { detail: JSON.stringify({ id: 0, op: 'roster', event: SCWRSite.eventId(), meta, athletes, read }) }));
 }
