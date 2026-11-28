@@ -3,18 +3,23 @@
 // winner 69.3% of the time against the seed's 65.9% (belt, then win rate); an athlete new to the matches read who has a
 // Smoothcomp career started from it (wins per event) and was picked right 62.5% of the time, against 52.5% without it.
 // A belt starts GAP above the one below and a promotion lifts the rating by the steps gained; idle, the doubt (RD) grows
-// back to 350 over about three years. Rebuilt nightly whole (rerate), so an older event read later counts in its place.
+// back to 350 over twelve years (three, the usual, predicted no better and left every record's doubt near 180, so the
+// rankings couldn't tell 126 matches from 7). Rebuilt nightly whole (rerate), so an older event read later counts in its place.
 import '../rules.js';
 
-const { beltOf, finishOf, BELTS } = globalThis.SCWRRules;
+const { beltOf, divisionOf, finishOf } = globalThis.SCWRRules;
 const Q = Math.LN10 / 400;
-const C2 = (350 ** 2 - 50 ** 2) / 1095;
+const C2 = (350 ** 2 - 50 ** 2) / (365 * 12);
 const GAP = 150;
-// Kept and ranked: athletes rated with less doubt than this (about 44k of 300k on 2026-11-28), by mean - 2 doubt.
+// Kept and ranked: athletes rated with less doubt than this (about 34k on Smoothcomp on 2026-11-28), by mean - 2 doubt.
 export const DOUBT = 200;
 const g = (rd) => 1 / Math.sqrt(1 + (3 * Q * Q * rd * rd) / Math.PI ** 2);
-// Adults white 0 … black 4, kids grey 0 … green 3 (they never meet); null unknown.
-export const beltStep = (belt) => { const i = BELTS.indexOf(belt); return i < 0 ? null : belt === 'white' ? 0 : i < 5 ? i - 1 : i - 4; };
+// White 0 … black 4; null unknown.
+export const beltStep = (belt) => { const i = ADULT.indexOf(belt); return i < 0 ? null : i; };
+const ADULT = ['white', 'blue', 'purple', 'brown', 'black'];
+// Kids and teens meet only each other, so their ratings would sit on a scale of their own among the adults': their
+// divisions (a kids' belt, or an age group under Juvenile) aren't rated (on the first run an orange belt ranked 5th).
+const young = (division) => ['grey', 'yellow', 'orange', 'green'].includes(beltOf(division)) || /^(Kids|Teen)/.test(divisionOf(division).age ?? '');
 
 // Matches packed for a whole site's history: users[w[k]] beat users[l[k]] at belt step s[k] (-1 unknown); event e holds
 // matches from starts[e] (its day days[e], days since 1970) to the next event's start.
@@ -89,22 +94,35 @@ const KEEP = `INSERT INTO ratings (site, user, rating, mean, doubt, matches)
   ON CONFLICT (site, user) DO UPDATE SET rating = excluded.rating, mean = excluded.mean, doubt = excluded.doubt, matches = excluded.matches
   WHERE (rating, mean, doubt, matches) IS NOT (excluded.rating, excluded.mean, excluded.doubt, excluded.matches)`;
 
+// D1 serves one query at a time and refuses all (the site's too) past a 10 s window's share ("overloaded", on the
+// first run's 100 events a read): each read or write here waits as long again as it took, so it holds D1 half the time
+// at most, and an overloaded one waits 15 s and tries again (three times).
+async function paced(run, rest = (ms) => new Promise((done) => setTimeout(done, ms))) {
+  for (let tries = 0; ; tries++) {
+    const t = Date.now();
+    try { const out = await run(); await rest(Date.now() - t); return out; } catch (e) {
+      if (tries >= 3 || !/overloaded/i.test(e?.message)) throw e;
+      await rest(15e3);
+    }
+  }
+}
+
 // The nightly rebuild of every site's ratings, from every match read (crawler.js, once a day).
-export async function rerate(env, now = Date.now()) {
+export async function rerate(env, now = Date.now(), rest) {
   for (const site of SITES) {
     const { results: events } = await env.DB.prepare(`SELECT event, start FROM events INDEXED BY events_start WHERE site = ?1 AND start IS NOT NULL
       AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.event = events.event AND e.fought = 1) ORDER BY start, event`).bind(site).all();
     const pack = packer();
-    for (let i = 0; i < events.length; i += 100) {
-      const some = events.slice(i, i + 100);
-      const { results } = await env.DB.prepare(MATCHES).bind(site, JSON.stringify(some.map((e) => e.event))).all();
+    for (let i = 0; i < events.length; i += 25) {
+      const some = events.slice(i, i + 25);
+      const { results } = await paced(() => env.DB.prepare(MATCHES).bind(site, JSON.stringify(some.map((e) => e.event))).all(), rest);
       const of = Map.groupBy(results, (m) => m.event);
       for (const { event, start } of some) {
         pack.event(Date.parse(start) / 864e5);
         const once = new Set();
         for (const m of of.get(event) ?? []) {
           const key = `${m.d}|${m.st}|${[m.w, m.l].sort()}`;
-          if (finishOf(m.t) === 'walkover' || m.w === m.l || once.has(key)) continue;
+          if (finishOf(m.t) === 'walkover' || m.w === m.l || once.has(key) || young(m.d)) continue;
           once.add(key);
           pack.match(m.w, m.l, beltStep(beltOf(m.d)));
         }
@@ -124,9 +142,9 @@ export async function rerate(env, now = Date.now()) {
     const { results: had } = await env.DB.prepare('SELECT user FROM ratings WHERE site = ?1').bind(site).all();
     const gone = had.map((row) => row.user).filter((user) => !keep.has(user));
     const writes = [];
-    for (let i = 0; i < rows.length; i += 1000) writes.push(env.DB.prepare(KEEP).bind(site, JSON.stringify(rows.slice(i, i + 1000))));
+    for (let i = 0; i < rows.length; i += 500) writes.push(env.DB.prepare(KEEP).bind(site, JSON.stringify(rows.slice(i, i + 500))));
     for (let i = 0; i < gone.length; i += 1000) writes.push(env.DB.prepare('DELETE FROM ratings WHERE site = ?1 AND user IN (SELECT value FROM json_each(?2))').bind(site, JSON.stringify(gone.slice(i, i + 1000))));
-    for (let i = 0; i < writes.length; i += 20) await env.DB.batch(writes.slice(i, i + 20));
+    for (const write of writes) await paced(() => write.run(), rest);
     console.log('rate', site, { events: events.length, rated: rows.length, gone: gone.length });
   }
 }

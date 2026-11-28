@@ -150,7 +150,7 @@ test('ratings weigh whom an athlete beat, start a newcomer from their career, an
     db.prepare("INSERT INTO events (site, event, start, at) VALUES ('smoothcomp.com', ?, ?, 0)").run(`${900 + i}`, `2026-10-${String(3 + i).padStart(2, '0')}T08:00:00Z`);
     db.prepare("INSERT INTO entries (site, event, user, division, fought, at, bouts) VALUES ('smoothcomp.com', ?, '11', 'Male / Blue / Adult / -76 kg', 1, 0, ?)").run(`${900 + i}`, bout(i === 15 ? 'walkover' : 'points'));
   }
-  await rerate(env, Date.parse('2026-10-20'));
+  await rerate(env, Date.parse('2026-10-20'), async () => {});
   const kept = db.prepare('SELECT user, rating, mean, doubt, matches FROM ratings ORDER BY rating DESC').all();
   assert.deepEqual(kept.map((k) => [k.user, k.matches]), [['11', 15], ['12', 15]]);
   assert.ok(kept[0].rating > kept[1].rating && kept.every((k) => k.doubt < 200 && k.rating === Math.round(k.mean - 2 * k.doubt) || Math.abs(k.rating - (k.mean - 2 * k.doubt)) <= 1));
@@ -161,7 +161,7 @@ test('ratings weigh whom an athlete beat, start a newcomer from their career, an
   // Every ranking's rows carry the rating; a rebuild leaves no one it no longer rates.
   const byWins = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json();
   assert.deepEqual(byWins.rows.map((a) => [a.user, a.rating, a.rated]), kept.map((k) => [k.user, k.rating, k.matches]));
-  await rerate(env, Date.parse('2030-01-01'));
+  await rerate(env, Date.parse('2030-01-01'), async () => {});
   assert.equal(db.prepare('SELECT count(*) AS n FROM ratings').get().n, 0);
 });
 
