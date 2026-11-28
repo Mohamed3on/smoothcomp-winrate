@@ -24,6 +24,17 @@ async function watch(env, state) {
   if (sent.ok) await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('alert:stall', ?1)").bind(now).run();
 }
 
+// The tables whose plans need statistics: with none, SQLite reads entries by its primary key (every entry on the site) over
+// entries_user. A table rebuilt by copy and swap loses its sqlite_stat1 rows (on 2026-11-28, ~1B reads overnight), so they're put back.
+const ANALYZED = ['entries', 'tallies', 'board', 'board_own', 'club_board'];
+async function restat(env) {
+  const { results } = await env.DB.prepare('SELECT DISTINCT tbl FROM sqlite_stat1').all();
+  for (const table of ANALYZED.filter((t) => !results.some((r) => r.tbl === t))) {
+    await env.DB.exec(`ANALYZE ${table}`);
+    console.log('analyzed', table);
+  }
+}
+
 export default {
   async fetch(request, env) {
     if (!env.CRAWL_KEY || request.headers.get('x-crawl-key') !== env.CRAWL_KEY) return new Response(null, { status: 404 });
@@ -43,6 +54,8 @@ export default {
     // D1's usage, read every ten minutes: while it nears what the plan includes, the crawler rests (budget.js).
     if (at.getUTCMinutes() % 10 === 0) await checkBudget(env).catch((e) => console.error('budget', e?.message));
     const state = await budget(env, Date.now(), true);
+    // Not during a migration (meta 'pause' gives 'stop'), while the rebuilt tables are still filling.
+    if (at.getUTCMinutes() % 10 === 0 && state !== 'stop') await restat(env).catch((e) => console.error('restat', e?.message));
     if (at.getUTCMinutes() === 45) await watch(env, state).catch((e) => console.error('watch', e?.message));
     // Rankings and academies catch up on the day's results once a day, even while the crawler rests (worker.js rebuild).
     if (state !== 'stop') await rebuild(env).catch((e) => console.error('rebuild', e?.message));
