@@ -7,6 +7,7 @@ import { crawl, findClubs, listEvents, placeClubs, queue, sizeEvents } from './c
 import { addBouts, purge, rebuild, record } from './worker.js';
 import { ACCOUNT, DATABASE, INCLUDED, budget, checkBudget } from './budget.js';
 import { keepRecent } from './stats.js';
+import { rerate } from './rating.js';
 
 const LANES = 3;
 
@@ -85,6 +86,8 @@ export default {
     const { pathname } = new URL(request.url);
     // Nothing is read while D1's usage is past a day's share of what the plan includes (budget.js).
     const state = await budget(env);
+    // Ratings are rebuilt like the rankings, while the crawler rests too: their own request, for its CPU time.
+    if (pathname === '/rate') { if (state !== 'stop') await rerate(env); return new Response(null, { status: 204 }); }
     if (state !== 'ok') return new Response(null, { status: 204 });
     if (pathname === '/list') await listEvents(env);
     else if (pathname === '/clubs') await placeClubs(env);
@@ -104,6 +107,8 @@ export default {
     if (at.getUTCMinutes() === 50) await sentinel(env).catch((e) => console.error('sentinel', e?.message));
     // Rankings and academies catch up on the day's results once a day, even while the crawler rests (worker.js rebuild).
     if (state !== 'stop') await rebuild(env).catch((e) => console.error('rebuild', e?.message));
+    // Every athlete's rating, rebuilt from every match read once a day (rating.js).
+    if (at.getUTCHours() === 4 && at.getUTCMinutes() === 5 && state !== 'stop') await env.SELF.fetch('https://crawler/rate', { headers: { 'x-crawl-key': env.CRAWL_KEY } });
     if (state !== 'ok') return;
     if (at.getUTCMinutes() % 30 === 0) await queue(env);
     // The last year's events are listed once a day, before the 03:30 refill queues them.

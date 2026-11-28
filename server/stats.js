@@ -303,12 +303,17 @@ const ATHLETE_SORTS = {
   // Ties go to the longer record either way (-x ASC, which ?dir=asc leaves as is): at 0%, 0–2 before 0–1; then to how they came.
   winRate: `won * 1.0 / nullif(won + lost, 0) DESC NULLS LAST, -(won + lost) ASC, ${BETTER_WINS}, ${BETTER_LOSSES}`,
   losses: `lost DESC NULLS LAST, ${WORSE_LOSSES}, -(won + lost) ASC`,
+  // rating.js: only the athletes rated, read through ratings.
+  rating: 'rating DESC NULLS LAST, wins DESC',
 };
 
 async function athletes(env, params) {
   const f = filters(params);
   const sort = order(ATHLETE_SORTS, params.get('sort'), params.get('dir'));
   const club = /^\d{1,12}$/.test(params.get('club') ?? '') ? params.get('club') : '';
+  // Ranked by rating, the athletes rated alone, each one's ranking row read by its key (CROSS JOIN: the few rated, not the board).
+  const rated = params.get('sort') === 'rating';
+  const pool = rated ? 'ratings rt CROSS JOIN careers ON rt.site = ?1 AND careers.user = rt.user' : 'careers';
   // Only the filters set go in, so the default ranking (wins, walkovers left out) reads its page and its
   // count off board_record; ranked on the sort keys alone, then the page's rows read whole (CROSS JOIN, or
   // SQLite walks the whole board in board_record's order to find the page's rows).
@@ -337,9 +342,9 @@ async function athletes(env, params) {
   // Under the filters board_counted holds (age, belt, country, events, when last, bracket), the count reads that index alone.
   const part = params.get('part');
   if (part === 'total') {
-    const indexed = !f.wins && !f.q && !club;
+    const indexed = !rated && !f.wins && !f.q && !club;
     const sql = indexed ? `SELECT count(*) AS total FROM board INDEXED BY board_counted WHERE site = ?1 AND dup = 0 AND ${[activeIn(f.off), ...where.slice(1)].join(' AND ')}`
-      : `WITH ${careers} SELECT count(*) AS total FROM careers WHERE ${matching}`;
+      : `WITH ${careers} SELECT count(*) AS total FROM ${pool} WHERE ${matching}`;
     return json({ total: (await env.DB.prepare(sql).bind(...args).first())?.total ?? 0 });
   }
   const [limit, offset] = [arg(f.limit), arg(f.offset)];
@@ -355,8 +360,9 @@ async function athletes(env, params) {
   const floor = !narrow && sort.startsWith('wins DESC')
     ? ` AND wins >= coalesce((SELECT wins FROM careers WHERE ${matching}${bound} ORDER BY wins DESC LIMIT 1 OFFSET ${limit} + ${offset} - 1), 0)` : '';
   const { results } = await env.DB.prepare(`WITH ${careers},
-    top AS (SELECT user FROM careers WHERE ${matching}${bound}${floor} ORDER BY ${narrow ? sort.replace(/^wins /, '+wins ') : sort}, user LIMIT ${limit} OFFSET ${offset})
-    SELECT careers.*, ${part === 'rows' ? 'NULL' : `(SELECT count(*) FROM careers WHERE ${matching})`} AS total FROM top CROSS JOIN careers USING (user) ORDER BY ${sort}, user`)
+    top AS (SELECT careers.user FROM ${pool} WHERE ${matching}${bound}${floor} ORDER BY ${narrow ? sort.replace(/^wins /, '+wins ') : sort}, careers.user LIMIT ${limit} OFFSET ${offset})
+    SELECT careers.*, rt.rating, rt.mean, rt.doubt, rt.matches AS rated, ${part === 'rows' ? 'NULL' : `(SELECT count(*) FROM ${pool} WHERE ${matching})`} AS total
+    FROM top CROSS JOIN careers USING (user) LEFT JOIN ratings rt ON rt.site = ?1 AND rt.user = top.user ORDER BY ${sort}, top.user`)
     .bind(...args).all();
   return json({ total: part === 'rows' ? null : results[0]?.total ?? 0, offset: f.offset, rows: results.map(careerRow) });
 }
@@ -460,7 +466,7 @@ async function teams(env, params) {
 
 // What one account holds, as the athlete page reads it.
 const account = (env, f, site, user) => [
-  env.DB.prepare(`WITH ${careersOf(f.off)} SELECT * FROM careers WHERE user = ?4`).bind(site, f.off, Date.now() - KEPT, user),
+  env.DB.prepare(`WITH ${careersOf(f.off)} SELECT careers.*, rt.rating, rt.mean, rt.doubt, rt.matches AS rated FROM careers LEFT JOIN ratings rt ON rt.site = ?1 AND rt.user = careers.user WHERE careers.user = ?4`).bind(site, f.off, Date.now() - KEPT, user),
   env.DB.prepare('SELECT * FROM people WHERE site = ?1 AND user = ?2').bind(site, user),
   env.DB.prepare(`SELECT e.event, e.division, e.club, e.club_id, e.place, e.wins, e.losses, e.fought, e.bouts, v.title, v.start, v.city, v.country
     FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.user = ?2 AND ${shown()}

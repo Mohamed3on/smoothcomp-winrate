@@ -7,6 +7,10 @@ workers_dev = true
 preview_urls = false
 
 # Nearest Smoothcomp's servers (measured: AWS Ireland).
+# The nightly ratings (rating.js) read and rate every match in one request: a few seconds of CPU now, more as the archive fills.
+[limits]
+cpu_ms = 300000
+
 [placement]
 region = "aws:eu-west-1"
 

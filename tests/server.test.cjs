@@ -123,6 +123,48 @@ test("a results page's upload reads back on the stats site", async () => {
   assert.deepEqual(looked.academies, { 501: [3, 0] });
 });
 
+test('ratings weigh whom an athlete beat, start a newcomer from their career, and rank by rating', async () => {
+  const { rate, packer, rerate } = await import('../server/rating.js');
+  // A beat B, who beat five others; C beat D, who lost to the same five: A's win counts for more.
+  const p = packer();
+  p.event(20000);
+  for (const x of ['x1', 'x2', 'x3', 'x4', 'x5']) { p.match('B', x, 1); p.match(x, 'D', 1); }
+  p.event(20010);
+  p.match('A', 'B', 1); p.match('C', 'D', 1);
+  const r = rate(p.done(), new Map(), 20010);
+  assert.ok(r.get('A').mean > r.get('C').mean + 100);
+  // An athlete new to the matches read starts from their career's wins per event before them, and with less doubt.
+  const q = packer();
+  q.event(20000);
+  q.match('E', 'F', 1); q.match('G', 'H', 1);
+  const c = rate(q.done(), new Map([['E', { wins: 41, events: 11 }]]), 20000);
+  assert.ok(c.get('E').mean > c.get('G').mean + 100 && c.get('E').doubt < c.get('G').doubt);
+  // Nightly, from every match read: 11 beat 12 at sixteen events; both rated, 11 first, and a walkover counts for nothing.
+  const worker = (await import('../server/worker.js')).default;
+  const { API } = await import('../server/stats.js');
+  const { DB, db } = d1();
+  const env = { DB };
+  await posted(worker, env, '/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
+  const bout = (type) => JSON.stringify([{ won: true, type, how: null, opponent: 'Bo Sun', user: '12', club: null, stage: 'Final' }]);
+  for (let i = 1; i <= 15; i++) {
+    db.prepare("INSERT INTO events (site, event, start, at) VALUES ('smoothcomp.com', ?, ?, 0)").run(`${900 + i}`, `2026-10-${String(3 + i).padStart(2, '0')}T08:00:00Z`);
+    db.prepare("INSERT INTO entries (site, event, user, division, fought, at, bouts) VALUES ('smoothcomp.com', ?, '11', 'Male / Blue / Adult / -76 kg', 1, 0, ?)").run(`${900 + i}`, bout(i === 15 ? 'walkover' : 'points'));
+  }
+  await rerate(env, Date.parse('2026-10-20'));
+  const kept = db.prepare('SELECT user, rating, mean, doubt, matches FROM ratings ORDER BY rating DESC').all();
+  assert.deepEqual(kept.map((k) => [k.user, k.matches]), [['11', 15], ['12', 15]]);
+  assert.ok(kept[0].rating > kept[1].rating && kept.every((k) => k.doubt < 200 && k.rating === Math.round(k.mean - 2 * k.doubt) || Math.abs(k.rating - (k.mean - 2 * k.doubt)) <= 1));
+  const ranked = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=rating'))).json();
+  assert.deepEqual([ranked.rows.map((a) => [a.user, a.rating]), ranked.total], [kept.map((k) => [k.user, k.rating]), 2]);
+  const total = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=rating&part=total'))).json();
+  assert.equal(total.total, 2);
+  // Every ranking's rows carry the rating; a rebuild leaves no one it no longer rates.
+  const byWins = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json();
+  assert.deepEqual(byWins.rows.map((a) => [a.user, a.rating, a.rated]), kept.map((k) => [k.user, k.rating, k.matches]));
+  await rerate(env, Date.parse('2030-01-01'));
+  assert.equal(db.prepare('SELECT count(*) AS n FROM ratings').get().n, 0);
+});
+
 test("an event their profile lists but they didn't show at isn't theirs: not in their history, events or last event", async () => {
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');

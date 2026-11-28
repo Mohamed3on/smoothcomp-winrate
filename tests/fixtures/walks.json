@@ -24,6 +24,7 @@
  "SELECT p.site, p.club_id, c.club, c.lat, c.lng, c.city, coalesce(p.country, c.country) AS country FROM club_places p JOIN clubs c ON c.site = p.site AND c.club_ | club_places: SCAN p",
  "SELECT p.site, p.club_id, c.club, c.lat, c.lng, c.city, coalesce(p.country, c.country) AS country FROM club_places p JOIN clubs c ON c.site = p.site AND c.club_ | clubs: SCAN c",
  "SELECT user FROM entries WHERE site = ?1 AND event = ?2 UNION SELECT user FROM history WHERE site = ?1 AND +event = ?2 UNION SELECT user FROM outcomes WHERE sit | history: SEARCH history USING COVERING INDEX sqlite_autoindex_history_1 (site=?)",
+ "SELECT user, entry FROM athletes WHERE site = ?1 AND kind = 'careers' | athletes: SEARCH athletes USING INDEX sqlite_autoindex_athletes_1 (site=?)",
  "UPDATE crawls SET next = ?2 WHERE rowid = (SELECT rowid FROM crawls INDEXED BY crawls_due WHERE state IN ('queued', 'reading') AND next <= ?1 ORDER BY priority  | crawls: SCAN crawls USING INDEX crawls_due",
  "UPDATE tallies SET changed = ?1 | tallies: SCAN tallies",
  "WITH careers AS (SELECT user, dup, at, source, types, name, club, club_id, country, country_name, photo, born, hidden, belt, sex, age, weight, last, events, gol | board: SEARCH board USING INDEX board_counted (ANY(site) AND ANY(<expr>) AND ANY(<expr>) AND ANY(<expr>) AND dup=? AND born>? AND born<?)",

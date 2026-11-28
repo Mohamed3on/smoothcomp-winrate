@@ -583,6 +583,10 @@ export function AthletePage({ id }: { id: string }) {
               title="Their place by wins among the athletes in their age group, weight class and belt: the rankings narrowed to them" className="text-foreground hover:text-primary">
               <b className="font-semibold tabular-nums">#{data.bracket.rank}</b> of {data.bracket.of} {bracketName(data.bracket)}
             </Link>}
+            {data.career?.rating != null && <Link href={f.link(`/athletes?${new URLSearchParams({ sort: 'rating', ...(data.bracket && { ...(data.bracket.sex && { sex: data.bracket.sex }), age: data.bracket.age, weight: String(data.bracket.weight), ...(data.bracket.belt && { belt: data.bracket.belt }) }) })}`)}
+              title={`How strong they are from whom they beat and lost to at the events read: ${data.career.mean} ± ${2 * (data.career.doubt ?? 0)}, from ${data.career.rated} matches; ranked at their rating less twice its doubt. Opens the rankings by rating${data.bracket ? ' in their bracket' : ''}`} className="text-foreground hover:text-primary">
+              Rating <b className="font-semibold tabular-nums">{data.career.rating}</b>
+            </Link>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
             {arts.size ? [...arts].map(([art, s]) => (
               <span key={art} className="inline-flex items-center gap-1.5" title={`${art}: ${plural(s.events, 'event')} on Smoothcomp`}>

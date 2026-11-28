@@ -5,6 +5,8 @@ export interface Athlete {
   user: string; name: string | null; club: string | null; club_id: string | null; country: string | null; country_name: string | null;
   photo: string | null; born: number | null; hidden: number | null; belt: string | null; sex?: string | null; age?: string | null; weight?: number | null; affiliation?: string | null; source?: 'career' | 'results';
   wins: number; losses: number | null; won: number | null; lost: number | null; submission: number; points: number; types: Types; lost_types?: Types | null; gold: number; silver: number; bronze: number; events: number | null; at: number | null; last: string | null;
+  // Their rating (server/rating.js), where the matches read settle it: mean less twice the doubt, from `rated` matches.
+  rating?: number | null; mean?: number | null; doubt?: number | null; rated?: number | null;
 }
 export interface Team {
   club_id: string; club: string | null; city: string | null; club_country: string | null; km: number | null; placed: 'pin' | 'town' | 'google' | 'events' | null; lat: number | null; lng: number | null; athletes: number; wins: number; submission: number; points: number; gold: number; silver: number; bronze: number;
