@@ -12,7 +12,7 @@ import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record }
 import { useApi, type Athlete, type Bout, type Entry, type Outcome, type Past, type Profile } from '@/lib/api';
 import { useFilters, type Filters } from '@/lib/filters';
 import { ageOf, beltAt, date, fmt, isUpcoming, plural, rate, typeName, winsOf } from '@/lib/format';
-import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, matchFinder, normalize, pointsLine, winTone, showed, rivalsOf, roundOf, totals, usualDivision, weightName } from '@/lib/rules';
+import { BELTS, beltOf, beltsIn, beltSplit, eventRecords, finishOf, matchFinder, normalize, pointsLine, winTone, showed, rivalsOf, roundOf, totals, usualDivision, weightName, bracketOf } from '@/lib/rules';
 import { cn } from '@/lib/utils';
 import { useMedia } from '@/lib/media';
 import { DivisionLink } from '@/pages/division';
@@ -113,7 +113,9 @@ type Show = 'all' | 'won' | 'lost';
 const walkover = (m: Meeting) => !!m.type && finishOf(m.type) === 'walkover';
 // Everyone who beat them more than once (rules.js rivalsOf), the newest meeting giving the club and photo.
 interface Rival { key: string; name: string; club: string | null; image: string | null; w: number; l: number }
-const rivalsIn = (rows: Row[]): Rival[] => rivalsOf(rows.flatMap(meetingsOfRow).filter((m) => !walkover(m)).map((m) => ({ name: m.opponent ?? '', won: m.won, club: m.club, image: m.image })));
+// Smoothcomp names every removed account "Unknown User": many people under one name, so none of them is a rival.
+const unnamed = (m: Meeting) => /^unknown user$/i.test(m.opponent?.trim() ?? '');
+const rivalsIn = (rows: Row[]): Rival[] => rivalsOf(rows.flatMap(meetingsOfRow).filter((m) => !walkover(m) && !unnamed(m)).map((m) => ({ name: m.opponent ?? '', won: m.won, club: m.club, image: m.image })));
 
 // One event as the page shows it: what Smoothcomp lists, joined to the divisions Mat Stats read
 // and to the record their profile's match lists gave.
@@ -292,14 +294,15 @@ function Finishes({ fins, f, toggle, last }: { fins: Finish[]; f: Filters; toggl
 
 // Where they stand in their bracket: by rating where rated (it orders a bracket better than wins: 70.0% of
 // matches against 65.9%), by wins beside it; the rating itself explained on hover.
-function Standing({ bracket, career, f }: { bracket: Bracket | null | undefined; career: Athlete | null; f: Filters }) {
+function Standing({ bracket, career, f, profile, id }: { bracket: Bracket | null | undefined; career: Athlete | null; f: Filters; profile: Profile | null | undefined; id: string }) {
   const rating = career?.rating != null ? career : null;
-  if (!bracket && !rating) return null;
+  const ranks = profile?.rankings ?? [];
+  if (!bracket && !rating && !ranks.length) return null;
   const to = (sort?: string) => f.link(`/athletes?${new URLSearchParams({ ...(sort && { sort }), ...(bracket?.sex && { sex: bracket.sex }), ...(bracket && { age: bracket.age, weight: String(bracket.weight) }), ...(bracket?.belt && { belt: bracket.belt }) })}`);
   const strength = rating && `How strong they are from whom they beat and lost to at the events read: ${rating.mean} ± ${3 * (rating.doubt ?? 0)} from ${plural(rating.rated ?? 0, 'match')}, ranked at the lower end`;
   const rated = bracket?.rated && rating ? bracket.rated : null;
   return (
-    <div className="flex flex-col gap-2 lg:w-60">
+    <div className="flex flex-col gap-2 lg:w-72">
       {bracket && <Link href={to(rated ? 'rating' : undefined)} className="group flex flex-col gap-0.5"
         title={rated ? 'Their place by rating among the athletes rated in their age group, weight class and belt' : 'Their place by wins among the athletes in their age group, weight class and belt: the rankings narrowed to them'}>
         <span className="flex items-baseline gap-2">
@@ -319,6 +322,7 @@ function Standing({ bracket, career, f }: { bracket: Bracket | null | undefined;
           {strength}.{!bracket && <> <Link href={f.link('/athletes?sort=rating')} className="text-foreground hover:text-primary">Rankings by rating</Link></>}
         </PopoverContent>
       </Popover>}
+      {ranks.length > 0 && <OnSmoothcomp ranks={ranks} more={profile?.ranked ?? 0} f={f} id={id} first={!bracket && !rating} />}
     </div>
   );
 }
@@ -342,8 +346,8 @@ function Scoreboard({ points }: { points: Points }) {
 interface Points { for: number; against: number; scored: number; total: number; unscored: Target[] }
 
 // The headline: their record as a ring over the finishes switched on, how they win and lose by each finish,
-// and where they stand; under it, the totals Smoothcomp lists and the scoreboard.
-function RecordBand({ fins, f, over, career, points, bracket }: { fins: Finish[]; f: Filters; over: string; career: Athlete | null; points: Points; bracket: Bracket | null | undefined }) {
+// and where they stand; under it, the scoreboard.
+function RecordBand({ fins, f, over, overWhy, career, points, bracket, profile, id }: { fins: Finish[]; f: Filters; over: string; overWhy?: string; career: Athlete | null; points: Points; bracket: Bracket | null | undefined; profile: Profile | null | undefined; id: string }) {
   const on = fins.filter((x) => f.counted(x.key));
   const rated = on.filter((x) => x.l != null);
   const [w, l] = rated.reduce(([a, b], x) => [a + x.w, b + (x.l ?? 0)], [0, 0]);
@@ -354,9 +358,6 @@ function RecordBand({ fins, f, over, career, points, bracket }: { fins: Finish[]
     else if (on.length > 1) off.add(key); // one finish always stays counted
     f.set({ off: [...off].join(',') });
   };
-  const listed = career && (career.source === 'results'
-    ? `Smoothcomp serves no career for them, so their medals and wins are the results Mat Stats read at ${plural(career.events ?? 0, 'event')}`
-    : `Smoothcomp lists ${plural(career.wins, 'win')}${career.events != null ? ` at ${plural(career.events, 'event')}` : ''}, walkovers included${career.at ? ` (read ${date(new Date(career.at).toISOString())})` : ''}`);
   return (
     <Card className="gap-6 p-6">
       <div className="grid items-center gap-x-10 gap-y-8 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
@@ -365,7 +366,7 @@ function RecordBand({ fins, f, over, career, points, bracket }: { fins: Finish[]
             <Ring w={w} l={l} few={few} />
             <div className="flex flex-col items-start gap-1.5">
               <span className="text-3xl tracking-tight"><Record w={w} l={l} /></span>
-              <span className="text-sm text-muted-foreground">{plural(w + l, 'match')}{over && ` ${over}`}</span>
+              <span className={cn('text-sm text-muted-foreground', overWhy && 'cursor-help underline decoration-muted-foreground/50 decoration-dotted underline-offset-4')} title={overWhy}>{plural(w + l, 'match')}{over && ` ${over}`}</span>
               {few && <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground/85" title={`Under ${FEW} matches, a win rate says little yet`}>Small sample</span>}
             </div>
           </> : rated.length || !on.length ? <span className="text-muted-foreground">No matches by these finishes</span> : (
@@ -376,12 +377,9 @@ function RecordBand({ fins, f, over, career, points, bracket }: { fins: Finish[]
           )}
         </div>
         {fins.length > 0 && <div className="lg:border-x lg:px-10"><Finishes fins={fins} f={f} toggle={toggle} last={on.length === 1} /></div>}
-        <Standing bracket={bracket} career={career} f={f} />
+        <Standing bracket={bracket} career={career} f={f} profile={profile} id={id} />
       </div>
-      {(listed || points.total > 0) && <div className="flex flex-wrap items-center justify-between gap-x-10 gap-y-3 border-t pt-4">
-        {listed && <p className="text-sm text-muted-foreground">{listed}</p>}
-        {points.total > 0 && <Scoreboard points={points} />}
-      </div>}
+      {points.total > 0 && <div className="border-t pt-4"><Scoreboard points={points} /></div>}
     </Card>
   );
 }
@@ -397,31 +395,31 @@ function artsOf(p: Profile | null | undefined) {
   return arts;
 }
 
-// Where they rank, as their Smoothcomp profile shows it.
-function OnProfile({ p, f, id }: { p: Profile; f: Filters; id: string }) {
-  const ranks = p.rankings ?? [];
-  if (!ranks.length) return null;
-  const profile = `${f.home}/en/profile/${id}`;
+// A ranking's name as written, unless it is written in capitals ("RANKING GERAL ADULTO"): then in title case.
+const tidy = (name: string) => (/\p{Lu}/u.test(name) && name === name.toUpperCase() ? name.toLowerCase().replace(/(^|[\s/(-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase()) : name);
+
+// Where they rank on Smoothcomp, as their profile shows it: a federation's ranking opens it.
+function OnSmoothcomp({ ranks, more, f, id, first }: { ranks: NonNullable<Profile['rankings']>; more: number; f: Filters; id: string; first: boolean }) {
   return (
-    <Card className="gap-2 px-5 py-4">
-          <h2 className="text-sm font-medium">Rankings</h2>
-          <ul className="flex flex-col gap-1">
-            {ranks.map((r) => {
-              const body = <>
-                <span className="inline-grid h-6 w-16 shrink-0 place-items-center rounded-md bg-muted px-1.5 text-xs font-semibold tabular-nums">#{fmt(r.placement)}</span>
-                <span className="flex min-w-0 flex-col"><span className="text-sm font-medium break-words">{r.name}</span>{r.owner && <span className="text-xs text-muted-foreground">{r.owner}</span>}</span>
-              </>;
-              return (
-                <li key={`${r.toplist}-${r.name}`}>
-                  {r.type === 'federation' && r.ownerId && r.toplist
-                    ? <a href={`${f.home}/en/federation/${r.ownerId}/ranking/${r.toplist}`} rel="noopener" className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring">{body}</a>
-                    : <div className="flex items-center gap-3 py-1.5">{body}</div>}
-                </li>
-              );
-            })}
-          </ul>
-          {(p.ranked ?? 0) > ranks.length && <a href={profile} rel="noopener" className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">All {p.ranked} rankings on Smoothcomp<ExternalLink className="size-3" /></a>}
-    </Card>
+    <div className={cn('flex flex-col gap-1.5', !first && 'mt-1 border-t pt-3')}>
+      <h3 className="text-xs text-muted-foreground">On Smoothcomp</h3>
+      <ul className="flex flex-col gap-0.5">
+        {ranks.map((r) => {
+          const body = <>
+            <b className="w-14 shrink-0 font-semibold tabular-nums">#{fmt(r.placement)}</b>
+            <span className="min-w-0 break-words text-muted-foreground">{tidy(r.name)}{r.owner && <span className="text-muted-foreground/80"> · {r.owner}</span>}</span>
+          </>;
+          return (
+            <li key={`${r.toplist}-${r.name}`}>
+              {r.type === 'federation' && r.ownerId && r.toplist
+                ? <a href={`${f.home}/en/federation/${r.ownerId}/ranking/${r.toplist}`} rel="noopener" className="-mx-1.5 flex items-baseline gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring">{body}</a>
+                : <div className="flex items-baseline gap-2 py-1 text-sm">{body}</div>}
+            </li>
+          );
+        })}
+      </ul>
+      {more > ranks.length && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">All {more} rankings on Smoothcomp<ExternalLink className="size-3" /></a>}
+    </div>
   );
 }
 
@@ -432,7 +430,7 @@ function Rivals({ rivals, losses, pick, picked }: { rivals: Rival[]; losses: num
     <Card className="gap-3 px-5 py-4">
       <h2 className="text-sm font-medium">Lost most to</h2>
       {!rivals.length ? <p className="text-sm text-muted-foreground">{losses > 1 ? 'No one has beaten them twice.' : 'No one has beaten them more than once.'}</p> : (
-        <ul className="flex flex-col gap-1">
+        <ul className="grid gap-x-10 gap-y-1 lg:grid-cols-2">
           {rivals.map((r) => {
             const lead = behind > 0 && r.l - r.w === behind;
             return (
@@ -599,8 +597,11 @@ export function MatchLine({ m, f, divisions }: { m: Meeting; f: Filters; divisio
   );
 }
 
+// The year an event began, '' where undated.
+const yearOf = (r: Row | undefined) => (r?.start ? String(new Date(r.start).getFullYear()) : '');
+
 // A division's club shows only where it isn't their own.
-function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters; against: Rival | null; show: Show; club: string | null }) {
+function EventsTable({ list, f, against, show, club, years }: { list: Row[]; f: Filters; against: Rival | null; show: Show; club: string | null; years: boolean }) {
   // Phones drop the date and division columns, so the match list spans event, place and record.
   const phone = !useMedia('(width >= 40rem)');
   return (
@@ -611,7 +612,16 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
           <TableHead className="w-20 text-right sm:w-36">Place<span className="max-sm:hidden"> or medals</span></TableHead><TableHead className="w-16 pr-3 text-right sm:w-24 sm:pr-5">Record</TableHead>
         </TableRow></TableHeader>
         <TableBody>
-          {list.map((row) => {
+          {list.map((row, i) => {
+            const year = yearOf(row);
+            const head = years && year !== yearOf(list[i - 1]) && (
+              <TableRow key={`y${year}`} id={`year-${year || 'undated'}`} className="scroll-mt-20 bg-muted/40 hover:bg-muted/40">
+                <TableCell colSpan={5} className="py-2 pl-5 max-sm:pl-3">
+                  <span className="font-semibold">{year || 'Undated'}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{plural(list.filter((r) => yearOf(r) === year).length, 'event')}</span>
+                </TableCell>
+              </TableRow>
+            );
             const read = row.read?.filter((e) => e.fought) ?? [];
             const all = meetingsOfRow(row);
             const shown = all.filter((m) => (!against || normalize(m.opponent) === against.key) && (show === 'all' || m.won === (show === 'won')));
@@ -623,7 +633,7 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
             const names = divisions.map((d) => (Array.isArray(d) ? null : normalize(d.division)));
             const under = Map.groupBy(shown, (m) => { const i = span > 1 ? names.indexOf(normalize(m.division)) : 0; return i < 0 ? span - 1 : i; });
             const fin = row.outcome && Object.entries(row.outcome.out.types).reduce(([a, b], [t, [w, l]]) => (f.counted(finishOf(t)) ? [a + w, b + l] : [a, b]), [0, 0]);
-            return Array.from({ length: span }, (_, k) => {
+            return [head, ...Array.from({ length: span }, (_, k) => {
                 const d = divisions[k];
                 const e = d && !Array.isArray(d) ? d : undefined;
                 const division = e
@@ -657,7 +667,7 @@ function EventsTable({ list, f, against, show, club }: { list: Row[]; f: Filters
                     </TableRow>
                   ),
                 ];
-              });
+              })];
           })}
         </TableBody>
       </Table>
@@ -724,13 +734,19 @@ export function AthletePage({ id }: { id: string }) {
   // Won or lost alone lists just those matches, event by event; all keeps every event. The lists keep the
   // finish types switched off too: only the counts and records leave them out.
   const shownPast = past.filter((r) => (show === 'all' && !against) || meetingsOfRow(r).some((m) => (!against || normalize(m.opponent) === against.key) && (show === 'all' || m.won === (show === 'won'))));
-  const side = data.profile ? OnProfile({ p: data.profile, f, id }) : null;
   const arts = artsOf(data.profile);
+  const years = [...new Set(shownPast.map(yearOf))];
   // Events by site and number, as rows() keys them.
   const records = eventRecords(outcomes.map((o) => ({ ...o, event: at(o) })), entries.map((e) => ({ ...e, event: at(e) })));
   const era = beltsAt(data.belts, records);
-  const usual = [usualDivision(records)].map((u) => [u.age, u.weight].filter(Boolean).join(' · '))[0];
-  const over = !records.length ? '' : outcomes.length ? `across ${plural(records.length, 'event')}` : `at ${plural(records.length, 'event')} read`;
+  const division = usualDivision(records);
+  // A class in pounds reads as the kg class it falls in, as their bracket names it.
+  const cls = /lbs$/.test(division.weight ?? '') ? bracketOf({ weight: division.weight }).weight : null;
+  const kg = cls ? weightName(cls) : division.weight;
+  const usual = [division.age, kg].filter(Boolean).join(' · ');
+  const fought = past.filter((r) => r.outcome || r.read?.some((e) => e.fought) || r.listed?.wins != null).length;
+  const over = !records.length ? '' : records.length < fought ? `across ${records.length} of ${plural(fought, 'event')}` : outcomes.length ? `across ${plural(records.length, 'event')}` : `at ${plural(records.length, 'event')} read`;
+  const overWhy = records.length && records.length < fought ? `At the other ${plural(fought - records.length, 'event')} no match was read, only the wins Smoothcomp lists there, so the record leaves them out` : undefined;
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-center gap-5">
@@ -753,7 +769,7 @@ export function AthletePage({ id }: { id: string }) {
             {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
             {usual && <Popover>
               <PopoverTrigger openOnHover className="cursor-help rounded-sm underline decoration-muted-foreground/50 decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Usually {usual}</PopoverTrigger>
-              <PopoverContent side="bottom" align="start" className="w-64 text-xs text-muted-foreground">The age group and weight class they entered most in the year up to their latest event.</PopoverContent>
+              <PopoverContent side="bottom" align="start" className="w-64 text-xs text-muted-foreground">The age group and weight class they entered most in the year up to their latest event{kg !== division.weight ? ` (entered as ${division.weight})` : ''}.</PopoverContent>
             </Popover>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
           </div>
@@ -768,15 +784,12 @@ export function AthletePage({ id }: { id: string }) {
         </div>
       </header>
 
-      {career || outcomes.length ? <RecordBand fins={finishes(career, records)} f={f} over={over} career={career} points={points} bracket={data.bracket} />
+      {career || outcomes.length ? <RecordBand fins={finishes(career, records)} f={f} over={over} overWhy={overWhy} career={career} points={points} bracket={data.bracket} profile={data.profile} id={id} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
       <Form list={past} f={f} career={career} era={era} split={splitByBelt(data.belts, records, f, era)} />
 
-      {(met.length > 0 || side) && <div className="grid items-start gap-6 lg:grid-cols-2">
-        {met.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
-        {side}
-      </div>}
+      {met.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
 
       {upcoming.length > 0 && (
         <section className="flex flex-col gap-3">
@@ -795,6 +808,10 @@ export function AthletePage({ id }: { id: string }) {
               <button type="button" onClick={() => setAgainst(null)} aria-label="Show every event" className="grid size-6 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"><X className="size-3.5" /></button>
             </span>
           ) : <span className="text-sm text-muted-foreground">{past.length}</span>}
+          {years.length > 1 && <nav aria-label="Jump to a year" className="flex flex-wrap gap-0.5 text-sm">
+            {years.map((y) => <button key={y} type="button" onClick={() => document.getElementById(`year-${y || 'undated'}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="rounded-md px-1.5 py-0.5 text-muted-foreground tabular-nums transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring">{y || 'Undated'}</button>)}
+          </nav>}
           {matches.length > 0 && (
             <div className="ml-auto flex rounded-full border border-input p-0.5" role="group" aria-label="Matches shown">
               {([['all', 'All matches', matches.length], ['won', 'Won', won], ['lost', 'Lost', matches.length - won]] as const).map(([key, label, n]) => (
@@ -806,7 +823,7 @@ export function AthletePage({ id }: { id: string }) {
             </div>
           )}
         </div>
-        {shownPast.length ? <EventsTable list={shownPast} f={f} against={against} show={show} club={a.club ?? null} /> : <Card><Empty title="No past events seen yet" text="They appear once someone with Mat Stats reads this athlete's career or an event they entered." /></Card>}
+        {shownPast.length ? <EventsTable list={shownPast} f={f} against={against} show={show} club={a.club ?? null} years={years.length > 1} /> : <Card><Empty title="No past events seen yet" text="They appear once someone with Mat Stats reads this athlete's career or an event they entered." /></Card>}
       </section>
     </div>
   );
