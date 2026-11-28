@@ -480,7 +480,7 @@ const account = (env, f, site, user) => [
   env.DB.prepare('SELECT entry FROM profiles WHERE site = ?1 AND user = ?2').bind(site, user),
   // Everyone in their divisions, so each opponent the match lists name (by name alone) links to their page.
   env.DB.prepare(`SELECT DISTINCT e.event, e.user, p.name FROM entries mine CROSS JOIN entries e ON e.site = mine.site AND e.event = mine.event AND e.division = mine.division AND e.user != mine.user
-    JOIN people p ON p.site = e.site AND p.user = e.user WHERE mine.site = ?1 AND mine.user = ?2`).bind(site, user),
+    CROSS JOIN people p ON p.site = e.site AND p.user = e.user WHERE mine.site = ?1 AND mine.user = ?2`).bind(site, user),
 ];
 
 async function athlete(env, params) {
