@@ -1,19 +1,19 @@
-// Ratings (Glicko-1): how strong an athlete is from whom they beat and lost to, every match read in date order, each event
-// a rating period. Backtested on 693k matches (2026-11-26/28): where both athletes had 5+ matches before, it picked the
-// winner 69.3% of the time against the seed's 65.9% (belt, then win rate); an athlete new to the matches read who has a
-// Smoothcomp career started from it (wins per event) and was picked right 62.5% of the time, against 52.5% without it.
-// A belt starts GAP above the one below and a promotion lifts the rating by the steps gained; idle, the doubt (RD) grows
-// back to 350 over twelve years (three, the usual, predicted no better and left every record's doubt near 180, so the
-// rankings couldn't tell 126 matches from 7). Rebuilt nightly whole (rerate), so an older event read later counts in its place.
+// Ratings (whole-history): how strong an athlete is from whom they beat and lost to, every match read fit at once
+// (Bradley-Terry with Gaussian priors), so a result is judged by everything known of both sides, later results too: a loss
+// to a newcomer who went on to win the division counts as one to a strong athlete. Each belt reached has its own strength,
+// tied to the last belt's GAP higher (sd TAU); the first starts from the belt, and from their Smoothcomp career (wins per
+// event) where one was read. Backtested on 693k matches (2026-11-28), each event predicted from a fit of the matches before
+// it: where both athletes had 5+ matches before, 70.7% of winners picked, against 69.4% for Glicko (the first version, which
+// judged each event once, in date order) and 65.9% for the seed (belt, then win rate); a newcomer with a career 62.4%,
+// against 49.9%. Fading older matches (a 1–2 year half-life) predicted worse. Rebuilt nightly whole (rerate).
 import '../rules.js';
 
 const { beltOf, divisionOf, finishOf } = globalThis.SCWRRules;
-const Q = Math.LN10 / 400;
-const C2 = (350 ** 2 - 50 ** 2) / (365 * 12);
+const K = Math.LN10 / 400;
 const GAP = 150;
-// Kept and ranked: athletes rated with less doubt than this (about 34k on Smoothcomp on 2026-11-28), by mean - 2 doubt.
+const TAU = 150;
+// Kept and ranked: athletes rated with less doubt than this (69k of 174k adults on Smoothcomp, 2026-11-28), by mean - 2 doubt.
 export const DOUBT = 200;
-const g = (rd) => 1 / Math.sqrt(1 + (3 * Q * Q * rd * rd) / Math.PI ** 2);
 // White 0 … black 4; null unknown.
 export const beltStep = (belt) => { const i = ADULT.indexOf(belt); return i < 0 ? null : i; };
 const ADULT = ['white', 'blue', 'purple', 'brown', 'black'];
@@ -40,48 +40,53 @@ export function packer() {
   };
 }
 
-// careers: Map of user → { wins (no walkovers), events } as their profile gives them now. Returns Map of user → { mean, doubt
-// (as of `today`), matches }.
-export function rate({ users, w, l, s, starts, days }, careers = new Map(), today = Date.now() / 864e5) {
-  const N = users.length, E = starts.length;
-  const end = (e) => (e + 1 < E ? starts[e + 1] : w.length);
+// careers: Map of user → { wins (no walkovers), events } as their profile gives them now. Returns Map of user → { mean, doubt,
+// matches }: their latest belt's strength and how sure the fit is of it (sd).
+export function rate({ users, w, l, s, starts }, careers = new Map()) {
+  const N = users.length, E = starts.length, M = w.length;
+  const end = (e) => (e + 1 < E ? starts[e + 1] : M);
   // A career counts what came before the matches read: its wins and events less those read.
-  const wins = new Int32Array(N), seen = new Int32Array(N), last = new Int32Array(N).fill(-1);
-  for (let e = 0; e < E; e++) for (let k = starts[e]; k < end(e); k++) { wins[w[k]]++; for (const i of [w[k], l[k]]) if (last[i] !== e) { last[i] = e; seen[i]++; } }
-  const r = new Float64Array(N), rd = new Float64Array(N), day = new Float64Array(N), step = new Int8Array(N), n = new Int32Array(N), started = new Uint8Array(N);
-  // As of `now`: started (from their career where there is one), promoted, its doubt grown since it last moved.
-  const at = (i, st, now) => {
-    if (!started[i]) {
+  const wins = new Int32Array(N), seen = new Int32Array(N), last = new Int32Array(N).fill(-1), n = new Int32Array(N);
+  for (let e = 0; e < E; e++) for (let k = starts[e]; k < end(e); k++) { wins[w[k]]++; n[w[k]]++; n[l[k]]++; for (const i of [w[k], l[k]]) if (last[i] !== e) { last[i] = e; seen[i]++; } }
+  // Nodes: an athlete at a belt, made as they reach it (the highest belt of their divisions so far, this event's too).
+  const top = new Int8Array(N).fill(-1), at = new Int32Array(N).fill(-1);
+  const nStep = [], prev = [], mean = [], sd = [];
+  const nodeOf = (i) => {
+    const cur = at[i];
+    if (cur >= 0 && nStep[cur] >= top[i]) return cur;
+    const st = Math.max(0, top[i]);
+    if (cur < 0) {
       const c = careers.get(users[i]), cw = c ? c.wins - wins[i] : -1, ce = c ? c.events - seen[i] : 0, head = ce >= 1 && cw >= 0;
-      started[i] = 1; step[i] = Math.max(0, st); day[i] = now;
-      r[i] = 1500 + GAP * step[i] + (head ? Math.max(-300, Math.min(300, 200 * (cw / ce - 1.2))) : 0);
-      rd[i] = head ? Math.max(120, 350 - 25 * ce) : 350;
-    }
-    if (st > step[i]) { r[i] += GAP * (st - step[i]); step[i] = st; rd[i] = Math.max(rd[i], 200); }
-    rd[i] = Math.min(350, Math.sqrt(rd[i] ** 2 + C2 * Math.max(0, now - day[i]))); day[i] = now;
+      mean.push(1500 + GAP * st + (head ? Math.max(-300, Math.min(300, 200 * (cw / ce - 1.2))) : 0)); sd.push(head ? Math.max(120, 350 - 25 * ce) : 350);
+    } else { mean.push(0); sd.push(TAU); }
+    nStep.push(st); prev.push(cur);
+    return (at[i] = nStep.length - 1);
   };
+  const a = new Int32Array(M), b = new Int32Array(M);
   for (let e = 0; e < E; e++) {
-    const games = new Map();
-    for (let k = starts[e]; k < end(e); k++) {
-      at(w[k], s[k], days[e]); at(l[k], s[k], days[e]);
-      (games.get(w[k]) ?? games.set(w[k], []).get(w[k])).push(l[k], 1);
-      (games.get(l[k]) ?? games.set(l[k], []).get(l[k])).push(w[k], 0);
+    for (let k = starts[e]; k < end(e); k++) for (const i of [w[k], l[k]]) top[i] = Math.max(top[i], s[k]);
+    for (let k = starts[e]; k < end(e); k++) { a[k] = nodeOf(w[k]); b[k] = nodeOf(l[k]); }
+  }
+  // The fit: Newton steps on every node at once (damped), from each node's prior, until no strength moves a point.
+  const V = nStep.length, th = new Float64Array(V), g = new Float64Array(V), h = new Float64Array(V);
+  for (let v = 0; v < V; v++) th[v] = prev[v] < 0 ? mean[v] : th[prev[v]] + GAP * (nStep[v] - nStep[prev[v]]);
+  for (let sweep = 0; sweep < 300; sweep++) {
+    g.fill(0); h.fill(0);
+    for (let k = 0; k < M; k++) {
+      const x = 1 / (1 + 10 ** (-(th[a[k]] - th[b[k]]) / 400)), y = K * (1 - x), z = K * K * x * (1 - x);
+      g[a[k]] += y; g[b[k]] -= y; h[a[k]] += z; h[b[k]] += z;
     }
-    // Everyone moves from the ratings before the event.
-    const pre = new Map([...games.keys()].map((i) => [i, [r[i], rd[i]]]));
-    for (const [i, gs] of games) {
-      const [me, mine] = pre.get(i);
-      let v = 0, sum = 0;
-      for (let k = 0; k < gs.length; k += 2) {
-        const [o, ord] = pre.get(gs[k]), gj = g(ord), x = 1 / (1 + 10 ** ((-gj * (me - o)) / 400));
-        v += Q * Q * gj * gj * x * (1 - x); sum += gj * (gs[k + 1] - x);
-      }
-      const rd2 = 1 / (1 / mine ** 2 + v);
-      r[i] = me + Q * rd2 * sum; rd[i] = Math.max(30, Math.sqrt(rd2)); n[i] += gs.length / 2;
+    for (let v = 0; v < V; v++) {
+      if (prev[v] < 0) { g[v] -= (th[v] - mean[v]) / sd[v] ** 2; h[v] += 1 / sd[v] ** 2; continue; }
+      const r = th[v] - th[prev[v]] - GAP * (nStep[v] - nStep[prev[v]]);
+      g[v] -= r / TAU ** 2; g[prev[v]] += r / TAU ** 2; h[v] += 1 / TAU ** 2; h[prev[v]] += 1 / TAU ** 2;
     }
+    let moved = 0;
+    for (let v = 0; v < V; v++) { const d = (0.9 * g[v]) / h[v]; th[v] += d; moved = Math.max(moved, Math.abs(d)); }
+    if (moved < 1 && sweep >= 10) break;
   }
   const out = new Map();
-  for (let i = 0; i < N; i++) out.set(users[i], { mean: r[i], doubt: Math.min(350, Math.sqrt(rd[i] ** 2 + C2 * Math.max(0, today - day[i]))), matches: n[i] });
+  for (let i = 0; i < N; i++) if (at[i] >= 0) out.set(users[i], { mean: th[at[i]], doubt: 1 / Math.sqrt(h[at[i]]), matches: n[i] });
   return out;
 }
 
@@ -90,11 +95,12 @@ const SITES = ['smoothcomp.com', 'ajptour.com'];
 const MATCHES = `SELECT e.event, e.user AS w, b.value ->> 'user' AS l, e.division AS d, b.value ->> 'type' AS t, b.value ->> 'stage' AS st
   FROM json_each(?2) ev CROSS JOIN entries e ON e.site = ?1 AND e.event = ev.value CROSS JOIN json_each(e.bouts) b
   WHERE e.fought = 1 AND b.value ->> 'won' = 1 AND b.value ->> 'user' IS NOT NULL`;
-// Upserts only the rows that change (D1 bills each row and index entry written). ?2: [[user, rating, mean, doubt, matches]].
+// Upserts only the rows that change (D1 bills each row and index entry written): each night's matches move whole pools a
+// point or two, so a row is rewritten once a figure moves 3 or more, or its matches change. ?2: [[user, rating, mean, doubt, matches]].
 const KEEP = `INSERT INTO ratings (site, user, rating, mean, doubt, matches)
   SELECT ?1, value ->> 0, value ->> 1, value ->> 2, value ->> 3, value ->> 4 FROM json_each(?2) WHERE true
   ON CONFLICT (site, user) DO UPDATE SET rating = excluded.rating, mean = excluded.mean, doubt = excluded.doubt, matches = excluded.matches
-  WHERE (rating, mean, doubt, matches) IS NOT (excluded.rating, excluded.mean, excluded.doubt, excluded.matches)`;
+  WHERE matches IS NOT excluded.matches OR abs(rating - excluded.rating) >= 3 OR abs(mean - excluded.mean) >= 3 OR abs(doubt - excluded.doubt) >= 3`;
 
 // D1 serves one query at a time and refuses all (the site's too) past a 10 s window's share ("overloaded", on the
 // first run's 100 events a read): each read or write here waits as long again as it took, so it holds D1 half the time
@@ -137,7 +143,7 @@ export async function rerate(env, now = Date.now(), rest) {
       if (c.wins) careers.set(user, { wins: Object.entries(c.wins).reduce((t, [k, v]) => t + (finishOf(k) === 'walkover' ? 0 : v), 0), events: c.events ?? 0 });
     }
     const rows = [];
-    for (const [user, x] of rate(pack.done(), careers, now / 864e5)) {
+    for (const [user, x] of rate(pack.done(), careers)) {
       if (x.doubt < DOUBT) rows.push([user, Math.round(x.mean - 2 * x.doubt), Math.round(x.mean), Math.round(x.doubt), x.matches]);
     }
     const keep = new Set(rows.map((row) => row[0]));

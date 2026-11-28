@@ -36,7 +36,7 @@ export const athleteColumns = (f: Filters, club = true): Column<Athlete>[] => {
   { key: 'rate', label: 'Win rate', width: '6.5rem', compact: '5rem', sort: 'winRate', title: 'Wins over matches, counted finishes, no walkovers: from their profile’s match lists where someone opened it, else their results at the events read',
     cell: (a) => (rate(a.won, a.lost) ? <span className="font-semibold" title={`${a.won}–${a.lost}`}>{rate(a.won, a.lost)}</span> : <span className="text-muted-foreground">–</span>) },
   { key: 'rating', label: 'Rating', width: '5.5rem', compact: '4.5rem', narrow: 'sm', sort: 'rating',
-    title: 'How strong they are from whom they beat and lost to at the events read (Glicko), started from their Smoothcomp career where one was read: their rating less twice its doubt, so a long record ranks above a short one as strong. Rebuilt nightly; only those the matches read settle are rated',
+    title: 'How strong they are from whom they beat and lost to at the events read, each result weighed by all that's known of both sides, started from their Smoothcomp career where one was read: their rating less twice its doubt, so a long record ranks above a short one as strong. Rebuilt nightly; only those the matches read settle are rated',
     cell: (a) => (a.rating != null ? <span className="tabular-nums" title={`${a.mean} ± ${2 * (a.doubt ?? 0)}, from ${a.rated} matches read`}>{a.rating}</span> : <span className="text-muted-foreground">–</span>) },
   // Phones show the total alone; how the wins and losses came opens under the row.
   { key: 'wins', label: 'Wins', phone: '4rem', phoneOnly: true, sort: won ? sort : 'wins', title: 'Wins of the finish types switched on', cell: (a) => <Num n={a.wins} /> },

@@ -131,24 +131,34 @@ test('ratings weigh whom an athlete beat, start a newcomer from their career, an
   for (const x of ['x1', 'x2', 'x3', 'x4', 'x5']) { p.match('B', x, 1); p.match(x, 'D', 1); }
   p.event(20010);
   p.match('A', 'B', 1); p.match('C', 'D', 1);
-  const r = rate(p.done(), new Map(), 20010);
+  const r = rate(p.done());
   assert.ok(r.get('A').mean > r.get('C').mean + 100);
+  // Every result is judged by all that's known of both sides: a loss to a newcomer who won the rest of that event (N) costs
+  // less than one to a newcomer who lost the rest (Z), though both were unknown when they met.
+  const w = packer();
+  w.event(20000);
+  w.match('N', 'L', 1); w.match('Z', 'L2', 1);
+  for (const x of ['y1', 'y2', 'y3', 'y4']) { w.match('N', x, 1); w.match(x, 'Z', 1); }
+  const whole = rate(w.done());
+  assert.ok(whole.get('L').mean > whole.get('L2').mean + 100);
   // An athlete new to the matches read starts from their career's wins per event before them, and with less doubt.
   const q = packer();
   q.event(20000);
   q.match('E', 'F', 1); q.match('G', 'H', 1);
-  const c = rate(q.done(), new Map([['E', { wins: 41, events: 11 }]]), 20000);
+  const c = rate(q.done(), new Map([['E', { wins: 41, events: 11 }]]));
   assert.ok(c.get('E').mean > c.get('G').mean + 100 && c.get('E').doubt < c.get('G').doubt);
-  // Nightly, from every match read: 11 beat 12 at sixteen events; both rated, 11 first, and a walkover counts for nothing.
+  // Nightly, from every match read: 11 and 12 met at sixteen events, 11 winning two in three; both rated, 11 first, and a
+  // walkover counts for nothing. (One side winning every time leaves the fit unsure how far apart they are: neither rated.)
   const worker = (await import('../server/worker.js')).default;
   const { API } = await import('../server/stats.js');
   const { DB, db } = d1();
   const env = { DB };
   await posted(worker, env, '/record', { site: 'smoothcomp.com', event: '900', records: { 11: [3, 0], 12: [1, 2] }, meta, athletes, read: Date.now() });
-  const bout = (type) => JSON.stringify([{ won: true, type, how: null, opponent: 'Bo Sun', user: '12', club: null, stage: 'Final' }]);
+  const bout = (type, other) => JSON.stringify([{ won: true, type, how: null, opponent: 'Someone', user: other, club: null, stage: 'Final' }]);
   for (let i = 1; i <= 15; i++) {
     db.prepare("INSERT INTO events (site, event, start, at) VALUES ('smoothcomp.com', ?, ?, 0)").run(`${900 + i}`, `2026-10-${String(3 + i).padStart(2, '0')}T08:00:00Z`);
-    db.prepare("INSERT INTO entries (site, event, user, division, fought, at, bouts) VALUES ('smoothcomp.com', ?, '11', 'Male / Blue / Adult / -76 kg', 1, 0, ?)").run(`${900 + i}`, bout(i === 15 ? 'walkover' : 'points'));
+    const [won, lost] = i % 3 ? ['11', '12'] : ['12', '11'];
+    db.prepare("INSERT INTO entries (site, event, user, division, fought, at, bouts) VALUES ('smoothcomp.com', ?, ?, 'Male / Blue / Adult / -76 kg', 1, 0, ?)").run(`${900 + i}`, won, bout(i === 15 ? 'walkover' : 'points', lost));
   }
   await rerate(env, Date.parse('2026-10-20'), async () => {});
   const kept = db.prepare('SELECT user, rating, mean, doubt, matches FROM ratings ORDER BY rating DESC').all();
@@ -158,9 +168,10 @@ test('ratings weigh whom an athlete beat, start a newcomer from their career, an
   assert.deepEqual([ranked.rows.map((a) => [a.user, a.rating]), ranked.total], [kept.map((k) => [k.user, k.rating]), 2]);
   const total = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=rating&part=total'))).json();
   assert.equal(total.total, 2);
-  // Every ranking's rows carry the rating; a rebuild leaves no one it no longer rates.
+  // Every ranking's rows carry the rating; a rebuild leaves no one it no longer rates (their matches gone).
   const byWins = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json();
   assert.deepEqual(byWins.rows.map((a) => [a.user, a.rating, a.rated]), kept.map((k) => [k.user, k.rating, k.matches]));
+  db.exec("DELETE FROM entries WHERE event <> '900'");
   await rerate(env, Date.parse('2030-01-01'), async () => {});
   assert.equal(db.prepare('SELECT count(*) AS n FROM ratings').get().n, 0);
 });
