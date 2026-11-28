@@ -19,7 +19,9 @@ export const beltStep = (belt) => { const i = ADULT.indexOf(belt); return i < 0 
 const ADULT = ['white', 'blue', 'purple', 'brown', 'black'];
 // Kids and teens meet only each other, so their ratings would sit on a scale of their own among the adults': their
 // divisions (a kids' belt, or an age group under Juvenile) aren't rated (on the first run an orange belt ranked 5th).
-const young = (division) => ['grey', 'yellow', 'orange', 'green'].includes(beltOf(division)) || /^(Kids|Teen)/.test(divisionOf(division).age ?? '');
+// Read once a division name (its matches share it): reading every match's took the run from 6 s of CPU to 26 s.
+const young = (division, seen) => seen.get(division) ?? seen.set(division, ['grey', 'yellow', 'orange', 'green'].includes(beltOf(division)) || /^(Kids|Teen)/.test(divisionOf(division).age ?? '')).get(division);
+const stepOf = (division, seen) => seen.get(division) ?? seen.set(division, beltStep(beltOf(division))).get(division);
 
 // Matches packed for a whole site's history: users[w[k]] beat users[l[k]] at belt step s[k] (-1 unknown); event e holds
 // matches from starts[e] (its day days[e], days since 1970) to the next event's start.
@@ -112,7 +114,7 @@ export async function rerate(env, now = Date.now(), rest) {
   for (const site of SITES) {
     const { results: events } = await env.DB.prepare(`SELECT event, start FROM events INDEXED BY events_start WHERE site = ?1 AND start IS NOT NULL
       AND EXISTS (SELECT 1 FROM entries e WHERE e.site = ?1 AND e.event = events.event AND e.fought = 1) ORDER BY start, event`).bind(site).all();
-    const pack = packer();
+    const pack = packer(), ages = new Map(), steps = new Map();
     for (let i = 0; i < events.length; i += 25) {
       const some = events.slice(i, i + 25);
       const { results } = await paced(() => env.DB.prepare(MATCHES).bind(site, JSON.stringify(some.map((e) => e.event))).all(), rest);
@@ -122,9 +124,9 @@ export async function rerate(env, now = Date.now(), rest) {
         const once = new Set();
         for (const m of of.get(event) ?? []) {
           const key = `${m.d}|${m.st}|${[m.w, m.l].sort()}`;
-          if (finishOf(m.t) === 'walkover' || m.w === m.l || once.has(key) || young(m.d)) continue;
+          if (finishOf(m.t) === 'walkover' || m.w === m.l || once.has(key) || young(m.d, ages)) continue;
           once.add(key);
-          pack.match(m.w, m.l, beltStep(beltOf(m.d)));
+          pack.match(m.w, m.l, stepOf(m.d, steps));
         }
       }
     }
