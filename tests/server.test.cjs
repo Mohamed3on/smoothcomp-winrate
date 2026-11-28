@@ -168,6 +168,11 @@ test('ratings weigh whom an athlete beat, start a newcomer from their career, an
   assert.deepEqual([ranked.rows.map((a) => [a.user, a.rating]), ranked.total], [kept.map((k) => [k.user, k.rating]), 2]);
   const total = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com&sort=rating&part=total'))).json();
   assert.equal(total.total, 2);
+  // Athletes who compete up keep their belt: two blue belts meeting in a purple division aren't lifted a belt (903979).
+  db.exec("UPDATE board SET belt = 'blue' WHERE user IN ('11', '12')");
+  db.exec("UPDATE entries SET division = 'Male / Purple / Adult / -76 kg' WHERE event = '914'");
+  await rerate(env, Date.parse('2026-10-20'), async () => {});
+  assert.deepEqual(db.prepare('SELECT user, rating, mean, doubt, matches FROM ratings ORDER BY rating DESC').all(), kept);
   // Every ranking's rows carry the rating; a rebuild leaves no one it no longer rates (their matches gone).
   const byWins = await (await API.athletes(env, new URLSearchParams('site=smoothcomp.com'))).json();
   assert.deepEqual(byWins.rows.map((a) => [a.user, a.rating, a.rated]), kept.map((k) => [k.user, k.rating, k.matches]));

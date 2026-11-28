@@ -23,26 +23,27 @@ const ADULT = ['white', 'blue', 'purple', 'brown', 'black'];
 const young = (division, seen) => seen.get(division) ?? seen.set(division, ['grey', 'yellow', 'orange', 'green'].includes(beltOf(division)) || /^(Kids|Teen)/.test(divisionOf(division).age ?? '')).get(division);
 const stepOf = (division, seen) => seen.get(division) ?? seen.set(division, beltStep(beltOf(division))).get(division);
 
-// Matches packed for a whole site's history: users[w[k]] beat users[l[k]] at belt step s[k] (-1 unknown); event e holds
+// Matches packed for a whole site's history: users[w[k]] beat users[l[k]], the winner at belt step s[k] and the loser at t[k]
+// (-1 unknown); event e holds
 // matches from starts[e] (its day days[e], days since 1970) to the next event's start.
 export function packer() {
   const ids = new Map(), users = [];
-  let w = new Int32Array(1 << 16), l = new Int32Array(1 << 16), s = new Int8Array(1 << 16), n = 0;
+  let w = new Int32Array(1 << 16), l = new Int32Array(1 << 16), s = new Int8Array(1 << 16), t = new Int8Array(1 << 16), n = 0;
   const starts = [], days = [];
   const id = (u) => { let i = ids.get(u); if (i === undefined) { ids.set(u, (i = users.length)); users.push(u); } return i; };
   return {
     event(day) { starts.push(n); days.push(day); },
-    match(winner, loser, step) {
-      if (n === w.length) { const grow = (a, A) => { const b = new A(a.length * 2); b.set(a); return b; }; w = grow(w, Int32Array); l = grow(l, Int32Array); s = grow(s, Int8Array); }
-      w[n] = id(winner); l[n] = id(loser); s[n] = step ?? -1; n++;
+    match(winner, loser, step, other = step) {
+      if (n === w.length) { const grow = (a, A) => { const b = new A(a.length * 2); b.set(a); return b; }; w = grow(w, Int32Array); l = grow(l, Int32Array); s = grow(s, Int8Array); t = grow(t, Int8Array); }
+      w[n] = id(winner); l[n] = id(loser); s[n] = step ?? -1; t[n] = other ?? -1; n++;
     },
-    done: () => ({ users, w: w.subarray(0, n), l: l.subarray(0, n), s: s.subarray(0, n), starts: Int32Array.from(starts), days: Float64Array.from(days) }),
+    done: () => ({ users, w: w.subarray(0, n), l: l.subarray(0, n), s: s.subarray(0, n), t: t.subarray(0, n), starts: Int32Array.from(starts), days: Float64Array.from(days) }),
   };
 }
 
 // careers: Map of user → { wins (no walkovers), events } as their profile gives them now. Returns Map of user → { mean, doubt,
 // matches }: their latest belt's strength and how sure the fit is of it (sd).
-export function rate({ users, w, l, s, starts }, careers = new Map()) {
+export function rate({ users, w, l, s, t, starts }, careers = new Map()) {
   const N = users.length, E = starts.length, M = w.length;
   const end = (e) => (e + 1 < E ? starts[e + 1] : M);
   // A career counts what came before the matches read: its wins and events less those read.
@@ -64,7 +65,7 @@ export function rate({ users, w, l, s, starts }, careers = new Map()) {
   };
   const a = new Int32Array(M), b = new Int32Array(M);
   for (let e = 0; e < E; e++) {
-    for (let k = starts[e]; k < end(e); k++) for (const i of [w[k], l[k]]) top[i] = Math.max(top[i], s[k]);
+    for (let k = starts[e]; k < end(e); k++) { top[w[k]] = Math.max(top[w[k]], s[k]); top[l[k]] = Math.max(top[l[k]], t[k]); }
     for (let k = starts[e]; k < end(e); k++) { a[k] = nodeOf(w[k]); b[k] = nodeOf(l[k]); }
   }
   // The fit: Newton steps on every node at once (damped), from each node's prior, until no strength moves a point.
@@ -98,8 +99,10 @@ export function rate({ users, w, l, s, starts }, careers = new Map()) {
 
 const SITES = ['smoothcomp.com', 'ajptour.com'];
 // Each event's matches once (a match is read from its winner's entry), walkovers and no-shows left out.
-const MATCHES = `SELECT e.event, e.user AS w, b.value ->> 'user' AS l, e.division AS d, b.value ->> 'type' AS t, b.value ->> 'stage' AS st
+// With each side's own belt (their ranking row's), which a division above it never lifts them past (rerate).
+const MATCHES = `SELECT e.event, e.user AS w, b.value ->> 'user' AS l, e.division AS d, b.value ->> 'type' AS t, b.value ->> 'stage' AS st, bw.belt AS wb, bl.belt AS lb
   FROM json_each(?2) ev CROSS JOIN entries e ON e.site = ?1 AND e.event = ev.value CROSS JOIN json_each(e.bouts) b
+    LEFT JOIN board bw ON bw.site = ?1 AND bw.user = e.user LEFT JOIN board bl ON bl.site = ?1 AND bl.user = b.value ->> 'user'
   WHERE e.fought = 1 AND b.value ->> 'won' = 1 AND b.value ->> 'user' IS NOT NULL`;
 // Upserts only the rows that change (D1 bills each row and index entry written): each night's matches move whole pools a
 // point or two, so a row is rewritten once a figure moves 3 or more, or its matches change. ?2: [[user, rating, mean, doubt, matches]].
@@ -138,7 +141,10 @@ export async function rerate(env, now = Date.now(), rest) {
           const key = `${m.d}|${m.st}|${[m.w, m.l].sort()}`;
           if (finishOf(m.t) === 'walkover' || m.w === m.l || once.has(key) || young(m.d, ages)) continue;
           once.add(key);
-          pack.match(m.w, m.l, stepOf(m.d, steps));
+          // A division's belt, but never above the athlete's own: one who competed up (a blue belt in a no-gi "Advanced
+          // (Purple/Brown/Black)", 903979) stays at their belt, as the site keeps them; a division at a belt they hold still lifts them.
+          const at = stepOf(m.d, steps), cap = (own) => { const c = beltStep(own); return at == null || c == null ? at : Math.min(at, c); };
+          pack.match(m.w, m.l, cap(m.wb), cap(m.lb));
         }
       }
     }
