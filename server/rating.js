@@ -85,8 +85,14 @@ export function rate({ users, w, l, s, starts }, careers = new Map()) {
     for (let v = 0; v < V; v++) { const d = (0.9 * g[v]) / h[v]; th[v] += d; moved = Math.max(moved, Math.abs(d)); }
     if (moved < 1 && sweep >= 10) break;
   }
+  // The doubt: what the matches tell of each node, with what the belt before tells through the tie (its own doubt and
+  // TAU's), carried belt to belt (nodes are made in order). Read off the fit's own curvature, the tie counted as if the belt
+  // before were known: 2 matches, one up a belt (2923560), had ±288 and led their bracket.
+  const told = new Float64Array(V), vr = new Float64Array(V);
+  for (let k = 0; k < M; k++) { const x = 1 / (1 + 10 ** (-(th[a[k]] - th[b[k]]) / 400)), z = K * K * x * (1 - x); told[a[k]] += z; told[b[k]] += z; }
+  for (let v = 0; v < V; v++) vr[v] = 1 / (told[v] + 1 / (prev[v] < 0 ? sd[v] ** 2 : vr[prev[v]] + TAU ** 2));
   const out = new Map();
-  for (let i = 0; i < N; i++) if (at[i] >= 0) out.set(users[i], { mean: th[at[i]], doubt: 1 / Math.sqrt(h[at[i]]), matches: n[i] });
+  for (let i = 0; i < N; i++) if (at[i] >= 0) out.set(users[i], { mean: th[at[i]], doubt: Math.sqrt(vr[at[i]]), matches: n[i] });
   return out;
 }
 
