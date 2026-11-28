@@ -6,7 +6,6 @@ import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Toggle } from '@/components/ui/toggle';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Empty } from '@/components/empty';
 import { BELT_COLOUR, Belt, HIDDEN, Hidden, Flag, Medals, Photo, Place, Record } from '@/components/stats';
@@ -149,48 +148,88 @@ interface Belts { worn: string[]; starts: (number | null)[] }
 // The win rate at each belt worn, highest first, as their profile splits it: an event takes the
 // belt worn on its date; undated ones count only overall. The current belt shows even with no events.
 interface Split { belt: string; w: number; l: number; events: number }
-// Without their profile's belt timeline, each event counts at the belt its divisions name; one naming
-// none takes the belt of their latest earlier event that does (or the first one after). One naming
-// several ("Brown/Black") takes the lowest of them at or above that belt.
-function splitByDivision(records: Records, f: Filters): Split[] | null {
+// The belt each event counts at, by its key (site and number). With their profile's belt timeline, the belt
+// worn on its date (an undated event counts only overall). Without it, the belt its divisions name; one naming
+// none takes the belt of their latest earlier event that does (or the first one after), and one naming several
+// ("Brown/Black") the lowest of them at or above that belt.
+function beltsAt(belts: Belts | null | undefined, records: Records): Map<string, string> {
+  const by = new Map<string, string>();
+  if (belts) {
+    for (const r of records) {
+      const t = Date.parse(r.start ?? '');
+      if (!Number.isNaN(t)) by.set(r.event, belts.worn[belts.starts.findLastIndex((s) => (s ?? -Infinity) <= t)] ?? belts.worn[0]);
+    }
+    return by;
+  }
   const named = records.map((r) => r.divisions.map(beltOf).find(Boolean) ?? null);
   let last = named.find(Boolean) ?? null;
-  const by = new Map<string, Split>();
   records.forEach((r, i) => {
     const floor = last ? BELTS.indexOf(last) : -1;
     last = named[i] ?? r.divisions.flatMap(beltsIn).find((b) => BELTS.indexOf(b) >= floor) ?? last;
-    if (!last) return;
-    const t = by.get(last) ?? { belt: last, w: 0, l: 0, events: 0 };
-    by.set(last, t);
+    if (last) by.set(r.event, last);
+  });
+  return by;
+}
+function splitByDivision(records: Records, f: Filters, era: Map<string, string>): Split[] | null {
+  const by = new Map<string, Split>();
+  for (const r of records) {
+    const belt = era.get(r.event);
+    if (!belt) continue;
+    const t = by.get(belt) ?? { belt, w: 0, l: 0, events: 0 };
+    by.set(belt, t);
     const [w, l] = recordIn(r.types, f);
     t.w += w; t.l += l; t.events++;
-  });
+  }
   if (by.size < 2) return null;
   return [...by.values()].sort((x, y) => BELTS.indexOf(y.belt) - BELTS.indexOf(x.belt));
 }
 
-function splitByBelt(belts: Belts | null | undefined, records: Records, f: Filters): Split[] | null {
-  if (!belts) return splitByDivision(records, f);
+function splitByBelt(belts: Belts | null | undefined, records: Records, f: Filters, era: Map<string, string>): Split[] | null {
+  if (!belts) return splitByDivision(records, f, era);
   if (belts.worn.length < 2) return null;
   return beltSplit(records, belts.worn, belts.starts).map(({ belt, types, events }) => {
     const [w, l] = recordIn(types, f);
     return { belt, w, l, events };
   });
 }
+const splitLabel = ({ belt, w, l, events }: Split) => !events ? `No events at ${belt} yet` : `${w + l ? `${rate(w, l)} of matches won` : 'No matches by these finishes'} at ${belt}: ${plural(w, 'win')} and ${l} loss${l === 1 ? '' : 'es'} in ${plural(events, 'event')}`;
+const capital = (s: string) => `${s[0].toUpperCase()}${s.slice(1)}`;
 
-function BeltSplit({ split }: { split: Split[] }) {
+// Their belt drawn as worn: the rank bar near its end (red on a black belt), a white stripe a degree.
+function BeltBar({ belt, degree }: { belt: string; degree: number | null }) {
+  if (!BELT_COLOUR[belt]) return null;
   return (
-    <ul className="flex w-full max-w-md flex-col gap-2 lg:w-md lg:shrink-0" aria-label="Win rate at each belt">
-      {split.map(({ belt, w, l, events }) => {
-        const label = !events ? `No events at ${belt} yet` : `${w + l ? `${rate(w, l)} of matches won` : "No matches by these finishes"} at ${belt}: ${plural(w, "win")} and ${l} loss${l === 1 ? "" : "es"} in ${plural(events, "event")}`;
+    <span role="img" aria-label={`${capital(belt)} belt${degree ? `, ${plural(degree, 'degree')}` : ''}`}
+      className="relative inline-block h-3 w-24 shrink-0 overflow-hidden rounded-[2px] ring-1 ring-white/20 ring-inset" style={{ background: BELT_COLOUR[belt] }}>
+      <span className="absolute inset-y-0 right-2.5 flex w-7 justify-center gap-[3px]" style={{ background: belt === 'black' ? '#b53b42' : '#17191c' }}>
+        {Array.from({ length: Math.min(degree ?? 0, 6) }, (_, i) => <i key={i} className="w-0.5 bg-white/90" />)}
+      </span>
+    </span>
+  );
+}
+
+// Their belts along the timeline: each run of events at one belt as wide as its events, the first run of
+// each belt naming its win rate; a belt worn with no event yet closes the row.
+export interface Era { belt: string; n: number }
+function Eras({ eras, split }: { eras: Era[]; split: Split[] }) {
+  const named = new Set<string>();
+  const items = [...eras, ...split.filter((s) => !eras.some((e) => e.belt === s.belt)).map((s) => ({ belt: s.belt, n: 0 }))];
+  return (
+    <ul className="flex gap-1" aria-label="Win rate at each belt">
+      {items.map(({ belt, n }, i) => {
+        const s = split.find((x) => x.belt === belt);
+        const first = !named.has(belt);
+        named.add(belt);
         return (
-          <li key={belt} title={label} aria-label={label} className="grid grid-cols-[22px_3rem_1fr_4.5rem] items-center gap-3">
-            <Belt belt={belt} />
-            <b className="text-right font-semibold tabular-nums" style={w + l ? tone(w, l) : undefined}>{w + l ? rate(w, l) : <span className="text-muted-foreground">–</span>}</b>
-            <span className="h-1.5 overflow-hidden rounded-full bg-muted">
-              {w + l > 0 && <span className="block h-full rounded-full shadow-[inset_0_0_0_1px_rgb(255_255_255/0.2)]" style={{ width: `${(w / (w + l)) * 100}%`, background: BELT_COLOUR[belt] }} />}
-            </span>
-            <span className="text-right text-sm">{w + l ? <Record w={w} l={l} /> : null}</span>
+          <li key={i} title={s && splitLabel(s)} style={n ? { flex: `${n} 1 0` } : undefined} className={cn('flex min-w-0 flex-col gap-1.5', !n && 'shrink-0')}>
+            <i className={cn('h-1.5 rounded-full ring-1 ring-white/15 ring-inset', !n && 'opacity-50')} style={{ background: BELT_COLOUR[belt] }} />
+            {first && s && <span className="flex min-w-0 items-baseline gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground">
+              <span className="text-foreground/85">{capital(belt)}</span>
+              {s.events ? <>
+                {s.w + s.l > 0 && <b className="font-semibold" style={tone(s.w, s.l)}>{rate(s.w, s.l)}</b>}
+                <Record w={s.w} l={s.l} /><span>{plural(s.events, 'event')}</span>
+              </> : <span>no events yet</span>}
+            </span>}
           </li>
         );
       })}
@@ -198,85 +237,151 @@ function BeltSplit({ split }: { split: Split[] }) {
   );
 }
 
-// Their career as Smoothcomp lists it (or their results at the events read, where it serves none).
-function CareerStats({ career, f, points }: { career: Athlete | null; f: Filters; points: Points }) {
-  const fromResults = career?.source === 'results';
-  const stats: [string, React.ReactNode][] = career ? [
-    ['Medals', <Medals g={career.gold} s={career.silver} b={career.bronze} className="justify-start" />],
-    ...(career.events != null ? [[fromResults ? 'Events read' : 'Events', career.events] as [string, React.ReactNode]] : []),
-    ['Wins', career.wins],
-    ...(career.events ? [['Wins per event', (career.wins / career.events).toFixed(1)] as [string, React.ReactNode]] : []),
-    ...(career.wins > 0 && f.counted('submission') ? [['By submission', `${Math.round((career.submission / career.wins) * 100)}%`] as [string, React.ReactNode]] : []),
-  ] : [];
-  const line = pointsLine(points.for, points.against, points.scored, points.total);
+// Under this many matches a record says little: its ring stays grey and says so.
+const FEW = 20;
+
+// Their record as a ring: the share won in green, the share lost in red, the rate inside.
+function Ring({ w, l, few }: { w: number; l: number; few: boolean }) {
+  const r = 52, round = 2 * Math.PI * r, arc = round * 0.75, gap = w && l ? 3 : 0;
+  const won = (w / (w + l)) * arc;
+  const part = (from: number, length: number, colour: string) => length > 0 && (
+    <circle cx="64" cy="64" r={r} fill="none" stroke={colour} strokeWidth="9" strokeDasharray={`${length} ${round}`} strokeDashoffset={-from} />
+  );
+  const dim = (c: string) => (few ? `color-mix(in oklch, ${c} 30%, var(--color-muted))` : c);
   return (
-    <div className="flex flex-wrap items-start gap-x-10 gap-y-4 border-t pt-4">
-      {stats.length > 0 && <dl className="flex flex-wrap gap-x-10 gap-y-3" title={fromResults ? 'Smoothcomp serves no career for this athlete, so these are their results at the events Mat Stats has read' : `Career as Smoothcomp lists it${career?.at ? `, read ${date(new Date(career.at).toISOString())}` : ''}`}>
-        {stats.map(([label, value]) => <Stat key={label} label={label} value={value} />)}
-      </dl>}
-      {points.total > 0 && <dl className="flex items-center gap-x-6 gap-y-3 border-border sm:border-l sm:pl-10" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, over the finishes counted; walkovers and stoppages have none">
-        <div className="flex flex-col gap-0.5">
-          <dt className="text-xs text-muted-foreground">Points</dt>
-          <dd className="text-lg tabular-nums"><Record w={points.for} l={points.against} /></dd>
-          <dd className="text-xs text-muted-foreground tabular-nums">
-            {line.each && <><span className="font-medium text-foreground/85">{line.each}</span> a match · </>}{line.total} over {line.over}
-          </dd>
-        </div>
-        {points.unscored.length > 0 && <ReadScores targets={points.unscored} route="athlete" />}
-      </dl>}
+    <div className="relative size-32 shrink-0">
+      <svg viewBox="0 0 128 128" className="size-full rotate-[135deg]" aria-hidden>
+        {part(0, arc, 'var(--color-muted)')}
+        {part(0, won - gap / 2, dim('var(--color-won)'))}
+        {part(won + gap / 2, arc - won - gap / 2, dim('var(--color-lost)'))}
+      </svg>
+      <span className="absolute inset-0 grid place-items-center pb-1 text-4xl font-semibold tracking-tight" style={few ? undefined : tone(w, l)}>{rate(w, l)}</span>
     </div>
   );
 }
-const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
-  <div className="flex flex-col gap-0.5">
-    <dd className="text-lg font-semibold tabular-nums">{value}</dd>
-    <dt className="order-first text-xs text-muted-foreground">{label}</dt>
-  </div>
-);
+
+// How they win and how they lose, finish by finish on one scale: wins grow left, losses right.
+// Each row switches its finish in or out of the record; one always stays counted.
+function Finishes({ fins, f, toggle, last }: { fins: Finish[]; f: Filters; toggle: (key: string) => void; last: boolean }) {
+  const most = Math.max(1, ...fins.flatMap((x) => [x.w, x.l ?? 0]));
+  const cols = 'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_minmax(0,1fr)_2.5rem] items-center gap-x-2.5 sm:grid-cols-[2.5rem_minmax(0,1fr)_7rem_minmax(0,1fr)_2.5rem]';
+  const bar = (key: string, n: number, side: 'won' | 'lost') => n > 0 && (
+    <i className={cn('block h-2.5', side === 'won' ? 'ml-auto rounded-l-[3px]' : 'rounded-r-[3px]')} style={{ width: `${Math.max((n / most) * 100, 2)}%`, background: dot(key) }} />
+  );
+  return (
+    <div className="flex min-w-0 flex-col" role="group" aria-label="Finishes counted">
+      <div className={cn(cols, 'pb-1.5 text-xs whitespace-nowrap text-muted-foreground')}><span /><span className="text-right">Won by</span><span /><span>Lost by</span><span /></div>
+      {fins.map((x) => {
+        const on = f.counted(x.key);
+        const what = `${typeName(x.key)}: ${plural(x.w, 'win')}${x.l == null ? ' (losses by it not read)' : ` and ${x.l} loss${x.l === 1 ? '' : 'es'}`}`;
+        return (
+          <button key={x.key} type="button" aria-pressed={on} onClick={() => toggle(x.key)}
+            title={on ? (last ? `${what}. One finish always stays counted` : `${what}. Counted: click to leave it out`) : `${what}. Not counted: click to count it`}
+            className={cn(cols, 'h-8 rounded-md text-sm transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring max-sm:h-11')}>
+            <span className={cn('text-right font-semibold', on && x.w ? 'text-won' : 'text-muted-foreground')}>{fmt(x.w)}</span>
+            <span className={cn('transition-opacity', !on && 'opacity-25')}>{bar(x.key, x.w, 'won')}</span>
+            <span className={cn('truncate text-center font-medium', !on && 'text-muted-foreground line-through decoration-muted-foreground/60')}>{typeName(x.key)}</span>
+            <span className={cn('transition-opacity', !on && 'opacity-25')}>{x.l != null && bar(x.key, x.l, 'lost')}</span>
+            <span className={cn('font-semibold', on && x.l ? 'text-lost' : 'text-muted-foreground')}>{x.l == null ? '–' : fmt(x.l)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Where they stand in their bracket: by rating where rated (it orders a bracket better than wins: 70.0% of
+// matches against 65.9%), by wins beside it; the rating itself explained on hover.
+function Standing({ bracket, career, f }: { bracket: Bracket | null | undefined; career: Athlete | null; f: Filters }) {
+  const rating = career?.rating != null ? career : null;
+  if (!bracket && !rating) return null;
+  const to = (sort?: string) => f.link(`/athletes?${new URLSearchParams({ ...(sort && { sort }), ...(bracket?.sex && { sex: bracket.sex }), ...(bracket && { age: bracket.age, weight: String(bracket.weight) }), ...(bracket?.belt && { belt: bracket.belt }) })}`);
+  const strength = rating && `How strong they are from whom they beat and lost to at the events read: ${rating.mean} ± ${3 * (rating.doubt ?? 0)} from ${plural(rating.rated ?? 0, 'match')}, ranked at the lower end`;
+  const rated = bracket?.rated && rating ? bracket.rated : null;
+  return (
+    <div className="flex flex-col gap-2 lg:w-60">
+      {bracket && <Link href={to(rated ? 'rating' : undefined)} className="group flex flex-col gap-0.5"
+        title={rated ? 'Their place by rating among the athletes rated in their age group, weight class and belt' : 'Their place by wins among the athletes in their age group, weight class and belt: the rankings narrowed to them'}>
+        <span className="flex items-baseline gap-2">
+          <b className="text-4xl font-semibold tracking-tight tabular-nums group-hover:text-primary">#{fmt((rated ?? bracket).rank)}</b>
+          <span className="text-sm text-muted-foreground">of {fmt((rated ?? bracket).of)} {rated ? 'rated' : 'by wins'}</span>
+        </span>
+        <span className="text-sm text-foreground/85">{bracketName(bracket)}</span>
+      </Link>}
+      {rated && <Link href={to()} title="Their place by wins among the athletes in their age group, weight class and belt" className="text-sm text-muted-foreground hover:text-foreground">
+        <b className="font-semibold text-foreground tabular-nums">#{fmt(bracket!.rank)}</b> of {fmt(bracket!.of)} by wins
+      </Link>}
+      {rating && <Popover>
+        <PopoverTrigger openOnHover className="cursor-help self-start rounded-sm text-sm text-muted-foreground underline decoration-muted-foreground/50 decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+          Rating <b className="font-semibold text-foreground tabular-nums">{rating.rating}</b>
+        </PopoverTrigger>
+        <PopoverContent side="bottom" align="start" className="w-72 text-xs text-muted-foreground">
+          {strength}.{!bracket && <> <Link href={f.link('/athletes?sort=rating')} className="text-foreground hover:text-primary">Rankings by rating</Link></>}
+        </PopoverContent>
+      </Popover>}
+    </div>
+  );
+}
+
+// Points on the scoreboard, theirs against their opponents', as a split bar.
+function Scoreboard({ points }: { points: Points }) {
+  const line = pointsLine(points.for, points.against, points.scored, points.total);
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2" title="Points on the scoreboard, theirs and their opponents', in the matches whose score was read, over the finishes counted; walkovers and stoppages have none">
+      <span className="text-sm text-muted-foreground">Scoreboard</span>
+      <span className="text-base"><Record w={points.for} l={points.against} /></span>
+      {points.for + points.against > 0 && <span className="flex h-1.5 w-28 gap-px overflow-hidden rounded-full" aria-hidden>
+        <i className="bg-won" style={{ flex: points.for }} /><i className="bg-lost" style={{ flex: points.against }} />
+      </span>}
+      <span className="text-xs text-muted-foreground tabular-nums">{line.each && <><b className="font-medium text-foreground/85">{line.each}</b> a match · </>}{line.total} over {line.over}</span>
+      {points.unscored.length > 0 && <ReadScores targets={points.unscored} route="athlete" />}
+    </div>
+  );
+}
 // Points scored and conceded over the matches whose score was read, and the events with a match still to read.
 interface Points { for: number; against: number; scored: number; total: number; unscored: Target[] }
 
-// The headline: the win rate over the finishes switched on, and those switches, each with its W–L.
-function RecordBand({ fins, f, over, split, career, points }: { fins: Finish[]; f: Filters; over: string; split: Split[] | null; career: Athlete | null; points: Points }) {
+// The headline: their record as a ring over the finishes switched on, how they win and lose by each finish,
+// and where they stand; under it, the totals Smoothcomp lists and the scoreboard.
+function RecordBand({ fins, f, over, career, points, bracket }: { fins: Finish[]; f: Filters; over: string; career: Athlete | null; points: Points; bracket: Bracket | null | undefined }) {
   const on = fins.filter((x) => f.counted(x.key));
   const rated = on.filter((x) => x.l != null);
   const [w, l] = rated.reduce(([a, b], x) => [a + x.w, b + (x.l ?? 0)], [0, 0]);
+  const few = w + l < FEW;
   const toggle = (key: string) => {
     const off = new Set(f.off);
     if (off.has(key)) off.delete(key);
     else if (on.length > 1) off.add(key); // one finish always stays counted
     f.set({ off: [...off].join(',') });
   };
+  const listed = career && (career.source === 'results'
+    ? `Smoothcomp serves no career for them, so their medals and wins are the results Mat Stats read at ${plural(career.events ?? 0, 'event')}`
+    : `Smoothcomp lists ${plural(career.wins, 'win')}${career.events != null ? ` at ${plural(career.events, 'event')}` : ''}, walkovers included${career.at ? ` (read ${date(new Date(career.at).toISOString())})` : ''}`);
   return (
-    <Card className="gap-5 px-5 py-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
-      <div className="flex min-w-0 flex-col gap-4">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <Card className="gap-6 p-6">
+      <div className="grid items-center gap-x-10 gap-y-8 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
+        <div className="flex items-center gap-5">
           {w + l ? <>
-            <span className="text-5xl font-semibold tracking-tight" style={tone(w, l)}>{rate(w, l)}</span>
-            <span className="text-muted-foreground">win rate</span>
-            <span className="text-xl"><Record w={w} l={l} /></span>
-            <span className="text-sm text-muted-foreground">{over}</span>
-          </> : rated.length || !on.length ? <span className="text-muted-foreground">No matches by these finishes</span> : <>
-            <span className="text-5xl font-semibold tracking-tight">{on.reduce((n, x) => n + x.w, 0)}</span>
-            <span className="text-muted-foreground">wins</span>
-            <span className="text-sm text-muted-foreground">· losses arrive once someone opens their Smoothcomp profile with Mat Stats</span>
-          </>}
+            <Ring w={w} l={l} few={few} />
+            <div className="flex flex-col items-start gap-1.5">
+              <span className="text-3xl tracking-tight"><Record w={w} l={l} /></span>
+              <span className="text-sm text-muted-foreground">{plural(w + l, 'match')}{over && ` ${over}`}</span>
+              {few && <span className="rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground/85" title={`Under ${FEW} matches, a win rate says little yet`}>Small sample</span>}
+            </div>
+          </> : rated.length || !on.length ? <span className="text-muted-foreground">No matches by these finishes</span> : (
+            <div className="flex max-w-64 flex-col gap-1">
+              <span className="text-5xl font-semibold tracking-tight">{fmt(on.reduce((n, x) => n + x.w, 0))}</span>
+              <span className="text-sm text-muted-foreground">wins · losses arrive once someone opens their Smoothcomp profile with Mat Stats</span>
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Finishes counted">
-          {fins.map((x) => (
-            <Toggle key={x.key} variant="outline" size="sm" pressed={f.counted(x.key)} onPressedChange={() => toggle(x.key)}
-              className="h-7 gap-1.5 rounded-full px-2.5 text-muted-foreground aria-pressed:border-primary/60 aria-pressed:bg-primary/12 aria-pressed:text-foreground">
-              <i className={cn('size-2 rounded-full transition-opacity', !f.counted(x.key) && 'opacity-35')} style={{ background: dot(x.key) }} />
-              <span className="font-medium">{typeName(x.key)}</span>
-              <span className={cn('text-xs', !f.counted(x.key) && 'opacity-60')}>{x.l == null ? <><b className="font-semibold">{x.w}</b> {x.w === 1 ? 'win' : 'wins'}</> : <Record w={x.w} l={x.l} />}</span>
-            </Toggle>
-          ))}
-        </div>
+        {fins.length > 0 && <div className="lg:border-x lg:px-10"><Finishes fins={fins} f={f} toggle={toggle} last={on.length === 1} /></div>}
+        <Standing bracket={bracket} career={career} f={f} />
       </div>
-      {split && <BeltSplit split={split} />}
-      </div>
-      {(career || points.total > 0) && <CareerStats career={career} f={f} points={points} />}
+      {(listed || points.total > 0) && <div className="flex flex-wrap items-center justify-between gap-x-10 gap-y-3 border-t pt-4">
+        {listed && <p className="text-sm text-muted-foreground">{listed}</p>}
+        {points.total > 0 && <Scoreboard points={points} />}
+      </div>}
     </Card>
   );
 }
@@ -350,54 +455,114 @@ function Rivals({ rivals, losses, pick, picked }: { rivals: Rival[]; losses: num
   );
 }
 
-// W–L at each past event, oldest first: wins up, coloured by the best medal there; losses down.
-function Form({ list, f }: { list: Row[]; f: Filters }) {
+// A best place there as its medal's colour; none in the neutral grey.
+const MEDAL = ['var(--color-gold)', 'var(--color-silver)', 'var(--color-bronze)'];
+const medalColour = (place: number | null) => (place ? MEDAL[place - 1] : 'var(--color-win-other)');
+// Under this many events each gets a tile, not a bar.
+const TILES = 6;
+
+// Their past events, oldest first: the medals over them, then W–L at each (a chart, or a tile each when
+// there are few), wins up coloured by the best medal there, losses down; their belts run underneath.
+function Form({ list, f, career, era, split }: { list: Row[]; f: Filters; career: Athlete | null; era: Map<string, string>; split: Split[] | null }) {
   const points = list.filter((r) => r.outcome || r.read?.some((e) => e.fought) || r.listed?.wins != null).reverse().map((r) => {
     const fin = r.outcome && Object.entries(r.outcome.out.types).reduce(([a, b], [t, [w, l]]) => (f.counted(finishOf(t)) ? [a + w, b + l] : [a, b]), [0, 0]);
     const read = r.read?.filter((e) => e.fought) ?? [];
     const best = Math.min(...read.map((e) => e.place ?? 99));
     return {
-      name: r.title ?? '', date: date(r.start), tick: r.start ? new Date(r.start).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }) : '–',
+      name: r.title ?? '', date: date(r.start), start: r.start ? Date.parse(r.start) : NaN, year: r.start ? String(new Date(r.start).getFullYear()) : '', belt: era.get(at({ site: r.site, event: r.id })),
       wins: fin ? fin[0] : read.length ? read.reduce((n, e) => n + winsOf(e.wins, f.counted), 0) : r.listed!.wins!,
       losses: fin ? -fin[1] : -read.reduce((n, e) => n + winsOf(e.losses, f.counted), 0),
-      medal: (r.listed?.gold || best === 1) ? 'var(--color-gold)' : (r.listed?.silver || best === 2) ? 'var(--color-silver)' : (r.listed?.bronze || best === 3) ? 'var(--color-bronze)' : 'var(--color-win-decision)',
+      place: r.listed?.gold || best === 1 ? 1 : r.listed?.silver || best === 2 ? 2 : r.listed?.bronze || best === 3 ? 3 : null,
     };
-  });
-  if (points.length < 2) return null;
+  }).map((p, i, all) => ({ ...p, tick: p.year && p.year !== all[i - 1]?.year ? p.year : '' })); // the year under its first event
+  const medals = career ? [career.gold, career.silver, career.bronze].map(Number) : [1, 2, 3].map((n) => points.filter((p) => p.place === n).length);
+  if (!points.length && !medals.some(Boolean)) return null;
+  const podium = points.filter((p) => p.place).length;
+  // The last 12 months on their own, where some of their events are older.
+  const lately = points.filter((p) => p.start >= Date.now() - 365 * 864e5);
+  const recent = lately.length && lately.length < points.length ? lately.reduce(([w, l], p) => [w + p.wins, l - p.losses], [0, 0]) : null;
   const lost = points.some((p) => p.losses);
+  // Each run of events at one belt, an undated event staying in the run before it.
+  const eras = split && points.reduce<Era[]>((runs, p) => {
+    const belt = p.belt ?? runs.at(-1)?.belt ?? split.at(-1)!.belt;
+    if (runs.at(-1)?.belt === belt) runs.at(-1)!.n++; else runs.push({ belt, n: 1 });
+    return runs;
+  }, []);
+  const tiles = points.length < TILES;
   return (
-    <Card className="min-w-0 gap-3 px-5 py-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
-        <h2 className="text-sm font-medium">{lost ? 'Won and lost per event' : 'Wins per event'}</h2>
-        <ul className="flex gap-4 text-xs text-muted-foreground" aria-label="Bar colour: the best medal won there">
-          {[['bg-gold', 'Gold'], ['bg-silver', 'Silver'], ['bg-bronze', 'Bronze'], ['bg-win-decision', 'No medal'], ...(lost ? [['bg-lost/70', 'Lost']] : [])].map(([bg, label]) => <li key={label} className="inline-flex items-center gap-1.5"><i className={`size-2 rounded-sm ${bg}`} />{label}</li>)}
-        </ul>
+    <Card className="min-w-0 gap-5 p-6">
+      <h2 className="sr-only">Medals and results per event</h2>
+      <div className="flex flex-wrap items-center justify-between gap-x-8 gap-y-3">
+        <div className="flex flex-wrap items-baseline gap-x-7 gap-y-2">
+          <ul className="flex items-baseline gap-6" title={career && career.source !== 'results' ? 'Medals as Smoothcomp lists them' : 'Medals at the events Mat Stats read'}>
+            {(['gold', 'silver', 'bronze'] as const).map((k, i) => (
+              <li key={k} className="inline-flex items-baseline gap-2">
+                <i className={cn('size-2.5 self-center rounded-full', !medals[i] && 'opacity-35')} style={{ background: MEDAL[i] }} />
+                <b className={cn('text-2xl font-semibold tracking-tight tabular-nums', !medals[i] && 'text-muted-foreground')} style={medals[i] ? { color: MEDAL[i] } : undefined}>{fmt(medals[i])}</b>
+                <span className="text-sm text-muted-foreground">{k}</span>
+              </li>
+            ))}
+          </ul>
+          {points.length > 0 && <span className="text-sm text-muted-foreground">on the podium at <b className="font-semibold text-foreground">{podium}</b> of {plural(points.length, 'event')}</span>}
+          {recent && <span className="text-sm text-muted-foreground" title="Their record at the events of the last 12 months">last 12 months <Record w={recent[0]} l={recent[1]} /></span>}
+        </div>
+        {!tiles && <ul className="flex gap-4 text-xs text-muted-foreground" aria-label="Bar colour: the best medal won there">
+          {[['var(--color-win-other)', 'No medal'], ...(lost ? [['color-mix(in oklch, var(--color-lost) 70%, transparent)', 'Lost']] : [])].map(([bg, label]) => <li key={label} className="inline-flex items-center gap-1.5"><i className="size-2 rounded-sm" style={{ background: bg }} />{label}</li>)}
+        </ul>}
       </div>
-      <div className="h-52 w-full [&_.recharts-surface:focus:not(:focus-visible)]:outline-none">
-        <ResponsiveContainer>
-          <BarChart data={points} stackOffset="sign" margin={{ top: 4, right: 0, bottom: 0, left: -28 }}>
-            <XAxis dataKey="tick" interval="preserveStartEnd" minTickGap={8} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis allowDecimals={false} tickFormatter={(v) => String(Math.abs(v))} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
-            <ReferenceLine y={0} stroke="oklch(1 0 0 / 12%)" />
-            <Tooltip cursor={{ fill: 'oklch(1 0 0 / 5%)', stroke: 'none' }} isAnimationActive={false} content={({ active, payload }) => {
-              const p = active && payload?.[0]?.payload as (typeof points)[number] | undefined;
-              return p && (
-                <div className="flex min-w-40 flex-col gap-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
-                  <div><p className="font-medium">{p.name}</p><p className="text-muted-foreground">{p.date}</p></div>
-                  <dl className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-0.5 tabular-nums">
-                    {([['Won', p.wins, p.medal], ...(lost ? [['Lost', -p.losses, 'color-mix(in oklch, var(--color-lost) 70%, transparent)']] : [])] as const).map(([label, n, bg]) => (
-                      <Fragment key={label}><i className="size-2 rounded-sm" style={{ background: bg }} /><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{n}</dd></Fragment>
-                    ))}
-                  </dl>
-                </div>
-              );
-            }} />
-            <Bar dataKey="wins" stackId="r" maxBarSize={28} radius={[3, 3, 0, 0]}>{points.map((p, i) => <Cell key={i} fill={p.medal} />)}</Bar>
-            {lost && <Bar dataKey="losses" stackId="r" maxBarSize={28} radius={[0, 0, 3, 3]} fill="var(--color-lost)" fillOpacity={0.7} />}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {points.length > 0 && (tiles ? <Tiles points={points} /> : (
+        <div className="h-52 w-full [&_.recharts-surface:focus:not(:focus-visible)]:outline-none">
+          <ResponsiveContainer>
+            <BarChart data={points} stackOffset="sign" margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+              <XAxis dataKey="tick" interval={0} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis width={32} allowDecimals={false} tickFormatter={(v) => String(Math.abs(v))} tick={{ fill: 'oklch(0.7 0.01 255)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <ReferenceLine y={0} stroke="oklch(1 0 0 / 12%)" />
+              <Tooltip cursor={{ fill: 'oklch(1 0 0 / 5%)', stroke: 'none' }} isAnimationActive={false} content={({ active, payload }) => {
+                const p = active && payload?.[0]?.payload as (typeof points)[number] | undefined;
+                return p && (
+                  <div className="flex min-w-40 flex-col gap-1.5 rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+                    <div><p className="font-medium">{p.name}</p><p className="text-muted-foreground">{p.date}</p></div>
+                    <dl className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-0.5 tabular-nums">
+                      {([['Won', p.wins, medalColour(p.place)], ...(lost ? [['Lost', -p.losses, 'color-mix(in oklch, var(--color-lost) 70%, transparent)']] : [])] as const).map(([label, n, bg]) => (
+                        <Fragment key={label}><i className="size-2 rounded-sm" style={{ background: bg }} /><dt className="text-muted-foreground">{label}</dt><dd className="text-right font-medium">{n}</dd></Fragment>
+                      ))}
+                    </dl>
+                  </div>
+                );
+              }} />
+              <Bar dataKey="wins" stackId="r" maxBarSize={28} radius={[3, 3, 0, 0]}>{points.map((p, i) => <Cell key={i} fill={medalColour(p.place)} />)}</Bar>
+              {lost && <Bar dataKey="losses" stackId="r" maxBarSize={28} radius={[0, 0, 3, 3]} fill="var(--color-lost)" fillOpacity={0.7} />}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ))}
+      {/* The chart's bars start after its 32px axis; tiles fill the width. */}
+      {eras && split && <div className={tiles ? undefined : 'pl-8'}><Eras eras={eras} split={split} /></div>}
     </Card>
+  );
+}
+
+// A few events, a tile each: the date and name, the best place, the record, and a pip a match.
+function Tiles({ points }: { points: { name: string; date: string; wins: number; losses: number; place: number | null }[] }) {
+  return (
+    <ol className="grid max-sm:divide-y sm:grid-cols-[repeat(var(--n),minmax(0,1fr))] sm:divide-x" style={{ '--n': points.length } as React.CSSProperties}>
+      {points.map((p, i) => (
+        <li key={i} className="flex min-w-0 flex-col gap-2.5 max-sm:py-5 max-sm:first:pt-0 max-sm:last:pb-0 sm:px-6 sm:first:pl-0 sm:last:pr-0">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-xs text-muted-foreground">{p.date}</span>
+            <span className="line-clamp-2 text-sm font-medium">{p.name}</span>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <Place p={p.place} />
+            <span className="text-lg"><Record w={p.wins} l={-p.losses} /></span>
+          </div>
+          <span className="flex flex-wrap gap-1" role="img" aria-label={`${plural(p.wins, 'win')}, ${-p.losses} lost`}>
+            {Array.from({ length: p.wins }, (_, k) => <i key={`w${k}`} className="size-2.5 rounded-[2px]" style={{ background: medalColour(p.place) }} />)}
+            {Array.from({ length: -p.losses }, (_, k) => <i key={`l${k}`} className="size-2.5 rounded-[2px] bg-lost/70" />)}
+          </span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -563,6 +728,7 @@ export function AthletePage({ id }: { id: string }) {
   const arts = artsOf(data.profile);
   // Events by site and number, as rows() keys them.
   const records = eventRecords(outcomes.map((o) => ({ ...o, event: at(o) })), entries.map((e) => ({ ...e, event: at(e) })));
+  const era = beltsAt(data.belts, records);
   const usual = [usualDivision(records)].map((u) => [u.age, u.weight].filter(Boolean).join(' · '))[0];
   const over = !records.length ? '' : outcomes.length ? `across ${plural(records.length, 'event')}` : `at ${plural(records.length, 'event')} read`;
   return (
@@ -572,35 +738,24 @@ export function AthletePage({ id }: { id: string }) {
         {/* basis-60 sends the buttons to their own row before the details get squeezed. */}
         <div className="flex min-w-0 flex-1 basis-60 flex-col gap-2">
           <h1 className="text-3xl font-semibold tracking-tight">{a.name ?? `Athlete ${id}`}</h1>
+          {(arts.size > 0 || a.belt) && <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+            {arts.size ? [...arts].map(([art, s]) => (
+              <span key={art} className="inline-flex items-center gap-2.5" title={`${art}: ${plural(s.events, 'event')} on Smoothcomp`}>
+                <BeltBar belt={s.belt.toLowerCase().replace('gray', 'grey')} degree={s.degree} /><span>{s.belt} belt{s.degree ? `, ${plural(s.degree, 'degree')}` : ''}{arts.size > 1 ? ` · ${art}` : ''}</span>
+              </span>
+            )) : a.belt && <span className="inline-flex items-center gap-2.5"><BeltBar belt={a.belt} degree={null} /><span>{capital(a.belt)} belt</span></span>}
+          </div>}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             {(a.country || a.country_name) && <span className="inline-flex items-center gap-1.5"><Flag code={a.country} name={a.country_name} />{a.country_name ?? a.country?.toUpperCase()}</span>}
             {age != null && <span>{age} years old</span>}
+            {a.club && (a.club_id ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-foreground hover:text-primary">{a.club}</Link> : <span>{a.club}</span>)}
+            {!data.profile?.affiliations?.length && who?.affiliation && <span title="Affiliation">{who.affiliation}</span>}
+            {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
             {usual && <Popover>
               <PopoverTrigger openOnHover className="cursor-help rounded-sm underline decoration-muted-foreground/50 decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Usually {usual}</PopoverTrigger>
               <PopoverContent side="bottom" align="start" className="w-64 text-xs text-muted-foreground">The age group and weight class they entered most in the year up to their latest event.</PopoverContent>
             </Popover>}
-            {/* Rated, their place by rating leads (it orders a bracket better than wins: 70.0% of matches against 65.9%), wins beside it. */}
-            {data.bracket?.rated && data.career?.rating != null && <Link href={f.link(`/athletes?${new URLSearchParams({ sort: 'rating', ...(data.bracket.sex && { sex: data.bracket.sex }), age: data.bracket.age, weight: String(data.bracket.weight), ...(data.bracket.belt && { belt: data.bracket.belt }) })}`)}
-              title={`Their place by rating among the athletes rated in their age group, weight class and belt. Rating ${data.career.rating}: how strong they are from whom they beat and lost to at the events read, ${data.career.mean} ± ${3 * (data.career.doubt ?? 0)} from ${data.career.rated} matches, ranked at the lower end`} className="text-foreground hover:text-primary">
-              <b className="font-semibold tabular-nums">#{data.bracket.rated.rank}</b> of {data.bracket.rated.of} rated {bracketName(data.bracket)}
-            </Link>}
-            {data.bracket && <Link href={f.link(`/athletes?${new URLSearchParams({ ...(data.bracket.sex && { sex: data.bracket.sex }), age: data.bracket.age, weight: String(data.bracket.weight), ...(data.bracket.belt && { belt: data.bracket.belt }) })}`)}
-              title="Their place by wins among the athletes in their age group, weight class and belt: the rankings narrowed to them" className="text-foreground hover:text-primary">
-              <b className="font-semibold tabular-nums">#{data.bracket.rank}</b> of {data.bracket.of} {data.bracket.rated ? 'by wins' : `${bracketName(data.bracket)} by wins`}
-            </Link>}
-            {!data.bracket && data.career?.rating != null && <Link href={f.link('/athletes?sort=rating')}
-              title={`How strong they are from whom they beat and lost to at the events read: ${data.career.mean} ± ${3 * (data.career.doubt ?? 0)}, from ${data.career.rated} matches; ranked at the lower end. Opens the rankings by rating`} className="text-foreground hover:text-primary">
-              Rating <b className="font-semibold tabular-nums">{data.career.rating}</b>
-            </Link>}
             {a.hidden === 1 && <span className="inline-flex items-center gap-1.5 text-foreground/85" title={HIDDEN}><Hidden className="text-foreground/70" />Hidden profile</span>}
-            {arts.size ? [...arts].map(([art, s]) => (
-              <span key={art} className="inline-flex items-center gap-1.5" title={`${art}: ${plural(s.events, 'event')} on Smoothcomp`}>
-                <Belt belt={s.belt.toLowerCase().replace('gray', 'grey')} /><span>{s.belt} belt{s.degree ? `, ${plural(s.degree, 'degree')}` : ''}{arts.size > 1 ? ` · ${art}` : ''}</span>
-              </span>
-            )) : a.belt && <span className="inline-flex items-center gap-1.5"><Belt belt={a.belt} /><span>{a.belt[0].toUpperCase()}{a.belt.slice(1)} belt</span></span>}
-            {a.club && (a.club_id ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-foreground hover:text-primary">{a.club}</Link> : <span>{a.club}</span>)}
-            {!data.profile?.affiliations?.length && who?.affiliation && <span title="Affiliation">{who.affiliation}</span>}
-            {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
           </div>
           {accounts.length > 0 && <p className="text-sm text-muted-foreground" title="Accounts with the same name, birth year and country, counted here as one athlete">
             Also {accounts.map((x, i) => <Fragment key={`${x.site} ${x.user}`}>{i ? ', ' : ''}<Link href={f.linkOn(`/athlete/${x.user}`, x.site)} className="text-foreground hover:text-primary">{x.site === f.site ? `another ${SITE_NAME(x.site)} account` : `on ${SITE_NAME(x.site)}`}</Link>{x.club && x.club !== a.club ? ` (${x.club})` : ''}</Fragment>)}: counted here as one athlete
@@ -609,14 +764,14 @@ export function AthletePage({ id }: { id: string }) {
         <div className="flex shrink-0 gap-2">
           {lately && <ReadNow targets={month.slice(0, 3).map((r) => ({ site: r.site ?? f.site, event: r.id, title: r.title, start: r.start, city: r.city }))} route="athlete" label="Read latest events" size="lg" />}
           {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>{plural(data.profile!.videos!, 'match video')}<ExternalLink /></a>}
-          <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ size: 'lg' })}>Profile on {SITE_NAME(f.site)}<ExternalLink /></a>
+          <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>Profile on {SITE_NAME(f.site)}<ExternalLink /></a>
         </div>
       </header>
 
-      {career || outcomes.length ? <RecordBand fins={finishes(career, records)} f={f} over={over} split={splitByBelt(data.belts, records, f)} career={career} points={points} />
+      {career || outcomes.length ? <RecordBand fins={finishes(career, records)} f={f} over={over} career={career} points={points} bracket={data.bracket} />
         : <Card className="px-5 py-4 text-sm text-muted-foreground">No career or results read yet. They arrive when someone with Mat Stats opens an event this athlete is in.</Card>}
 
-      <Form list={past} f={f} />
+      <Form list={past} f={f} career={career} era={era} split={splitByBelt(data.belts, records, f, era)} />
 
       {(met.length > 0 || side) && <div className="grid items-start gap-6 lg:grid-cols-2">
         {met.length > 0 && <Rivals rivals={rivals} losses={losses} pick={pick} picked={against?.key ?? null} />}
