@@ -24,14 +24,15 @@ async function watch(env, state) {
   if (sent.ok) await env.DB.prepare("INSERT OR REPLACE INTO meta (k, v) VALUES ('alert:stall', ?1)").bind(now).run();
 }
 
-// The tables whose plans need statistics: with none, SQLite reads entries by its primary key (every entry on the site) over
-// entries_user. A table rebuilt by copy and swap loses its sqlite_stat1 rows (on 2026-11-28, ~1B reads overnight), so they're put back.
-const ANALYZED = ['entries', 'tallies', 'board', 'board_own', 'club_board'];
+// Every table keeps statistics. A table rebuilt by copy and swap loses its sqlite_stat1 rows (on 2026-11-28, ~1B reads overnight:
+// entries was read by its primary key), and one with none is taken for ten rows a lookup, so the planner joins it first: with
+// entries analyzed and people not, an athlete page walked every account (33 s, a 503). Each missing one is put back.
 async function restat(env) {
-  const { results } = await env.DB.prepare('SELECT DISTINCT tbl FROM sqlite_stat1').all();
-  for (const table of ANALYZED.filter((t) => !results.some((r) => r.tbl === t))) {
-    await env.DB.exec(`ANALYZE ${table}`);
-    console.log('analyzed', table);
+  const { results } = await env.DB.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND sql NOT LIKE 'CREATE VIRTUAL%'
+    AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*' AND name NOT GLOB '*_fts_*' AND name NOT IN (SELECT tbl FROM sqlite_stat1)`).all();
+  for (const { name } of results) {
+    await env.DB.exec(`ANALYZE ${name}`);
+    console.log('analyzed', name);
   }
 }
 

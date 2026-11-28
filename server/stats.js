@@ -82,7 +82,7 @@ export const TALLY = `INSERT INTO tallies (site, user, rec, seen, gold, silver, 
   med AS (SELECT user, sum(place = 1) AS gold, sum(place = 2) AS silver, sum(place = 3) AS bronze, count(DISTINCT event) AS events FROM fe GROUP BY user),
   listed AS (SELECT user, count(*) FILTER (WHERE NOT gone) AS listed, count(*) FILTER (WHERE gone) AS absent, max(substr(start, 1, 10)) FILTER (WHERE NOT gone) AS last
     FROM (SELECT h.user, h.start, ${missedSql('h')} AS gone FROM us CROSS JOIN history h WHERE h.site = ?1 AND h.user = us.user) GROUP BY user),
-  latest AS (SELECT f.user, max(substr(v.start, 1, 10)) AS last FROM fe f JOIN events v ON v.site = f.site AND v.event = f.event GROUP BY f.user)
+  latest AS (SELECT f.user, max(substr(v.start, 1, 10)) AS last FROM fe f CROSS JOIN events v ON v.site = f.site AND v.event = f.event GROUP BY f.user)
   SELECT ?1, us.user, rec.rec, seen.seen, coalesce(med.gold, 0), coalesce(med.silver, 0), coalesce(med.bronze, 0), coalesce(med.events, 0), coalesce(listed.listed, 0),
     nullif(max(coalesce(listed.last, ''), coalesce(latest.last, '')), ''), coalesce(listed.absent, 0), unixepoch() * 1000
   FROM us LEFT JOIN rec USING (user) LEFT JOIN seen USING (user) LEFT JOIN med USING (user) LEFT JOIN listed USING (user) LEFT JOIN latest USING (user)
