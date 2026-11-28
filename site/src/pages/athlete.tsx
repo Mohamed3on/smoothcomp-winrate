@@ -142,7 +142,7 @@ function EventLink({ row, f }: { row: Row; f: Filters }) {
   const title = row.title ?? `Event ${row.id}`;
   return row.read || row.listed?.known
     ? <Link href={f.linkOn(`/event/${row.id}`, row.site ?? f.site)} className="font-medium hover:text-primary">{title}</Link>
-    : <a href={`https://${row.site ?? f.site}/en/event/${row.id}`} rel="noopener" className="inline-flex items-center gap-1 font-medium hover:text-primary">{title}<ExternalLink className="size-3 shrink-0 text-muted-foreground" /></a>;
+    : <a href={`https://${row.site ?? f.site}/en/event/${row.id}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 font-medium hover:text-primary">{title}<ExternalLink className="size-3 shrink-0 text-muted-foreground" /></a>;
 }
 
 // When each belt began (null for the first), as their profile dates them.
@@ -412,13 +412,13 @@ function OnSmoothcomp({ ranks, more, f, id, first }: { ranks: NonNullable<Profil
           return (
             <li key={`${r.toplist}-${r.name}`}>
               {r.type === 'federation' && r.ownerId && r.toplist
-                ? <a href={`${f.home}/en/federation/${r.ownerId}/ranking/${r.toplist}`} rel="noopener" className="-mx-1.5 flex items-baseline gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring">{body}</a>
+                ? <a href={`${f.home}/en/federation/${r.ownerId}/ranking/${r.toplist}`} target="_blank" rel="noopener" className="-mx-1.5 flex items-baseline gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-ring">{body}</a>
                 : <div className="flex items-baseline gap-2 py-1 text-sm">{body}</div>}
             </li>
           );
         })}
       </ul>
-      {more > ranks.length && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">All {more} rankings on Smoothcomp<ExternalLink className="size-3" /></a>}
+      {more > ranks.length && <a href={`${f.home}/en/profile/${id}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground">All {more} rankings on Smoothcomp<ExternalLink className="size-3" /></a>}
     </div>
   );
 }
@@ -766,7 +766,7 @@ export function AthletePage({ id }: { id: string }) {
             {age != null && <span>{age} years old</span>}
             {a.club && (a.club_id ? <Link href={f.link(`/academy/${a.club_id}`)} className="text-foreground hover:text-primary">{a.club}</Link> : <span>{a.club}</span>)}
             {!data.profile?.affiliations?.length && who?.affiliation && <span title="Affiliation">{who.affiliation}</span>}
-            {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
+            {data.profile?.affiliations?.map((c) => c.id ? <a key={c.id} href={`${f.home}/en/affiliation/${c.id}`} target="_blank" rel="noopener" title="Affiliation" className="hover:text-foreground">{c.name}</a> : <span key={c.name} title="Affiliation">{c.name}</span>)}
             {usual && <Popover>
               <PopoverTrigger openOnHover className="cursor-help rounded-sm underline decoration-muted-foreground/50 decoration-dotted underline-offset-4 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">Usually {usual}</PopoverTrigger>
               <PopoverContent side="bottom" align="start" className="w-64 text-xs text-muted-foreground">The age group and weight class they entered most in the year up to their latest event{kg !== division.weight ? ` (entered as ${division.weight})` : ''}.</PopoverContent>
@@ -779,8 +779,8 @@ export function AthletePage({ id }: { id: string }) {
         </div>
         <div className="flex shrink-0 gap-2">
           {lately && <ReadNow targets={month.slice(0, 3).map((r) => ({ site: r.site ?? f.site, event: r.id, title: r.title, start: r.start, city: r.city }))} route="athlete" label="Read latest events" size="lg" />}
-          {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>{plural(data.profile!.videos!, 'match video')}<ExternalLink /></a>}
-          <a href={`${f.home}/en/profile/${id}`} rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>Profile on {SITE_NAME(f.site)}<ExternalLink /></a>
+          {(data.profile?.videos ?? 0) > 0 && <a href={`${f.home}/en/profile/${id}`} target="_blank" rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>{plural(data.profile!.videos!, 'match video')}<ExternalLink /></a>}
+          <a href={`${f.home}/en/profile/${id}`} target="_blank" rel="noopener" className={buttonVariants({ variant: 'outline', size: 'lg' })}>Profile on {SITE_NAME(f.site)}<ExternalLink /></a>
         </div>
       </header>
 

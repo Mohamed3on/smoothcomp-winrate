@@ -48,17 +48,23 @@ export function Hidden({ className }: { className?: string }) {
 }
 export function Identity({ a, f, club = true, children }: { a: Person; f: Filters; club?: boolean; children?: React.ReactNode }) {
   const on = `Profile on ${f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}`;
+  const name = a.name ?? `Athlete ${a.user}`;
+  const cut = name.trimEnd().lastIndexOf(' ') + 1;
+  const href = f.link(`/athlete/${a.user}`);
+  const nameClass = cn('name font-medium transition-colors', !a.name && 'italic text-muted-foreground');
   return (
     <div className={cn("flex min-w-0 gap-3 max-sm:gap-2", children ? "items-start" : "items-center")}>
       <Photo name={a.name} photo={a.photo} className="max-sm:size-7 max-[22.5rem]:hidden" />
       <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex items-center gap-1.5">
-          <Link href={f.link(`/athlete/${a.user}`)} className={cn('min-w-0 font-medium break-words hover:text-primary', !a.name && 'italic text-muted-foreground')}>
-            {a.name ?? `Athlete ${a.user}`}
-          </Link>
-          {a.hidden === 1 && <Hidden />}
-          <a href={`${f.home}/en/profile/${a.user}`} rel="noopener" title={on} aria-label={on}
-            className="-m-1 shrink-0 rounded p-1 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring max-sm:hidden"><ExternalLink className="size-3" /></a>
+        {/* The name's last word and the marks share a line however it wraps: the name is two links, read as one. */}
+        <div className="min-w-0 break-words [&:has(.name:hover)_.name]:text-primary">
+          {cut > 0 && <Link href={href} aria-label={name} className={nameClass}>{name.slice(0, cut)}</Link>}
+          <span className={cn(cut > 0 && 'whitespace-nowrap')}>
+            <Link href={href} className={nameClass} {...(cut > 0 && { tabIndex: -1, 'aria-hidden': true })}>{name.slice(cut)}</Link>
+            {a.hidden === 1 && <Hidden className="ml-1.5 inline align-[-1px]" />}
+            <a href={`${f.home}/en/profile/${a.user}`} target="_blank" rel="noopener" title={on} aria-label={on}
+              className="-my-1 ml-0.5 inline-flex rounded p-1 align-middle text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring max-sm:hidden"><ExternalLink className="size-3" /></a>
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
           <Flag code={a.country ?? null} name={a.country_name} className="text-sm" />

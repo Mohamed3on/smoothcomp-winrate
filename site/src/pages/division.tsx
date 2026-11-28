@@ -61,7 +61,7 @@ export function DivisionPage({ id }: { id: string }) {
           <span>{date(event.start)}</span>
           {event.city && <span>{event.city}</span>}
           <span>{plural(rows.length, 'athlete')}</span>
-          <a href={`${f.home}/en/event/${id}/${bracket ? `bracket/${bracket}` : fought ? 'results' : 'participants'}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
+          <a href={`${f.home}/en/event/${id}/${bracket ? `bracket/${bracket}` : fought ? 'results' : 'participants'}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">On {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
         </div>
       </header>
       <Ledger rows={rows} loading={false} columns={columns} rowKey={(r) => r.user} empty={<Empty title="Nobody here" text="Nobody is listed in this division." />} expand={fought ? matches : undefined} openAll />

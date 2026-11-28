@@ -87,7 +87,7 @@ export function AcademyPage({ id }: { id: string }) {
         <h1 className="text-3xl font-semibold tracking-tight">{name}</h1>
         <div className="flex flex-wrap gap-x-4 text-sm text-muted-foreground">
           <span>{plural(data.members.length, 'athlete')} seen</span>
-          <a href={`${f.home}/en/club/${id}`} rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">Academy on {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
+          <a href={`${f.home}/en/club/${id}`} target="_blank" rel="noopener" className="inline-flex items-center gap-1 hover:text-foreground">Academy on {f.site === 'ajptour.com' ? 'AJP Tour' : 'Smoothcomp'}<ExternalLink className="size-3" /></a>
         </div>
       </header>
       <Card className="py-0"><dl className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 lg:divide-x">

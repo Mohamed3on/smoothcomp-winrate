@@ -37,7 +37,7 @@ function EventCell({ e, f }: { e: EventRow; f: Filters }) {
     <div className="flex min-w-0 flex-col gap-0.5">
       {e.athletes
         ? <Link href={target(e, f)} className="font-medium break-words hover:text-primary">{title}</Link>
-        : <a href={target(e, f)} rel="noopener" className="font-medium break-words hover:text-primary">{title}<ExternalLink className="ml-1 inline size-3 align-baseline text-muted-foreground" /></a>}
+        : <a href={target(e, f)} target="_blank" rel="noopener" className="font-medium break-words hover:text-primary">{title}<ExternalLink className="ml-1 inline size-3 align-baseline text-muted-foreground" /></a>}
       {/* Wide screens give the distance its own column. */}
       {/* Running text, each dot held to the word before it, so a wrapped line never starts with one. */}
       <span className="text-xs text-muted-foreground">
