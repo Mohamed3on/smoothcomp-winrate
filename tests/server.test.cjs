@@ -116,6 +116,14 @@ test("a results page's upload reads back on the stats site", async () => {
   await post('/roster', { site: 'smoothcomp.com', event: '900', meta, athletes: { 11: { name: 'Kim Lee', entries: [{ division: 'Adult / Blue / -76 kg' }] } }, read: Date.now() });
   const after = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=11'))).json();
   assert.deepEqual(after.entries.map((e) => [e.event, e.fought]), [['900', 1]]);
+  // A registration the organiser hasn't approved shows on its athlete's page alone, marked, and counts nowhere else.
+  const soon = { ...meta, start: new Date(Date.now() + 9 * 864e5).toISOString(), end: null };
+  await post('/roster', { site: 'smoothcomp.com', event: '905', meta: soon, read: Date.now(), athletes: {
+    11: { name: 'Kim Lee', entries: [{ division: 'Adult / Blue / -76 kg', approved: true }] }, 12: { name: 'Ana Cruz', entries: [{ division: 'Adult / Blue / -76 kg', approved: false }] } } });
+  const waiting = await (await API.athlete(env, new URLSearchParams('site=smoothcomp.com&id=12'))).json();
+  assert.deepEqual(waiting.entries.filter((e) => e.event === '905').map((e) => e.approved), [0]);
+  const upcoming = await (await API.event(env, new URLSearchParams('site=smoothcomp.com&id=905'))).json();
+  assert.deepEqual([upcoming.event.athletes, upcoming.entries.map((e) => [e.user, e.approved])], [1, [['11', undefined]]]);
   // A participants page's lookup gets each athlete's record by finish, to seed brackets by win rate.
   const looked = await (await post('/lookup', { site: 'smoothcomp.com', users: ['11', '12', '13'], clubs: ['501', '999'] })).json();
   assert.deepEqual(looked.records, { 11: { submission: [3, 0], walkover: [1, 0] }, 12: { points: [1, 0], submission: [0, 2] } });

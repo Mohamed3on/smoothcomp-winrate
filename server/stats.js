@@ -111,7 +111,7 @@ const activeIn = (off) => { const on = counted(off).reduce((m, g) => m + bit(g),
 // several ("Expert (Brown/Black)") names none.
 const NAMED = `'${JSON.stringify(BELTS)}'`;
 const namedBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each(${NAMED}) k
-      WHERE e.site = ?1 AND e.user = ${user} AND replace(lower(e.division), 'gray', 'grey') LIKE '%' || k.value || '%'
+      WHERE e.site = ?1 AND e.user = ${user} AND e.approved IS NOT 0 AND replace(lower(e.division), 'gray', 'grey') LIKE '%' || k.value || '%'
         AND (SELECT count(*) FROM json_each(${NAMED}) j WHERE replace(lower(e.division), 'gray', 'grey') LIKE '%' || j.value || '%') = 1
       ORDER BY k.key DESC LIMIT 1)`;
 // The least belt an athlete holds now, as their divisions show it: belts only go up, so every division they entered
@@ -119,10 +119,10 @@ const namedBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each
 // A division one belt names at that event or later, lower, says they moved up once (a brown belt in the black division).
 const names = (belt, e = 'e') => `replace(lower(${e}.division), 'gray', 'grey') LIKE '%' || ${belt} || '%'`;
 const floorBelt = (user) => `(SELECT k.value FROM entries e CROSS JOIN json_each(${NAMED}) k
-      WHERE e.site = ?1 AND e.user = ${user} AND k.key >= ${BELTS.indexOf('blue')} AND ${names('k.value')}
+      WHERE e.site = ?1 AND e.user = ${user} AND e.approved IS NOT 0 AND k.key >= ${BELTS.indexOf('blue')} AND ${names('k.value')}
         AND NOT EXISTS (SELECT 1 FROM json_each(${NAMED}) j WHERE j.key < k.key AND ${names('j.value')})
         AND NOT EXISTS (SELECT 1 FROM events v CROSS JOIN entries x INDEXED BY entries_user CROSS JOIN events xv ON xv.site = x.site AND xv.event = x.event CROSS JOIN json_each(${NAMED}) j
-          WHERE v.site = e.site AND v.event = e.event AND x.site = e.site AND x.user = e.user AND xv.start >= v.start AND j.key < k.key AND ${names('j.value', 'x')}
+          WHERE v.site = e.site AND v.event = e.event AND x.site = e.site AND x.user = e.user AND x.approved IS NOT 0 AND xv.start >= v.start AND j.key < k.key AND ${names('j.value', 'x')}
             AND (SELECT count(*) FROM json_each(${NAMED}) i WHERE ${names('i.value', 'x')}) = 1)
       ORDER BY k.key DESC LIMIT 1)`;
 // The higher of two belts; one not a colour gives way.
@@ -251,10 +251,11 @@ export const CLUBS = `INSERT INTO clubs (site, club_id, club, podium_gold, podiu
 
 // An event's athletes, divisions and academies, kept on it. ?1 site, ?2 event. The + keeps the
 // academy count on the event key, not the academy index, which reads every entry on the site.
+// A registration the organiser hasn't approved yet (approved 0) counts nowhere but its athlete's own page.
 export const EVENT_COUNTS = `UPDATE events SET
-  athletes = (SELECT count(DISTINCT user) FROM entries e WHERE e.site = ?1 AND e.event = ?2),
-  divisions = (SELECT coalesce(nullif(count(DISTINCT division) FILTER (WHERE fought = 1), 0), count(DISTINCT division)) FROM entries e WHERE e.site = ?1 AND e.event = ?2),
-  teams = (SELECT count(DISTINCT +e.club_id) FROM entries e WHERE e.site = ?1 AND e.event = ?2),
+  athletes = (SELECT count(DISTINCT user) FROM entries e WHERE e.site = ?1 AND e.event = ?2 AND e.approved IS NOT 0),
+  divisions = (SELECT coalesce(nullif(count(DISTINCT division) FILTER (WHERE fought = 1), 0), count(DISTINCT division)) FROM entries e WHERE e.site = ?1 AND e.event = ?2 AND e.approved IS NOT 0),
+  teams = (SELECT count(DISTINCT +e.club_id) FROM entries e WHERE e.site = ?1 AND e.event = ?2 AND e.approved IS NOT 0),
   fought = (SELECT max(fought) FROM entries e WHERE e.site = ?1 AND e.event = ?2)
   WHERE site = ?1 AND event = ?2`;
 
@@ -562,7 +563,7 @@ async function team(env, params) {
     // Grouped by +e.event, or SQLite walks every entry on the site for the order instead of this academy's.
     env.DB.prepare(`SELECT e.event, v.title, v.start, v.city, v.country, count(DISTINCT e.user) AS athletes, max(e.fought) AS fought,
         sum(e.place = 1) AS gold, sum(e.place = 2) AS silver, sum(e.place = 3) AS bronze, json_group_array(json_object('wins', json(e.wins), 'losses', json(e.losses))) AS records
-      FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.club_id = ?2 AND ${playedSql('e')}
+      FROM entries e LEFT JOIN events v ON v.site = e.site AND v.event = e.event WHERE e.site = ?1 AND e.club_id = ?2 AND e.approved IS NOT 0 AND ${playedSql('e')}
       GROUP BY +e.event ORDER BY v.start DESC, e.event DESC`).bind(f.site, club),
     // When its own page was last read for where it is (crawl.js placeClubs, or the site on opening it).
     env.DB.prepare('SELECT checked FROM club_places WHERE site = ?1 AND club_id = ?2').bind(f.site, club),
@@ -654,7 +655,7 @@ async function event(env, params) {
           FROM json_each(CASE WHEN json_valid(e.bouts) THEN e.bouts END) b WHERE b.value ->> 'us' IS NULL AND ${finishSql("(b.value ->> 'type')")} NOT IN (${SCORELESS.map((f) => `'${f}'`).join(', ')})) AS open
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
         LEFT JOIN club_board k ON k.site = e.site AND k.club_id = e.club_id LEFT JOIN ratings rt ON rt.site = e.site AND rt.user = e.user
-      WHERE e.site = ?1 AND e.event = ?4 AND (?5 IS NULL OR +e.club_id = ?5) AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id, club),
+      WHERE e.site = ?1 AND e.event = ?4 AND (?5 IS NULL OR +e.club_id = ?5) AND e.approved IS NOT 0 AND ${shown()}`).bind(f.site, f.off, Date.now() - KEPT, id, club),
     // When its registrations (0) and results (1) were last read: rows only change when what they say does.
     env.DB.prepare('SELECT fought, at FROM reads WHERE site = ?1 AND event = ?2').bind(f.site, id),
   ]);
@@ -679,7 +680,7 @@ async function division(env, params) {
         c.wins AS career_wins, c.source AS career_source, c.types AS career_types, c.won AS career_won, c.lost AS career_lost, c.events AS career_events, c.gold AS career_gold, k.won AS club_won, k.lost AS club_lost, rt.mean AS strength
       FROM entries e LEFT JOIN people p ON p.site = e.site AND p.user = e.user LEFT JOIN careers c ON c.user = e.user
         LEFT JOIN club_board k ON k.site = e.site AND k.club_id = e.club_id LEFT JOIN ratings rt ON rt.site = e.site AND rt.user = e.user
-      WHERE e.site = ?1 AND e.event = ?4 AND trim(e.division) = ?5
+      WHERE e.site = ?1 AND e.event = ?4 AND trim(e.division) = ?5 AND e.approved IS NOT 0
         AND ${shown(' AND x.division = e.division')}`)
       .bind(f.site, f.off, Date.now() - KEPT, id, name),
   ]);
